@@ -9,8 +9,6 @@ import {
   BookOpen,
   Upload,
   Shield,
-  Users,
-  CheckCircle2,
   ArrowLeft,
   Menu,
   X,
@@ -21,8 +19,6 @@ const navItems = [
   { href: "/dashboard", label: "Visão Geral", icon: LayoutDashboard },
   { href: "/dashboard/series", label: "Séries", icon: BookOpen },
   { href: "/dashboard/uploads", label: "Uploads & Jobs", icon: Upload },
-  { href: "/dashboard/users", label: "Usuários", icon: Users },
-  { href: "/dashboard/approvals", label: "Aprovações", icon: CheckCircle2 },
   { href: "/dashboard/security", label: "Segurança", icon: Shield },
 ];
 

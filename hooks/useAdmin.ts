@@ -14,11 +14,6 @@ import type {
   BulkDeleteMediaRequest,
   BulkMoveMediaRequest,
   BulkDeleteSeriesRequest,
-  AdminUsersParams,
-  CreateUserRequest,
-  UpdateUserRequest,
-  ApprovalsParams,
-  EditorSubmissionsParams,
 } from "@/types/api";
 
 // ===== Query Keys =====
@@ -45,16 +40,6 @@ const adminKeys = {
   scanJob: (id: string) => [...adminKeys.all, "scan-jobs", id] as const,
   apiHealth: () => [...adminKeys.all, "api-health"] as const,
   jobsStats: () => [...adminKeys.all, "jobs-stats"] as const,
-  users: (params?: AdminUsersParams) =>
-    [...adminKeys.all, "users", params] as const,
-  user: (id: string) => [...adminKeys.all, "users", id] as const,
-  usersStats: () => [...adminKeys.all, "users-stats"] as const,
-  approvals: (params?: ApprovalsParams) =>
-    [...adminKeys.all, "approvals", params] as const,
-  approval: (id: string) => [...adminKeys.all, "approvals", id] as const,
-  approvalStats: () => [...adminKeys.all, "approval-stats"] as const,
-  mySubmissions: (params?: EditorSubmissionsParams) =>
-    [...adminKeys.all, "my-submissions", params] as const,
 };
 
 // ===== Dashboard =====
@@ -565,159 +550,5 @@ export function useApiHealth() {
     queryFn: () => adminService.getApiHealth(),
     staleTime: 1000 * 60,
     refetchInterval: 1000 * 60 * 2,
-  });
-}
-
-// ===== User Management =====
-export function useAdminUsersStats() {
-  return useQuery({
-    queryKey: adminKeys.usersStats(),
-    queryFn: () => adminService.getUsersStats(),
-    staleTime: 1000 * 60 * 2,
-  });
-}
-
-export function useAdminUsers(params?: AdminUsersParams) {
-  return useQuery({
-    queryKey: adminKeys.users(params),
-    queryFn: () => adminService.getUsers(params),
-    staleTime: 1000 * 60,
-  });
-}
-
-export function useAdminUser(id: string, enabled = true) {
-  return useQuery({
-    queryKey: adminKeys.user(id),
-    queryFn: () => adminService.getUser(id),
-    enabled: enabled && !!id,
-    staleTime: 1000 * 30,
-  });
-}
-
-export function useCreateUser() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: CreateUserRequest) => adminService.createUser(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.users() });
-      qc.invalidateQueries({ queryKey: adminKeys.usersStats() });
-    },
-  });
-}
-
-export function useUpdateUser() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateUserRequest }) =>
-      adminService.updateUser(id, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.users() });
-      qc.invalidateQueries({ queryKey: adminKeys.usersStats() });
-    },
-  });
-}
-
-export function useDeleteUser() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => adminService.deleteUser(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.users() });
-      qc.invalidateQueries({ queryKey: adminKeys.usersStats() });
-    },
-  });
-}
-
-export function useRevokeSessions() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (userId: string) => adminService.revokeSessions(userId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.users() });
-    },
-  });
-}
-
-// ===== Content Approval =====
-export function useApprovalStats() {
-  return useQuery({
-    queryKey: adminKeys.approvalStats(),
-    queryFn: () => adminService.getApprovalStats(),
-    staleTime: 1000 * 30,
-    refetchInterval: 1000 * 60,
-  });
-}
-
-export function useApprovals(params?: ApprovalsParams) {
-  return useQuery({
-    queryKey: adminKeys.approvals(params),
-    queryFn: () => adminService.getApprovals(params),
-    staleTime: 1000 * 30,
-    refetchInterval: 1000 * 60,
-  });
-}
-
-export function useApproval(id: string, enabled = true) {
-  return useQuery({
-    queryKey: adminKeys.approval(id),
-    queryFn: () => adminService.getApproval(id),
-    enabled: enabled && !!id,
-    staleTime: 1000 * 30,
-  });
-}
-
-export function useApproveContent() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => adminService.approveContent(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
-      qc.invalidateQueries({ queryKey: adminKeys.approvalStats() });
-    },
-  });
-}
-
-export function useRejectContent() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      adminService.rejectContent(id, reason),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
-      qc.invalidateQueries({ queryKey: adminKeys.approvalStats() });
-    },
-  });
-}
-
-export function useBulkApprove() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (ids: string[]) => adminService.bulkApprove(ids),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
-      qc.invalidateQueries({ queryKey: adminKeys.approvalStats() });
-    },
-  });
-}
-
-export function useBulkReject() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ ids, reason }: { ids: string[]; reason: string }) =>
-      adminService.bulkReject(ids, reason),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
-      qc.invalidateQueries({ queryKey: adminKeys.approvalStats() });
-    },
-  });
-}
-
-// ===== Editor — My Submissions =====
-export function useMySubmissions(params?: EditorSubmissionsParams) {
-  return useQuery({
-    queryKey: adminKeys.mySubmissions(params),
-    queryFn: () => adminService.getMySubmissions(params),
-    staleTime: 1000 * 30,
-    refetchInterval: 1000 * 60,
   });
 }

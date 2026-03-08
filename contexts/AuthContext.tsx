@@ -17,8 +17,6 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  isAdmin: boolean;
-  isEditor: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
@@ -33,9 +31,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const isAuthenticated = !!user && !!token;
-  const isAdmin = isAuthenticated && user?.role === "ADMIN";
-  const isEditor =
-    isAuthenticated && (user?.role === "EDITOR" || user?.role === "ADMIN");
 
   // Carregar usuário do localStorage na inicialização
   useEffect(() => {
@@ -116,8 +111,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token,
         isLoading,
         isAuthenticated,
-        isAdmin,
-        isEditor,
         login,
         register,
         logout,

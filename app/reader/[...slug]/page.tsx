@@ -1,4 +1,4 @@
-import SerieClient from "./SerieClient";
+import ReaderClient from "./ReaderClient";
 
 export const dynamicParams = false;
 
@@ -7,5 +7,5 @@ export async function generateStaticParams() {
 }
 
 export default function Page() {
-  return <SerieClient />;
+  return <ReaderClient />;
 }

@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0f0f0f;
+  --color-surface: #1e1e1e;
+  --color-primary: #e50914;
+  --color-textMain: #e5e5e5;
+  --color-textDim: #a3a3a3;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-textMain);
+  /* Isso evita que a página faça o "bounce" chato do iOS Safari */
+  overscroll-behavior-y: none;
+  /* Esconde a barra de rolagem mas permite rolar */
+  scrollbar-width: none;
+}
+
+body::-webkit-scrollbar {
+  display: none;
+}
+
+/* Esconder scrollbar em scroll horizontal */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Animação suave para transições de página */
+@media (prefers-reduced-motion: no-preference) {
+  * {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Manter aspect ratio de imagens */
+.aspect-cover {
+  aspect-ratio: 2 / 3;
+}
+
+/* Prevenir seleção de texto em cards clicáveis */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}

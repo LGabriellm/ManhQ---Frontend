@@ -5,10 +5,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  DEPLOY_DIR: ~/containers_docker/manhq_frontend
-  REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
-
 jobs:
   deploy:
     name: Deploy to VPS
@@ -26,63 +22,58 @@ jobs:
           command_timeout: 12m
           script: |
             set -e
+            REPO_DIR=~/containers_docker/manhq_frontend
+            REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
 
             echo "=== [1/6] Preparando diretório ==="
-            if [ ! -d "${{ env.DEPLOY_DIR }}" ]; then
-              echo "Clonando repositório..."
-              git clone ${{ env.REPO_URL }} ${{ env.DEPLOY_DIR }}
+            # Cria o diretório pai se não existir
+            mkdir -p ~/containers_docker
+
+            # Clona o repositório se não existir
+            if [ ! -d "$REPO_DIR/.git" ]; then
+              echo "📦 Clonando repositório pela primeira vez..."
+              git clone "$REPO_URL" "$REPO_DIR"
             fi
 
-            cd ${{ env.DEPLOY_DIR }}
+            cd "$REPO_DIR"
 
             echo "=== [2/6] Atualizando código ==="
+            echo "🔄 Atualizando código..."
             git fetch origin main
             git reset --hard origin/main
-            git clean -fd
 
             echo "=== [3/6] Verificando .env ==="
             if [ ! -f .env ]; then
               cp .env.example .env
-              echo ""
-              echo "⚠️  ATENÇÃO: .env criado a partir do .env.example"
-              echo "⚠️  Edite ~/containers_docker/manhq_frontend/.env com os valores corretos"
-              echo "⚠️  Depois execute: cd ~/containers_docker/manhq_frontend && docker compose up -d --build"
-              echo ""
-              exit 0
-            fi
-
-            echo "=== [4/6] Build do container ==="
-            export $(grep -v '^#' .env | xargs)
-            docker compose build --no-cache frontend
-
-            echo "=== [5/6] Iniciando container ==="
-            docker compose up -d
-
-            echo "=== [6/6] Health check ==="
-            echo "Aguardando frontend ficar healthy..."
-            ATTEMPTS=0
-            MAX_ATTEMPTS=30
-            while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
-              HEALTH=$(docker inspect --format='{{.State.Health.Status}}' manhq-frontend 2>/dev/null || echo "not_found")
-              if [ "$HEALTH" = "healthy" ]; then
-                echo "✅ Frontend healthy!"
-                break
-              fi
-              ATTEMPTS=$((ATTEMPTS + 1))
-              echo "  Tentativa $ATTEMPTS/$MAX_ATTEMPTS — status: $HEALTH"
-              sleep 2
-            done
-
-            if [ "$HEALTH" != "healthy" ]; then
-              echo "⚠️  Frontend não ficou healthy em 60s. Logs:"
-              docker compose logs --tail=30 frontend
+              echo "⚠️  .env criado a partir do .env.example — configure as variáveis!"
+              echo "   Execute: nano $REPO_DIR/.env"
               exit 1
             fi
 
+            echo "=== [4/6] Build do container ==="
+            echo "🐳 Construindo imagem..."
+            docker compose build --no-cache frontend
+
+            echo "=== [5/6] Iniciando container ==="
+            echo "🚀 Subindo containers..."
+            docker compose up -d
+
+            echo "=== [6/6] Health check ==="
+            echo "⏳ Aguardando frontend ficar saudável..."
+            for i in $(seq 1 12); do
+              HEALTH=$(docker inspect --format='{{.State.Health.Status}}' manhq-frontend 2>/dev/null || echo "not_found")
+              if [ "$HEALTH" = "healthy" ]; then
+                echo "✅ Deploy concluído com sucesso!"
+                break
+              fi
+              if [ "$i" -eq 12 ]; then
+                echo "❌ Frontend não ficou healthy em 60s. Verificando logs..."
+                docker compose logs --tail=30 frontend
+                exit 1
+              fi
+              echo "  Tentativa $i/12 — status: $HEALTH"
+              sleep 5
+            done
+
             echo "=== Limpeza ==="
             docker image prune -f
-
-            echo ""
-            echo "🚀 Deploy concluído com sucesso!"
-            echo "   Container: manhq-frontend"
-            echo "   Rede: manhq_backend_manhq-net"

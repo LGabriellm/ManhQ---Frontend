@@ -1,49 +1,88 @@
-name: Deploy to VPS
+name: Deploy Frontend to VPS
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 env:
-  IMAGE_NAME: manhq-client
-  DEPLOY_PATH: /opt/manhq-client
+  DEPLOY_DIR: ~/containers_docker/manhq_frontend
+  REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
 
 jobs:
   deploy:
+    name: Deploy to VPS
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Copy files to VPS
-        uses: appleboy/scp-action@v0.1.7
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
-          source: "."
-          target: ${{ env.DEPLOY_PATH }}
-          overwrite: true
-
-      - name: Build and deploy on VPS
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
+          port: 22
+          command_timeout: 12m
           script: |
-            cd ${{ env.DEPLOY_PATH }}
+            set -e
 
-            # Create .env if not exists
-            if [ ! -f .env ]; then
-              echo "NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}" > .env
+            echo "=== [1/6] Preparando diretório ==="
+            if [ ! -d "${{ env.DEPLOY_DIR }}" ]; then
+              echo "Clonando repositório..."
+              git clone ${{ env.REPO_URL }} ${{ env.DEPLOY_DIR }}
             fi
 
-            # Build and restart
-            docker compose down
-            docker compose up -d --build
+            cd ${{ env.DEPLOY_DIR }}
 
-            # Cleanup old images
+            echo "=== [2/6] Atualizando código ==="
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
+
+            echo "=== [3/6] Verificando .env ==="
+            if [ ! -f .env ]; then
+              cp .env.example .env
+              echo ""
+              echo "⚠️  ATENÇÃO: .env criado a partir do .env.example"
+              echo "⚠️  Edite ~/containers_docker/manhq_frontend/.env com os valores corretos"
+              echo "⚠️  Depois execute: cd ~/containers_docker/manhq_frontend && docker compose up -d --build"
+              echo ""
+              exit 0
+            fi
+
+            echo "=== [4/6] Build do container ==="
+            export $(grep -v '^#' .env | xargs)
+            docker compose build --no-cache frontend
+
+            echo "=== [5/6] Iniciando container ==="
+            docker compose up -d
+
+            echo "=== [6/6] Health check ==="
+            echo "Aguardando frontend ficar healthy..."
+            ATTEMPTS=0
+            MAX_ATTEMPTS=30
+            while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
+              HEALTH=$(docker inspect --format='{{.State.Health.Status}}' manhq-frontend 2>/dev/null || echo "not_found")
+              if [ "$HEALTH" = "healthy" ]; then
+                echo "✅ Frontend healthy!"
+                break
+              fi
+              ATTEMPTS=$((ATTEMPTS + 1))
+              echo "  Tentativa $ATTEMPTS/$MAX_ATTEMPTS — status: $HEALTH"
+              sleep 2
+            done
+
+            if [ "$HEALTH" != "healthy" ]; then
+              echo "⚠️  Frontend não ficou healthy em 60s. Logs:"
+              docker compose logs --tail=30 frontend
+              exit 1
+            fi
+
+            echo "=== Limpeza ==="
             docker image prune -f
+
+            echo ""
+            echo "🚀 Deploy concluído com sucesso!"
+            echo "   Container: manhq-frontend"
+            echo "   Rede: manhq_backend_manhq-net"

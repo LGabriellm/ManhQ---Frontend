@@ -3,9 +3,6 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { getStoredToken } from "@/services/api";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://api.manhq.com.br";
-
 export type JobProgressEvent =
   | {
       type: "snapshot";
@@ -68,9 +65,8 @@ export function useJobProgressStream({
     const token = getStoredToken();
     if (!token) return;
 
-    // EventSource doesn't support custom headers,
-    // pass token as query param
-    const url = `${API_BASE_URL}/jobs/progress/stream?token=${encodeURIComponent(token)}`;
+    // Proxy via Next.js Route Handler (mesmo domínio, sem CORS)
+    const url = `/api/jobs/progress/stream?token=${encodeURIComponent(token)}`;
     const es = new EventSource(url);
     eventSourceRef.current = es;
 

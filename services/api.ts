@@ -1,15 +1,17 @@
 import axios, { AxiosError, AxiosInstance } from "axios";
 import type { User } from "@/types/api";
 
-// URL da API backend (embutida no build via NEXT_PUBLIC_*)
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://api.manhq.com.br";
+// Proxy via Next.js Route Handler (mesmo domínio, sem CORS)
+const API_BASE_URL = "/api";
 
 // Criar instância do axios
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*", // Ou seu domínio específico
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
   },
 });
 

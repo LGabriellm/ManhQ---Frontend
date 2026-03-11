@@ -219,7 +219,16 @@ export default function LoginPage() {
           </motion.button>
         </form>
 
-        <div className="mt-8 text-center">
+        <div className="mt-4 text-center">
+          <button
+            onClick={() => router.push("/auth/forgot-password")}
+            className="text-textDim text-sm hover:text-primary transition-colors"
+          >
+            Esqueceu sua senha?
+          </button>
+        </div>
+
+        <div className="mt-4 text-center">
           <p className="text-textDim text-xs">
             O acesso é exclusivo para assinantes.
             <br />

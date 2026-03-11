@@ -6,7 +6,12 @@ import { Loader2 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
 import { useAuth } from "@/contexts/AuthContext";
 
-const PUBLIC_ROUTES = ["/auth/login", "/auth/activate"];
+const PUBLIC_ROUTES = [
+  "/auth/login",
+  "/auth/activate",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+];
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

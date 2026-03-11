@@ -66,6 +66,16 @@ import type {
   BulkRejectRequest,
   BulkRejectResponse,
   SubmissionsListResponse,
+  ApprovalDetail,
+  SubscriptionsStatsResponse,
+  SubscriptionsListResponse,
+  SubscriptionsParams,
+  ActivationTokensResponse,
+  ActivationTokensParams,
+  CreateManualSubscriptionRequest,
+  CreateManualSubscriptionResponse,
+  CancelSubscriptionRequest,
+  CheckExpiredResponse,
 } from "@/types/api";
 
 // Helpers para flatten jobs da API
@@ -627,6 +637,77 @@ export const adminService = {
     const response = await api.get<SubmissionsListResponse>("/my/submissions", {
       params,
     });
+    return response.data;
+  },
+
+  // ===== Approval Detail =====
+  async getApprovalDetail(id: string): Promise<ApprovalDetail> {
+    const response = await api.get<ApprovalDetail>(`/admin/approvals/${id}`);
+    return response.data;
+  },
+
+  // ===== Subscriptions Management =====
+  async getSubscriptionsStats(): Promise<SubscriptionsStatsResponse> {
+    const response = await api.get<SubscriptionsStatsResponse>(
+      "/admin/subscriptions/stats",
+    );
+    return response.data;
+  },
+
+  async getSubscriptions(
+    params?: SubscriptionsParams,
+  ): Promise<SubscriptionsListResponse> {
+    const response = await api.get<SubscriptionsListResponse>(
+      "/admin/subscriptions",
+      { params },
+    );
+    return response.data;
+  },
+
+  async getActivationTokens(
+    params?: ActivationTokensParams,
+  ): Promise<ActivationTokensResponse> {
+    const response = await api.get<ActivationTokensResponse>(
+      "/admin/subscriptions/tokens",
+      { params },
+    );
+    return response.data;
+  },
+
+  async createManualSubscription(
+    data: CreateManualSubscriptionRequest,
+  ): Promise<CreateManualSubscriptionResponse> {
+    const response = await api.post<CreateManualSubscriptionResponse>(
+      "/admin/subscriptions/manual",
+      data,
+    );
+    return response.data;
+  },
+
+  async cancelSubscription(
+    userId: string,
+    data?: CancelSubscriptionRequest,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post<{ success: boolean; message: string }>(
+      `/admin/subscriptions/${userId}/cancel`,
+      data,
+    );
+    return response.data;
+  },
+
+  async reactivateSubscription(
+    userId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await api.post<{ success: boolean; message: string }>(
+      `/admin/subscriptions/${userId}/reactivate`,
+    );
+    return response.data;
+  },
+
+  async checkExpiredSubscriptions(): Promise<CheckExpiredResponse> {
+    const response = await api.post<CheckExpiredResponse>(
+      "/admin/subscriptions/check-expired",
+    );
     return response.data;
   },
 };

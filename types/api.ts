@@ -50,6 +50,24 @@ export interface ActivateAccountResponse {
   token: string;
 }
 
+// ===== Recuperação de Senha =====
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
+export interface ResetPasswordResponse {
+  message: string;
+}
+
 // ===== Séries e Mídias =====
 export interface Media {
   id: string;
@@ -1333,4 +1351,116 @@ export interface SubmissionsListResponse {
     total: number;
     totalPages: number;
   };
+}
+
+// ===== Admin — Gerenciamento de Assinaturas =====
+export interface SubscriptionItem {
+  id: string;
+  provider: string;
+  plan: string;
+  status: "ACTIVE" | "PAST_DUE" | "CANCELED" | "REFUNDED" | "EXPIRED";
+  startsAt: string;
+  currentPeriodEnd: string;
+  amount: number;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    subStatus: string;
+  };
+}
+
+export interface SubscriptionsListResponse {
+  subscriptions: SubscriptionItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface SubscriptionsParams {
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface SubscriptionsStatsResponse {
+  totalSubscriptions: number;
+  active: number;
+  canceled: number;
+  pastDue: number;
+  refunded: number;
+  pendingActivations: number;
+  recentEvents: {
+    id: string;
+    event: string;
+    provider: string;
+    processedAt: string;
+    subscription: {
+      id: string;
+      user: { email: string; name: string };
+    };
+  }[];
+}
+
+export interface ActivationTokenItem {
+  id: string;
+  email: string;
+  name: string;
+  status: "PENDING" | "USED" | "EXPIRED" | "REVOKED";
+  provider: string;
+  externalId: string;
+  productName: string;
+  amount: number;
+  expiresAt: string;
+  usedAt: string | null;
+  createdAt: string;
+}
+
+export interface ActivationTokensResponse {
+  tokens: ActivationTokenItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ActivationTokensParams {
+  status?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface CreateManualSubscriptionRequest {
+  email: string;
+  name: string;
+  sendActivation?: boolean;
+  password?: string;
+}
+
+export interface CreateManualSubscriptionResponse {
+  action: "activation_sent" | "account_created";
+  tokenId?: string;
+  userId?: string;
+}
+
+export interface CancelSubscriptionRequest {
+  reason?: string;
+}
+
+export interface CheckExpiredResponse {
+  success: boolean;
+  expiredCount: number;
+  message: string;
+}
+
+// ===== Approval Detail =====
+export interface ApprovalDetail extends ApprovalItem {
+  fileExists: boolean;
 }

@@ -2,7 +2,7 @@
 
 > **Base URL:** `http://localhost:3000`
 > **Autenticação:** JWT via header `Authorization: Bearer <token>`
-> **Rotas públicas:** `/register`, `/login`, `/`, `/webhooks/*`, `/activate`, `/activate/validate/:token`
+> **Rotas públicas:** `/login`, `/forgot-password`, `/reset-password`, `/`, `/webhooks/*`, `/activate`, `/activate/validate/:token`
 > **Filas BullMQ:** Upload (concorrência: 3) e Scan (concorrência: 1) via Redis
 
 ---
@@ -39,36 +39,7 @@
 
 ## 1. Autenticação (Públicas)
 
-### `POST /register`
-
-Cria nova conta de usuário.
-
-**Body:**
-
-```json
-{
-  "name": "Luiz Gabriel",
-  "email": "luiz@email.com",
-  "password": "minhasenha123"
-}
-```
-
-**Validações:**
-
-- `name`: 2–100 caracteres
-- `email`: formato válido, máximo 254 caracteres
-- `password`: mínimo 8 caracteres
-
-**Response (201):**
-
-```json
-{
-  "message": "Usuário criado com sucesso",
-  "userId": "clxyz123..."
-}
-```
-
----
+> **Registro desabilitado.** Novos usuários são criados exclusivamente via webhook de pagamento (Kirvano), ativação de conta ou manualmente pelo admin no dashboard. Não existe endpoint público de registro.
 
 ### `POST /login`
 
@@ -99,6 +70,67 @@ Autentica e retorna token JWT + dados do usuário.
 ```
 
 > **Segurança:** IPs com tentativas de login falhadas consecutivas são bloqueados automaticamente. Veja [Admin — IPs Bloqueados](#17-admin--ips-bloqueados).
+
+---
+
+### `POST /forgot-password`
+
+Solicita envio de email de recuperação de senha. Resposta genérica (não revela se o email existe).
+
+**Body:**
+
+```json
+{ "email": "luiz@email.com" }
+```
+
+**Validação:** `email` deve ser um endereço válido.
+
+**Response (200):**
+
+```json
+{
+  "message": "Se o email estiver cadastrado, você receberá um link de recuperação."
+}
+```
+
+> **Rate limit:** Máximo 3 tokens pendentes por email. Token expira em 1 hora. Hash SHA-256 armazenado no banco (token original não é persistido).
+
+---
+
+### `POST /reset-password`
+
+Redefine a senha usando o token recebido por email. Revoga todas as sessões ativas do usuário.
+
+**Body:**
+
+```json
+{
+  "token": "abc123def456...",
+  "password": "NovaSenha@F0rte!"
+}
+```
+
+**Validações:**
+
+- `token`: string, mínimo 20 caracteres
+- `password`: mínimo 8 caracteres, validação de força (maiúscula, minúscula, número ou especial)
+
+**Response (200):**
+
+```json
+{
+  "message": "Senha redefinida com sucesso. Faça login com a nova senha."
+}
+```
+
+**Erros:**
+
+| Status | Motivo                                   |
+| ------ | ---------------------------------------- |
+| 400    | Token inválido, expirado ou já utilizado |
+| 400    | Senha não atende critérios de força      |
+
+> **Segurança:** Transação atômica (atualiza senha + marca token como usado). Todas as sessões do usuário são revogadas.
 
 ---
 
@@ -3464,11 +3496,11 @@ Registra leitura de páginas (chamado pelo frontend durante a leitura ativa).
 
 ---
 
-## Resumo — Total de Endpoints: 112
+## Resumo — Total de Endpoints: 113
 
 | Seção                              | Endpoints | Métodos                                                                                                                                                          |
 | ---------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Auth (Públicas)                 | 3         | POST, POST, GET                                                                                                                                                  |
+| 1. Auth (Públicas)                 | 4         | POST, POST, POST, GET                                                                                                                                            |
 | 2. Sessões/Perfil                  | 5         | GET, POST, POST, GET, DELETE                                                                                                                                     |
 | 3. Biblioteca                      | 3         | GET, GET, GET                                                                                                                                                    |
 | 4. Discover                        | 4         | GET, GET, GET, GET                                                                                                                                               |
@@ -3962,4 +3994,4 @@ Eventos subsequentes:
 - **Boas-vindas:** Conta ativada com sucesso
 - **Cancelamento:** Notificação de cancelamento com motivo
 
-**Total: 122 endpoints** (112 anteriores + 10 novos)
+**Total: 123 endpoints** (113 base + 10 de assinaturas/webhooks)

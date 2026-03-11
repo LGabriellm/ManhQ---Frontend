@@ -9,6 +9,10 @@ import type {
   ValidateTokenResponse,
   ActivateAccountRequest,
   ActivateAccountResponse,
+  ForgotPasswordRequest,
+  ForgotPasswordResponse,
+  ResetPasswordRequest,
+  ResetPasswordResponse,
 } from "@/types/api";
 
 export const authService = {
@@ -64,6 +68,28 @@ export const authService = {
     data: ActivateAccountRequest,
   ): Promise<ActivateAccountResponse> {
     const response = await api.post<ActivateAccountResponse>("/activate", data);
+    return response.data;
+  },
+
+  // Solicitar recuperação de senha
+  async forgotPassword(
+    data: ForgotPasswordRequest,
+  ): Promise<ForgotPasswordResponse> {
+    const response = await api.post<ForgotPasswordResponse>(
+      "/forgot-password",
+      data,
+    );
+    return response.data;
+  },
+
+  // Redefinir senha com token
+  async resetPassword(
+    data: ResetPasswordRequest,
+  ): Promise<ResetPasswordResponse> {
+    const response = await api.post<ResetPasswordResponse>(
+      "/reset-password",
+      data,
+    );
     return response.data;
   },
 };

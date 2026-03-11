@@ -11,6 +11,7 @@ import {
   Shield,
   Users,
   ClipboardCheck,
+  CreditCard,
   ArrowLeft,
   Menu,
   X,
@@ -23,6 +24,11 @@ const navItems = [
   { href: "/dashboard/uploads", label: "Uploads & Jobs", icon: Upload },
   { href: "/dashboard/users", label: "Usuários", icon: Users },
   { href: "/dashboard/approvals", label: "Aprovações", icon: ClipboardCheck },
+  {
+    href: "/dashboard/subscriptions",
+    label: "Assinaturas",
+    icon: CreditCard,
+  },
   { href: "/dashboard/security", label: "Segurança", icon: Shield },
 ];
 

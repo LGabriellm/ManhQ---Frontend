@@ -46,7 +46,9 @@ api.interceptors.response.use(
     const isAuthRoute =
       requestUrl.includes("/login") ||
       requestUrl.includes("/register") ||
-      requestUrl.includes("/activate");
+      requestUrl.includes("/activate") ||
+      requestUrl.includes("/forgot-password") ||
+      requestUrl.includes("/reset-password");
 
     // Se receber 401 e NÃO for uma rota de autenticação, limpar token e redirecionar
     if (error.response.status === 401 && !isAuthRoute) {

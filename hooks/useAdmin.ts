@@ -21,6 +21,10 @@ import type {
   RejectRequest,
   BulkApproveRequest,
   BulkRejectRequest,
+  SubscriptionsParams,
+  ActivationTokensParams,
+  CreateManualSubscriptionRequest,
+  CancelSubscriptionRequest,
 } from "@/types/api";
 
 // ===== Query Keys =====
@@ -56,6 +60,13 @@ const adminKeys = {
   approvalsStats: () => [...adminKeys.all, "approvals-stats"] as const,
   submissions: (params?: { status?: string; page?: number; limit?: number }) =>
     [...adminKeys.all, "submissions", params] as const,
+  approvalDetail: (id: string) =>
+    [...adminKeys.all, "approvals", "detail", id] as const,
+  subscriptionsStats: () => [...adminKeys.all, "subscriptions-stats"] as const,
+  subscriptions: (params?: SubscriptionsParams) =>
+    [...adminKeys.all, "subscriptions", params] as const,
+  activationTokens: (params?: ActivationTokensParams) =>
+    [...adminKeys.all, "activation-tokens", params] as const,
 };
 
 // ===== Dashboard =====
@@ -698,6 +709,92 @@ export function useBulkReject() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminKeys.approvals() });
       qc.invalidateQueries({ queryKey: adminKeys.approvalsStats() });
+    },
+  });
+}
+
+// ===== Approval Detail =====
+export function useApprovalDetail(id: string) {
+  return useQuery({
+    queryKey: adminKeys.approvalDetail(id),
+    queryFn: () => adminService.getApprovalDetail(id),
+    enabled: !!id,
+  });
+}
+
+// ===== Subscriptions =====
+export function useSubscriptionsStats() {
+  return useQuery({
+    queryKey: adminKeys.subscriptionsStats(),
+    queryFn: () => adminService.getSubscriptionsStats(),
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useSubscriptions(params?: SubscriptionsParams) {
+  return useQuery({
+    queryKey: adminKeys.subscriptions(params),
+    queryFn: () => adminService.getSubscriptions(params),
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useActivationTokens(params?: ActivationTokensParams) {
+  return useQuery({
+    queryKey: adminKeys.activationTokens(params),
+    queryFn: () => adminService.getActivationTokens(params),
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useCreateManualSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateManualSubscriptionRequest) =>
+      adminService.createManualSubscription(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.subscriptionsStats() });
+      qc.invalidateQueries({ queryKey: adminKeys.subscriptions() });
+      qc.invalidateQueries({ queryKey: adminKeys.activationTokens() });
+    },
+  });
+}
+
+export function useCancelSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      userId,
+      data,
+    }: {
+      userId: string;
+      data?: CancelSubscriptionRequest;
+    }) => adminService.cancelSubscription(userId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.subscriptionsStats() });
+      qc.invalidateQueries({ queryKey: adminKeys.subscriptions() });
+    },
+  });
+}
+
+export function useReactivateSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => adminService.reactivateSubscription(userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.subscriptionsStats() });
+      qc.invalidateQueries({ queryKey: adminKeys.subscriptions() });
+    },
+  });
+}
+
+export function useCheckExpiredSubscriptions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => adminService.checkExpiredSubscriptions(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.subscriptionsStats() });
+      qc.invalidateQueries({ queryKey: adminKeys.subscriptions() });
     },
   });
 }

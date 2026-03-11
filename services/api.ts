@@ -1,8 +1,8 @@
 import axios, { AxiosError, AxiosInstance } from "axios";
 import type { User } from "@/types/api";
 
-// Configuração base da API
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+// Usar /api como proxy — Next.js rewrites encaminha para o backend
+const API_BASE_URL = "/api";
 
 // Criar instância do axios
 export const api: AxiosInstance = axios.create({

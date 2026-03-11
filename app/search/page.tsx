@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useMemo, useDeferredValue } from "react";
-import { Search as SearchIcon, X, TrendingUp, Loader2 } from "lucide-react";
+import {
+  Search as SearchIcon,
+  X,
+  TrendingUp,
+  Loader2,
+  WifiOff,
+} from "lucide-react";
 import { MangaCard } from "@/components/MangaCard";
 import { motion } from "framer-motion";
 import { useSeries } from "@/hooks/useApi";
@@ -19,7 +25,7 @@ const trendingSearches = [
 export default function SearchPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const deferredQuery = useDeferredValue(searchQuery);
-  const { data: allSeries, isLoading } = useSeries();
+  const { data: allSeries, isLoading, error } = useSeries();
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -98,6 +104,22 @@ export default function SearchPage() {
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <WifiOff className="w-12 h-12 text-textDim mb-4" />
+              <p className="text-textMain font-semibold mb-2">
+                Erro ao carregar
+              </p>
+              <p className="text-textDim text-sm mb-4">
+                Verifique sua conexão e tente novamente
+              </p>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm"
+              >
+                Tentar novamente
+              </button>
             </div>
           ) : (
             <>

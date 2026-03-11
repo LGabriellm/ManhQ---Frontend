@@ -551,29 +551,23 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-background">
       {/* ===== GREETING HEADER ===== */}
-      <div className="absolute top-0 left-0 right-0 z-10 px-5 pt-12 pb-3">
+      <div className="absolute top-0 left-0 right-0 z-10 px-5 pt-11 pb-3">
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="flex items-center justify-between"
         >
-          <div>
-            <p className="text-sm text-white/60 font-medium">
-              {getGreeting()},{" "}
-              <span className="text-white/90">
-                {user?.name?.split(" ")[0] || "Leitor"}
-              </span>
-            </p>
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-lg font-extrabold text-primary tracking-tight">
+              ManHQ
+            </span>
           </div>
-          <Link href="/search">
-            <motion.div
-              whileTap={{ scale: 0.9 }}
-              className="w-9 h-9 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center"
-            >
-              <BookOpen className="w-4 h-4 text-white/80" />
-            </motion.div>
-          </Link>
+          <p className="text-[13px] text-white/50 font-medium">
+            {getGreeting()},{" "}
+            <span className="text-white/80 font-semibold">
+              {user?.name?.split(" ")[0] || "Leitor"}
+            </span>
+          </p>
         </motion.div>
       </div>
 

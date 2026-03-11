@@ -20,10 +20,8 @@ import {
   CheckCircle2,
   Lock,
   Settings,
-  Bell,
-  Palette,
+  WifiOff,
   Info,
-  ExternalLink,
   Heart,
 } from "lucide-react";
 import { motion, type Easing } from "framer-motion";
@@ -76,7 +74,7 @@ function ProfileSkeleton() {
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
-  const { data: stats, isLoading } = useUserStats();
+  const { data: stats, isLoading, error } = useUserStats();
   const router = useRouter();
   const [showAllMilestones, setShowAllMilestones] = useState(false);
 
@@ -242,6 +240,22 @@ export default function ProfilePage() {
 
       {isLoading ? (
         <ProfileSkeleton />
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+          <WifiOff className="w-12 h-12 text-textDim mb-4" />
+          <p className="text-textMain font-semibold mb-2">
+            Erro ao carregar estatísticas
+          </p>
+          <p className="text-textDim text-sm mb-4">
+            Verifique sua conexão e tente novamente
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm"
+          >
+            Tentar novamente
+          </button>
+        </div>
       ) : (
         <>
           {/* ===== Quick Stats Grid ===== */}

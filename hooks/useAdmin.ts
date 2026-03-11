@@ -14,6 +14,13 @@ import type {
   BulkDeleteMediaRequest,
   BulkMoveMediaRequest,
   BulkDeleteSeriesRequest,
+  AdminUsersParams,
+  CreateUserRequest,
+  UpdateUserRequest,
+  ApprovalsParams,
+  RejectRequest,
+  BulkApproveRequest,
+  BulkRejectRequest,
 } from "@/types/api";
 
 // ===== Query Keys =====
@@ -40,6 +47,15 @@ const adminKeys = {
   scanJob: (id: string) => [...adminKeys.all, "scan-jobs", id] as const,
   apiHealth: () => [...adminKeys.all, "api-health"] as const,
   jobsStats: () => [...adminKeys.all, "jobs-stats"] as const,
+  users: (params?: AdminUsersParams) =>
+    [...adminKeys.all, "users", params] as const,
+  usersStats: () => [...adminKeys.all, "users-stats"] as const,
+  user: (id: string) => [...adminKeys.all, "users", id] as const,
+  approvals: (params?: ApprovalsParams) =>
+    [...adminKeys.all, "approvals", params] as const,
+  approvalsStats: () => [...adminKeys.all, "approvals-stats"] as const,
+  submissions: (params?: { status?: string; page?: number; limit?: number }) =>
+    [...adminKeys.all, "submissions", params] as const,
 };
 
 // ===== Dashboard =====
@@ -550,5 +566,151 @@ export function useApiHealth() {
     queryFn: () => adminService.getApiHealth(),
     staleTime: 1000 * 60,
     refetchInterval: 1000 * 60 * 2,
+  });
+}
+
+// ===== User Management =====
+export function useUsersStats() {
+  return useQuery({
+    queryKey: adminKeys.usersStats(),
+    queryFn: () => adminService.getUsersStats(),
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+export function useAdminUsers(params?: AdminUsersParams) {
+  return useQuery({
+    queryKey: adminKeys.users(params),
+    queryFn: () => adminService.getUsers(params),
+    staleTime: 1000 * 60,
+  });
+}
+
+export function useAdminUser(id: string, enabled = true) {
+  return useQuery({
+    queryKey: adminKeys.user(id),
+    queryFn: () => adminService.getUser(id),
+    enabled: enabled && !!id,
+    staleTime: 1000 * 60,
+  });
+}
+
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: CreateUserRequest) => adminService.createUser(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.users() });
+      qc.invalidateQueries({ queryKey: adminKeys.usersStats() });
+    },
+  });
+}
+
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: UpdateUserRequest }) =>
+      adminService.updateUser(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.users() });
+      qc.invalidateQueries({ queryKey: adminKeys.usersStats() });
+    },
+  });
+}
+
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminService.deleteUser(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.users() });
+      qc.invalidateQueries({ queryKey: adminKeys.usersStats() });
+    },
+  });
+}
+
+export function useRevokeSessions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => adminService.revokeSessions(userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.users() });
+    },
+  });
+}
+
+// ===== Content Approvals =====
+export function useApprovalsStats() {
+  return useQuery({
+    queryKey: adminKeys.approvalsStats(),
+    queryFn: () => adminService.getApprovalsStats(),
+    staleTime: 1000 * 30,
+    refetchInterval: 1000 * 60,
+  });
+}
+
+export function useAdminApprovals(params?: ApprovalsParams) {
+  return useQuery({
+    queryKey: adminKeys.approvals(params),
+    queryFn: () => adminService.getApprovals(params),
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useApproveContent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => adminService.approveContent(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
+      qc.invalidateQueries({ queryKey: adminKeys.approvalsStats() });
+    },
+  });
+}
+
+export function useRejectContent() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: RejectRequest }) =>
+      adminService.rejectContent(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
+      qc.invalidateQueries({ queryKey: adminKeys.approvalsStats() });
+    },
+  });
+}
+
+export function useBulkApprove() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: BulkApproveRequest) => adminService.bulkApprove(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
+      qc.invalidateQueries({ queryKey: adminKeys.approvalsStats() });
+    },
+  });
+}
+
+export function useBulkReject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: BulkRejectRequest) => adminService.bulkReject(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
+      qc.invalidateQueries({ queryKey: adminKeys.approvalsStats() });
+    },
+  });
+}
+
+// ===== Editor Submissions =====
+export function useMySubmissions(params?: {
+  status?: string;
+  page?: number;
+  limit?: number;
+}) {
+  return useQuery({
+    queryKey: adminKeys.submissions(params),
+    queryFn: () => adminService.getMySubmissions(params),
+    staleTime: 1000 * 30,
   });
 }

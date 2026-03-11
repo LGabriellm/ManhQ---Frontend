@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { motion } from "framer-motion";
-import { Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, Loader2, WifiOff } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ApiError } from "@/types/api";
 
@@ -19,6 +18,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
 
   // Redirecionar se já estiver autenticado
   useEffect(() => {
@@ -27,34 +27,50 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, authLoading, router]);
 
+  // Detectar offline
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    setIsOffline(!navigator.onLine);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setErrorDetails([]);
     setRetryAfter(null);
+
+    if (isOffline) {
+      setError("Sem conexão com a internet. Verifique sua rede.");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       await login({ email, password });
-      // O redirecionamento será feito pelo useEffect quando isAuthenticated mudar
     } catch (err) {
       const apiError = err as ApiError;
 
-      // Usar apiError.error se disponível (formato do backend)
-      if (apiError.error) {
+      if (apiError.statusCode === 0 || !apiError.statusCode) {
+        setError(
+          "Não foi possível conectar ao servidor. Tente novamente mais tarde.",
+        );
+      } else if (apiError.error) {
         setError(apiError.error);
-
-        // Se houver detalhes adicionais (array de strings)
         if (apiError.details && Array.isArray(apiError.details)) {
           setErrorDetails(apiError.details);
         }
-
-        // Se houver retryAfter (rate limiting)
         if (apiError.retryAfter) {
           setRetryAfter(apiError.retryAfter);
         }
       } else {
-        // Fallback para o formato antigo
         setError(apiError.message || "Erro ao fazer login");
       }
     } finally {
@@ -62,7 +78,6 @@ export default function LoginPage() {
     }
   };
 
-  // Mostrar loading enquanto verifica autenticação
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -71,7 +86,6 @@ export default function LoginPage() {
     );
   }
 
-  // Não renderizar se já estiver autenticado (evita flash)
   if (isAuthenticated) {
     return null;
   }
@@ -83,15 +97,28 @@ export default function LoginPage() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
-        {/* Logo/Título */}
+        {/* Logo */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-primary mb-2">ManHQ</h1>
-          <p className="text-textDim">Bem-vindo de volta!</p>
+          <p className="text-textDim">Entre para continuar lendo</p>
         </div>
+
+        {/* Offline banner */}
+        {isOffline && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center gap-3 p-3 mb-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg"
+          >
+            <WifiOff className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+            <p className="text-sm text-yellow-500">
+              Sem conexão com a internet
+            </p>
+          </motion.div>
+        )}
 
         {/* Formulário */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Email */}
           <div>
             <label
               htmlFor="email"
@@ -108,12 +135,12 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu@email.com"
                 required
+                autoComplete="email"
                 className="w-full pl-12 pr-4 py-3 bg-surface text-textMain rounded-lg border-2 border-transparent focus:border-primary focus:outline-none transition-colors"
               />
             </div>
           </div>
 
-          {/* Senha */}
           <div>
             <label
               htmlFor="password"
@@ -130,6 +157,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                autoComplete="current-password"
                 className="w-full pl-12 pr-12 py-3 bg-surface text-textMain rounded-lg border-2 border-transparent focus:border-primary focus:outline-none transition-colors"
               />
               <button
@@ -146,7 +174,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Erro */}
           {error && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
@@ -154,8 +181,6 @@ export default function LoginPage() {
               className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg"
             >
               <p className="text-sm text-red-500 font-medium">{error}</p>
-
-              {/* Detalhes do erro (se houver) */}
               {errorDetails.length > 0 && (
                 <ul className="mt-2 space-y-1">
                   {errorDetails.map((detail, index) => (
@@ -169,8 +194,6 @@ export default function LoginPage() {
                   ))}
                 </ul>
               )}
-
-              {/* Informação de retry (rate limiting) */}
               {retryAfter && (
                 <p className="text-xs text-red-400 mt-2">
                   Aguarde {retryAfter} segundos antes de tentar novamente.
@@ -179,11 +202,10 @@ export default function LoginPage() {
             </motion.div>
           )}
 
-          {/* Botão de Login */}
           <motion.button
             whileTap={{ scale: 0.98 }}
             type="submit"
-            disabled={isLoading}
+            disabled={isLoading || isOffline}
             className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? (
@@ -197,16 +219,11 @@ export default function LoginPage() {
           </motion.button>
         </form>
 
-        {/* Link para Registro */}
-        <div className="mt-6 text-center">
-          <p className="text-textDim text-sm">
-            Não tem uma conta?{" "}
-            <Link
-              href="/auth/register"
-              className="text-primary hover:text-primary/80 font-medium transition-colors"
-            >
-              Criar conta
-            </Link>
+        <div className="mt-8 text-center">
+          <p className="text-textDim text-xs">
+            O acesso é exclusivo para assinantes.
+            <br />
+            Após a compra, você receberá um email para ativar sua conta.
           </p>
         </div>
       </motion.div>

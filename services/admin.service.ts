@@ -47,6 +47,25 @@ import type {
   JobQueueControlResponse,
   ScanJob,
   ScanJobsResponse,
+  AdminUsersListResponse,
+  AdminUsersParams,
+  AdminUsersStatsResponse,
+  AdminUserDetail,
+  CreateUserRequest,
+  CreateUserResponse,
+  UpdateUserRequest,
+  AdminUserItem,
+  RevokeSessionsResponse,
+  ApprovalsListResponse,
+  ApprovalsParams,
+  ApprovalsStatsResponse,
+  ApproveResponse,
+  RejectRequest,
+  BulkApproveRequest,
+  BulkApproveResponse,
+  BulkRejectRequest,
+  BulkRejectResponse,
+  SubmissionsListResponse,
 } from "@/types/api";
 
 // Helpers para flatten jobs da API
@@ -498,6 +517,116 @@ export const adminService = {
       "/admin/medias/bulk-move",
       data,
     );
+    return response.data;
+  },
+
+  // ===== User Management =====
+  async getUsersStats(): Promise<AdminUsersStatsResponse> {
+    const response =
+      await api.get<AdminUsersStatsResponse>("/admin/users/stats");
+    return response.data;
+  },
+
+  async getUsers(params?: AdminUsersParams): Promise<AdminUsersListResponse> {
+    const response = await api.get<AdminUsersListResponse>("/admin/users", {
+      params,
+    });
+    return response.data;
+  },
+
+  async getUser(id: string): Promise<AdminUserDetail> {
+    const response = await api.get<AdminUserDetail>(`/admin/users/${id}`);
+    return response.data;
+  },
+
+  async createUser(data: CreateUserRequest): Promise<CreateUserResponse> {
+    const response = await api.post<CreateUserResponse>("/admin/users", data);
+    return response.data;
+  },
+
+  async updateUser(
+    id: string,
+    data: UpdateUserRequest,
+  ): Promise<{ success: boolean; user: AdminUserItem }> {
+    const response = await api.put<{ success: boolean; user: AdminUserItem }>(
+      `/admin/users/${id}`,
+      data,
+    );
+    return response.data;
+  },
+
+  async deleteUser(id: string): Promise<{ message: string }> {
+    const response = await api.delete<{ message: string }>(
+      `/admin/users/${id}`,
+    );
+    return response.data;
+  },
+
+  async revokeSessions(userId: string): Promise<RevokeSessionsResponse> {
+    const response = await api.post<RevokeSessionsResponse>(
+      `/admin/users/${userId}/revoke-sessions`,
+    );
+    return response.data;
+  },
+
+  // ===== Content Approvals =====
+  async getApprovalsStats(): Promise<ApprovalsStatsResponse> {
+    const response = await api.get<ApprovalsStatsResponse>(
+      "/admin/approvals/stats",
+    );
+    return response.data;
+  },
+
+  async getApprovals(params?: ApprovalsParams): Promise<ApprovalsListResponse> {
+    const response = await api.get<ApprovalsListResponse>("/admin/approvals", {
+      params,
+    });
+    return response.data;
+  },
+
+  async approveContent(id: string): Promise<ApproveResponse> {
+    const response = await api.post<ApproveResponse>(
+      `/admin/approvals/${id}/approve`,
+    );
+    return response.data;
+  },
+
+  async rejectContent(
+    id: string,
+    data: RejectRequest,
+  ): Promise<{ message: string }> {
+    const response = await api.post<{ message: string }>(
+      `/admin/approvals/${id}/reject`,
+      data,
+    );
+    return response.data;
+  },
+
+  async bulkApprove(data: BulkApproveRequest): Promise<BulkApproveResponse> {
+    const response = await api.post<BulkApproveResponse>(
+      "/admin/approvals/bulk-approve",
+      data,
+    );
+    return response.data;
+  },
+
+  async bulkReject(data: BulkRejectRequest): Promise<BulkRejectResponse> {
+    const response = await api.post<BulkRejectResponse>(
+      "/admin/approvals/bulk-reject",
+      data,
+    );
+    return response.data;
+  },
+
+  // ===== Editor Submissions =====
+  async getMySubmissions(params?: {
+    status?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<SubmissionsListResponse> {
+    const response = await api.get<SubmissionsListResponse>("/my/submissions", {
+      params,
+    });
     return response.data;
   },
 };

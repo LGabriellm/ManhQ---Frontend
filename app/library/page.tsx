@@ -11,7 +11,7 @@ import {
   CheckCircle2,
   Play,
   Search,
-  SlidersHorizontal,
+  WifiOff,
   Grid3X3,
   List,
   ArrowUpDown,
@@ -231,12 +231,21 @@ export default function LibraryPage() {
   const [showSort, setShowSort] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
-  const { data: favorites, isLoading: isLoadingFavorites } = useApiFavorites();
-  const { data: continueReading, isLoading: isLoadingReading } =
-    useContinueReading({ limit: 30 });
-  const { data: historyData, isLoading: isLoadingHistory } = useProgressHistory(
-    { limit: 50 },
-  );
+  const {
+    data: favorites,
+    isLoading: isLoadingFavorites,
+    error: errorFavorites,
+  } = useApiFavorites();
+  const {
+    data: continueReading,
+    isLoading: isLoadingReading,
+    error: errorReading,
+  } = useContinueReading({ limit: 30 });
+  const {
+    data: historyData,
+    isLoading: isLoadingHistory,
+    error: errorHistory,
+  } = useProgressHistory({ limit: 50 });
 
   // Filtrar favoritos com busca
   const filteredFavorites = useMemo(() => {
@@ -313,6 +322,11 @@ export default function LibraryPage() {
     (activeTab === "favorites" && isLoadingFavorites) ||
     (activeTab === "reading" && isLoadingReading) ||
     (activeTab === "history" && isLoadingHistory);
+
+  const hasError =
+    (activeTab === "favorites" && errorFavorites) ||
+    (activeTab === "reading" && errorReading) ||
+    (activeTab === "history" && errorHistory);
 
   const sortOptions: { id: SortOption; label: string }[] = [
     { id: "recent", label: "Mais recente" },
@@ -502,6 +516,20 @@ export default function LibraryPage() {
           ) : (
             <LibrarySkeleton />
           )
+        ) : hasError ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <WifiOff className="w-12 h-12 text-textDim mb-4" />
+            <p className="text-textMain font-semibold mb-2">Erro ao carregar</p>
+            <p className="text-textDim text-sm mb-4">
+              Verifique sua conexão e tente novamente
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm"
+            >
+              Tentar novamente
+            </button>
+          </div>
         ) : (
           <AnimatePresence mode="wait">
             {/* ===== FAVORITOS ===== */}

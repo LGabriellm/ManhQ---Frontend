@@ -30,6 +30,26 @@ export interface RegisterResponse {
   userId: string;
 }
 
+// ===== Ativação de Conta =====
+export interface ValidateTokenResponse {
+  valid: boolean;
+  email?: string;
+  name?: string;
+  error?: string;
+}
+
+export interface ActivateAccountRequest {
+  token: string;
+  password: string;
+}
+
+export interface ActivateAccountResponse {
+  success: boolean;
+  message: string;
+  user: User;
+  token: string;
+}
+
 // ===== Séries e Mídias =====
 export interface Media {
   id: string;
@@ -1131,4 +1151,186 @@ export interface IPInfo {
   lastAttempt: string;
   isBlocked: boolean;
   blockedUntil?: string;
+}
+
+// ===== Admin — User Management =====
+export interface AdminUserItem {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  subStatus: string;
+  subExpiresAt: string | null;
+  maxDevices: number;
+  createdAt: string;
+  updatedAt: string;
+  _count: {
+    sessions: number;
+    readProgress: number;
+    submittedApprovals: number;
+  };
+}
+
+export interface AdminUserDetail extends AdminUserItem {
+  sessions: { id: string; device: string; lastUsed: string }[];
+  recentSubmissions: ApprovalItem[];
+}
+
+export interface AdminUsersListResponse {
+  users: AdminUserItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface AdminUsersParams {
+  search?: string;
+  role?: string;
+  subStatus?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+}
+
+export interface AdminUsersStatsResponse {
+  totalUsers: number;
+  byRole: Record<string, number>;
+  byStatus: Record<string, number>;
+  activeEditors: number;
+  recentUsers: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    createdAt: string;
+  }[];
+}
+
+export interface CreateUserRequest {
+  name: string;
+  email: string;
+  password: string;
+  role?: string;
+  subStatus?: string;
+}
+
+export interface UpdateUserRequest {
+  name?: string;
+  role?: string;
+  subStatus?: string;
+  maxDevices?: number;
+  password?: string;
+}
+
+export interface CreateUserResponse {
+  message: string;
+  user: AdminUserItem;
+}
+
+export interface RevokeSessionsResponse {
+  message: string;
+  sessionsRevoked: number;
+}
+
+// ===== Admin — Content Approvals =====
+export interface ApprovalItem {
+  id: string;
+  submitter: { id: string; name: string; email: string };
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  originalName: string;
+  safeName: string;
+  fileSize: number;
+  fileHash: string;
+  targetSeriesId: string | null;
+  forcedSeriesTitle: string | null;
+  reviewer: { id: string; name: string } | null;
+  reviewedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+}
+
+export interface ApprovalsListResponse {
+  approvals: ApprovalItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ApprovalsParams {
+  status?: "PENDING" | "APPROVED" | "REJECTED";
+  page?: number;
+  limit?: number;
+  submitterId?: string;
+}
+
+export interface ApprovalsStatsResponse {
+  pending: number;
+  approved: number;
+  rejected: number;
+  todayPending: number;
+}
+
+export interface ApproveResponse {
+  message: string;
+  jobId: string;
+  approval: {
+    id: string;
+    originalName: string;
+    submitter: { id: string; name: string };
+  };
+}
+
+export interface RejectRequest {
+  reason: string;
+}
+
+export interface BulkApproveRequest {
+  ids: string[];
+}
+
+export interface BulkApproveResponse {
+  message: string;
+  approved: { id: string; originalName: string; jobId: string }[];
+  failed: { id: string; error: string }[];
+}
+
+export interface BulkRejectRequest {
+  ids: string[];
+  reason: string;
+}
+
+export interface BulkRejectResponse {
+  message: string;
+  rejected: { id: string; originalName: string }[];
+  failed: { id: string; error: string }[];
+}
+
+// ===== Editor — My Submissions =====
+export interface SubmissionItem {
+  id: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  originalName: string;
+  fileSize: number;
+  createdAt: string;
+  reviewer: { id: string; name: string } | null;
+  reviewedAt: string | null;
+  rejectionReason: string | null;
+}
+
+export interface SubmissionsListResponse {
+  submissions: SubmissionItem[];
+  pendingCount: number;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }

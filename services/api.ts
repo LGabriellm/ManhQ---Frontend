@@ -30,12 +30,26 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<Record<string, unknown>>) => {
+    // Erro de rede (sem conexão ou servidor inacessível)
+    if (!error.response) {
+      const apiError = {
+        message: navigator.onLine
+          ? "Não foi possível conectar ao servidor. Tente novamente mais tarde."
+          : "Sem conexão com a internet. Verifique sua rede.",
+        statusCode: 0,
+        isNetworkError: true,
+      };
+      return Promise.reject(apiError);
+    }
+
     const requestUrl = error.config?.url || "";
     const isAuthRoute =
-      requestUrl.includes("/login") || requestUrl.includes("/register");
+      requestUrl.includes("/login") ||
+      requestUrl.includes("/register") ||
+      requestUrl.includes("/activate");
 
     // Se receber 401 e NÃO for uma rota de autenticação, limpar token e redirecionar
-    if (error.response?.status === 401 && !isAuthRoute) {
+    if (error.response.status === 401 && !isAuthRoute) {
       clearStoredToken();
       if (typeof window !== "undefined") {
         window.location.href = "/auth/login";
@@ -43,14 +57,14 @@ api.interceptors.response.use(
     }
 
     // Formatar erro - suporta tanto o formato antigo quanto o novo
-    const responseData = error.response?.data || {};
+    const responseData = error.response.data || {};
     const apiError = {
       message:
         (responseData.message as string) ||
         (responseData.error as string) ||
         "Erro desconhecido",
       errors: responseData.errors as Record<string, string[]> | undefined,
-      statusCode: error.response?.status || 500,
+      statusCode: error.response.status || 500,
       error: responseData.error as string | undefined,
       details: responseData.details as string[] | undefined,
       retryAfter: responseData.retryAfter as number | undefined,

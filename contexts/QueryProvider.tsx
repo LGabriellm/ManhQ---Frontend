@@ -10,9 +10,22 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 60 * 1000, // 1 minuto
+            staleTime: 60 * 1000,
             refetchOnWindowFocus: false,
-            retry: 1,
+            retry: (failureCount, error) => {
+              const apiError = error as {
+                statusCode?: number;
+                isNetworkError?: boolean;
+              };
+              // Não retentar erros de autenticação
+              if (apiError.statusCode === 401 || apiError.statusCode === 403)
+                return false;
+              // Retentar erros de rede até 3 vezes
+              if (apiError.isNetworkError) return failureCount < 3;
+              return failureCount < 1;
+            },
+            retryDelay: (attemptIndex) =>
+              Math.min(1000 * 2 ** attemptIndex, 10000),
           },
         },
       }),

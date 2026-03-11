@@ -6,6 +6,9 @@ import type {
   RegisterResponse,
   User,
   Session,
+  ValidateTokenResponse,
+  ActivateAccountRequest,
+  ActivateAccountResponse,
 } from "@/types/api";
 
 export const authService = {
@@ -46,5 +49,21 @@ export const authService = {
   // Revogar sessão específica
   async revokeSession(sessionId: string): Promise<void> {
     await api.delete(`/sessions/${sessionId}`);
+  },
+
+  // Validar token de ativação
+  async validateActivationToken(token: string): Promise<ValidateTokenResponse> {
+    const response = await api.get<ValidateTokenResponse>(
+      `/activate/validate/${token}`,
+    );
+    return response.data;
+  },
+
+  // Ativar conta (definir senha)
+  async activateAccount(
+    data: ActivateAccountRequest,
+  ): Promise<ActivateAccountResponse> {
+    const response = await api.post<ActivateAccountResponse>("/activate", data);
+    return response.data;
   },
 };

@@ -2,7 +2,7 @@
 
 > **Base URL:** `http://localhost:3000`
 > **Autenticação:** JWT via header `Authorization: Bearer <token>`
-> **Todas as rotas (exceto `/register`, `/login`, `/`) são protegidas.**
+> **Rotas públicas:** `/register`, `/login`, `/`, `/webhooks/*`, `/activate`, `/activate/validate/:token`
 > **Filas BullMQ:** Upload (concorrência: 3) e Scan (concorrência: 1) via Redis
 
 ---
@@ -31,6 +31,9 @@
 20. [Editor — Minhas Submissões](#20-editor--minhas-submissões)
 21. [Notificações](#21-notificações)
 22. [Analytics (Estatísticas Detalhadas)](#22-analytics-estatísticas-detalhadas)
+23. [Webhooks — Pagamento (Kirvano)](#23-webhooks--pagamento-kirvano)
+24. [Ativação de Conta (Públicas)](#24-ativação-de-conta-públicas)
+25. [Admin — Gerenciamento de Assinaturas](#25-admin--gerenciamento-de-assinaturas)
 
 ---
 
@@ -3549,3 +3552,414 @@ O backend consulta automaticamente **múltiplas fontes** ao buscar metadados:
 - **Stalled detection:** Jobs travados por >30s são detectados e reportados via SSE
 - **Dedup de scan:** Apenas 1 scan pode estar ativo/pendente por vez
 - **Notificações:** `UPLOAD_SUCCESS`, `SCAN_COMPLETE`, `SCAN_ERROR` enviadas automaticamente ao finalizar jobs
+
+---
+
+## 23. Webhooks — Pagamento (Kirvano)
+
+> **Rotas públicas** — Validação por HMAC-SHA256 (header `x-kirvano-signature`)
+
+### `POST /webhooks/kirvano`
+
+Recebe eventos do gateway de pagamento Kirvano. Validação de assinatura HMAC-SHA256.
+
+**Headers obrigatórios:**
+
+```
+x-kirvano-signature: sha256=<hex_hmac>
+```
+
+**Eventos tratados:**
+
+| Evento                                      | Ação                                 |
+| ------------------------------------------- | ------------------------------------ |
+| `purchase_approved` / `sale_approved`       | Cria token de ativação + envia email |
+| `subscription_canceled`                     | Cancela assinatura                   |
+| `payment_refunded`                          | Reembolso — desativa acesso imediato |
+| `subscription_renewed` / `payment_approved` | Renova período (+30 dias)            |
+| `payment_overdue`                           | Marca como em atraso                 |
+
+**Body (exemplo compra Kirvano):**
+
+```json
+{
+  "event": "purchase_approved",
+  "customer": {
+    "email": "joao@email.com",
+    "name": "João Silva",
+    "phone": "11999999999"
+  },
+  "product": {
+    "id": "prod_123",
+    "name": "ManhQ Premium"
+  },
+  "transaction": {
+    "id": "txn_abc123",
+    "amount": 29.9,
+    "currency": "BRL"
+  }
+}
+```
+
+**Response (compra):**
+
+```json
+{
+  "success": true,
+  "action": "activation_sent",
+  "message": "Compra processada: activation_sent"
+}
+```
+
+**Possíveis actions:**
+
+- `activation_sent` — Token criado + email enviado
+- `reactivated` — Conta existente reativada
+- `already_active` — Conta já ativa, período renovado
+
+**Response (evento de assinatura):**
+
+```json
+{
+  "success": true,
+  "action": "subscription_canceled"
+}
+```
+
+---
+
+## 24. Ativação de Conta (Públicas)
+
+> **Rotas públicas** — Usadas pelo frontend para ativar conta após a compra
+
+### `GET /activate/validate/:token`
+
+Valida se um token de ativação é válido antes de exibir o formulário de senha.
+
+**Params:**
+
+- `token` (string, mín. 20 chars) — Token enviado por email
+
+**Response (válido):**
+
+```json
+{
+  "valid": true,
+  "email": "joao@email.com",
+  "name": "João Silva"
+}
+```
+
+**Response (inválido):**
+
+```json
+{
+  "valid": false,
+  "error": "Token expirado. Solicite um novo link de ativação."
+}
+```
+
+**Possíveis erros:**
+
+- Token não encontrado
+- Token já utilizado → "Faça login com suas credenciais"
+- Token expirado → "Solicite um novo link de ativação"
+- Token cancelado → "Entre em contato com o suporte"
+- Conta já existe → "Faça login normalmente"
+
+---
+
+### `POST /activate`
+
+Ativa conta do usuário: consome token, cria conta com senha, retorna JWT para auto-login.
+
+**Body:**
+
+```json
+{
+  "token": "abc123def456...",
+  "password": "MinhaSenh@F0rte!"
+}
+```
+
+**Validação:**
+
+- `token`: string, mín. 20 chars
+- `password`: mín. 8 chars, validação de força (upper, lower, number/special)
+
+**Response (sucesso — 201):**
+
+```json
+{
+  "success": true,
+  "message": "Conta ativada com sucesso!",
+  "user": {
+    "id": "clxyz123...",
+    "email": "joao@email.com",
+    "name": "João Silva"
+  },
+  "token": "eyJhbGciOi..."
+}
+```
+
+**Response (erro — 400):**
+
+```json
+{
+  "success": false,
+  "error": "Token já utilizado ou expirado"
+}
+```
+
+---
+
+## 25. Admin — Gerenciamento de Assinaturas
+
+> **Todas protegidas** — Requer `Authorization: Bearer <token>` + role `ADMIN`
+
+### `GET /admin/subscriptions/stats`
+
+Estatísticas gerais das assinaturas para o dashboard.
+
+**Response:**
+
+```json
+{
+  "totalSubscriptions": 150,
+  "active": 120,
+  "canceled": 20,
+  "pastDue": 5,
+  "refunded": 3,
+  "pendingActivations": 8,
+  "recentEvents": [
+    {
+      "id": "evt_123",
+      "event": "account_activated",
+      "provider": "kirvano",
+      "processedAt": "2026-03-07T15:30:00Z",
+      "subscription": {
+        "id": "sub_abc",
+        "user": { "email": "joao@email.com", "name": "João" }
+      }
+    }
+  ]
+}
+```
+
+---
+
+### `GET /admin/subscriptions`
+
+Lista assinaturas com paginação e filtros.
+
+**Query params:**
+
+- `status` (opcional): `ACTIVE`, `PAST_DUE`, `CANCELED`, `REFUNDED`, `EXPIRED`
+- `search` (opcional): busca por email ou nome do usuário
+- `page` (opcional, default: 1)
+- `limit` (opcional, default: 20, máx: 100)
+
+**Response:**
+
+```json
+{
+  "subscriptions": [
+    {
+      "id": "sub_abc",
+      "provider": "kirvano",
+      "plan": "premium",
+      "status": "ACTIVE",
+      "startsAt": "2026-03-01T00:00:00Z",
+      "currentPeriodEnd": "2026-03-31T00:00:00Z",
+      "amount": 29.9,
+      "user": {
+        "id": "usr_123",
+        "email": "joao@email.com",
+        "name": "João Silva",
+        "role": "SUBSCRIBER",
+        "subStatus": "ACTIVE"
+      }
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 150,
+    "totalPages": 8
+  }
+}
+```
+
+---
+
+### `GET /admin/subscriptions/tokens`
+
+Lista tokens de ativação (pendentes, usados, expirados, cancelados).
+
+**Query params:**
+
+- `status` (opcional): `PENDING`, `USED`, `EXPIRED`, `REVOKED`
+- `page` (opcional, default: 1)
+- `limit` (opcional, default: 20, máx: 100)
+
+**Response:**
+
+```json
+{
+  "tokens": [
+    {
+      "id": "tok_abc",
+      "email": "joao@email.com",
+      "name": "João Silva",
+      "status": "PENDING",
+      "provider": "kirvano",
+      "externalId": "txn_abc123",
+      "productName": "ManhQ Premium",
+      "amount": 29.9,
+      "expiresAt": "2026-03-10T15:30:00Z",
+      "usedAt": null,
+      "createdAt": "2026-03-07T15:30:00Z"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 8, "totalPages": 1 }
+}
+```
+
+---
+
+### `POST /admin/subscriptions/manual`
+
+Cria assinatura manualmente. Pode enviar email de ativação ou criar conta direta.
+
+**Body:**
+
+```json
+{
+  "email": "maria@email.com",
+  "name": "Maria Santos",
+  "sendActivation": true
+}
+```
+
+**Ou (conta direta com senha):**
+
+```json
+{
+  "email": "maria@email.com",
+  "name": "Maria Santos",
+  "sendActivation": false,
+  "password": "SeNh@F0rte123"
+}
+```
+
+**Response:**
+
+```json
+{
+  "action": "activation_sent",
+  "tokenId": "tok_abc123"
+}
+```
+
+ou
+
+```json
+{
+  "action": "account_created",
+  "userId": "usr_xyz789"
+}
+```
+
+---
+
+### `POST /admin/subscriptions/:userId/cancel`
+
+Cancela assinatura de um usuário.
+
+**Params:** `userId` (string)
+
+**Body (opcional):**
+
+```json
+{
+  "reason": "Solicitação do cliente"
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Assinatura cancelada"
+}
+```
+
+---
+
+### `POST /admin/subscriptions/:userId/reactivate`
+
+Reativa assinatura de um usuário (novo período de 30 dias).
+
+**Params:** `userId` (string)
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Assinatura reativada"
+}
+```
+
+---
+
+### `POST /admin/subscriptions/check-expired`
+
+Verifica e desativa assinaturas expiradas. Também marca tokens pendentes expirados.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "expiredCount": 3,
+  "message": "3 assinatura(s) expirada(s) processada(s)"
+}
+```
+
+---
+
+## Fluxo de Assinatura — Diagrama
+
+```
+┌────────────────┐      ┌─────────────────┐      ┌──────────────────┐
+│  Kirvano       │      │  POST /webhooks  │      │  Activation      │
+│  (Pagamento)   │─────▶│  /kirvano        │─────▶│  Token criado    │
+│                │      │  (HMAC-SHA256)   │      │  + Email enviado │
+└────────────────┘      └─────────────────┘      └──────────────────┘
+                                                          │
+                                                          ▼
+┌────────────────┐      ┌─────────────────┐      ┌──────────────────┐
+│  JWT + Auto    │◀─────│  POST /activate  │◀─────│  Frontend:       │
+│  Login         │      │  (token + senha) │      │  /ativar?token=  │
+│                │      │                  │      │  abc123...       │
+└────────────────┘      └─────────────────┘      └──────────────────┘
+
+Eventos subsequentes:
+┌──────────────────────────────┐
+│  subscription_canceled       │─── Mantém acesso até currentPeriodEnd
+│  payment_refunded            │─── Desativa acesso imediato
+│  subscription_renewed        │─── Renova +30 dias
+│  payment_overdue             │─── Marca cobrança atrasada
+│  check-expired (admin/cron)  │─── Desativa períodos vencidos
+└──────────────────────────────┘
+```
+
+**Emails automáticos:**
+
+- **Ativação:** Link para `/ativar?token=...` (expira em 72h por padrão)
+- **Boas-vindas:** Conta ativada com sucesso
+- **Cancelamento:** Notificação de cancelamento com motivo
+
+**Total: 122 endpoints** (112 anteriores + 10 novos)

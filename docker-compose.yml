@@ -4,14 +4,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.manhq.com.br}
     expose:
       - "3001"
-    env_file:
-      - .env
     environment:
       - PORT=3001
       - HOSTNAME=0.0.0.0
-      - API_URL=${API_URL:-https://api.manhq.com.br}
     restart: unless-stopped
     networks:
       - manhq-net

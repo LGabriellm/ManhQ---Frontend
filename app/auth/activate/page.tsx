@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Lock,
   Eye,
@@ -11,12 +11,59 @@ import {
   CheckCircle,
   XCircle,
   ShieldCheck,
+  Check,
+  X,
 } from "lucide-react";
 import { authService } from "@/services/auth.service";
 import { setStoredToken, setStoredUser } from "@/services/api";
 import type { ApiError } from "@/types/api";
 
 type PageState = "loading" | "form" | "success" | "invalid";
+
+function PasswordStrength({ password }: { password: string }) {
+  const checks = [
+    { label: "8+ caracteres", ok: password.length >= 8 },
+    { label: "Letra maiúscula", ok: /[A-Z]/.test(password) },
+    { label: "Número", ok: /\d/.test(password) },
+  ];
+  const passed = checks.filter((c) => c.ok).length;
+  const strength =
+    passed === 0 ? 0 : passed === 1 ? 33 : passed === 2 ? 66 : 100;
+  const color =
+    strength <= 33
+      ? "bg-red-500"
+      : strength <= 66
+        ? "bg-yellow-500"
+        : "bg-emerald-500";
+
+  if (!password) return null;
+
+  return (
+    <div className="mt-2.5 space-y-2">
+      <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+        <motion.div
+          className={`h-full rounded-full ${color}`}
+          initial={{ width: 0 }}
+          animate={{ width: `${strength}%` }}
+          transition={{ duration: 0.3 }}
+        />
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {checks.map((c) => (
+          <span
+            key={c.label}
+            className={`text-[11px] flex items-center gap-1 transition-colors ${
+              c.ok ? "text-emerald-400" : "text-textDim/50"
+            }`}
+          >
+            {c.ok ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+            {c.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function ActivatePage() {
   const router = useRouter();
@@ -35,7 +82,6 @@ export default function ActivatePage() {
   const [error, setError] = useState("");
   const [errorDetails, setErrorDetails] = useState<string[]>([]);
 
-  // Validar token ao carregar
   useEffect(() => {
     if (!token) {
       setInvalidMessage(
@@ -86,14 +132,12 @@ export default function ActivatePage() {
 
     try {
       const result = await authService.activateAccount({ token, password });
-      // Auto-login
       setStoredToken(result.token);
       setStoredUser(result.user);
       setState("success");
-      // Redirecionar após 2s
       setTimeout(() => {
         window.location.href = "/";
-      }, 2000);
+      }, 2500);
     } catch (err) {
       const apiError = err as ApiError;
       if (apiError.error) {
@@ -109,202 +153,227 @@ export default function ActivatePage() {
     }
   };
 
-  // Loading
-  if (state === "loading") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4">
-        <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-        <p className="text-textDim text-sm">Validando token de ativação...</p>
-      </div>
-    );
-  }
-
-  // Token inválido/expirado
-  if (state === "invalid") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full max-w-md text-center"
-        >
-          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-            <XCircle className="w-8 h-8 text-red-500" />
-          </div>
-          <h1 className="text-2xl font-bold text-textMain mb-2">
-            Link Inválido
-          </h1>
-          <p className="text-textDim text-sm mb-6">{invalidMessage}</p>
-          <button
-            onClick={() => router.push("/auth/login")}
-            className="px-6 py-3 bg-surface text-textMain rounded-lg text-sm font-medium hover:bg-surface/80 transition-colors"
-          >
-            Ir para o Login
-          </button>
-        </motion.div>
-      </div>
-    );
-  }
-
-  // Sucesso
-  if (state === "success") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md text-center"
-        >
-          <div className="w-16 h-16 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-8 h-8 text-green-500" />
-          </div>
-          <h1 className="text-2xl font-bold text-textMain mb-2">
-            Conta Ativada!
-          </h1>
-          <p className="text-textDim text-sm mb-2">
-            Bem-vindo ao ManHQ,{" "}
-            <strong className="text-textMain">{userName}</strong>!
-          </p>
-          <p className="text-textDim text-xs">Redirecionando...</p>
-        </motion.div>
-      </div>
-    );
-  }
-
-  // Formulário de ativação
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
-      >
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <ShieldCheck className="w-7 h-7 text-primary" />
-          </div>
-          <h1 className="text-3xl font-bold text-primary mb-2">ManHQ</h1>
-          <p className="text-textMain font-medium">Ative sua conta</p>
-          <p className="text-textDim text-sm mt-1">
-            Olá, <strong className="text-textMain">{userName}</strong>! Defina
-            sua senha para começar.
-          </p>
-          <p className="text-textDim text-xs mt-1">{userEmail}</p>
-        </div>
+    <div className="min-h-screen flex flex-col items-center justify-center px-5 relative overflow-hidden">
+      <div className="pointer-events-none absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary/8 rounded-full blur-[128px]" />
 
-        {/* Formulário */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Senha */}
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium text-textMain mb-2"
-            >
-              Senha
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-textDim" />
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Mínimo 8 caracteres"
-                required
-                minLength={8}
-                className="w-full pl-12 pr-12 py-3 bg-surface text-textMain rounded-lg border-2 border-transparent focus:border-primary focus:outline-none transition-colors"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-textDim hover:text-textMain transition-colors"
-              >
-                {showPassword ? (
-                  <EyeOff className="w-5 h-5" />
-                ) : (
-                  <Eye className="w-5 h-5" />
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* Confirmar Senha */}
-          <div>
-            <label
-              htmlFor="confirmPassword"
-              className="block text-sm font-medium text-textMain mb-2"
-            >
-              Confirmar Senha
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-textDim" />
-              <input
-                id="confirmPassword"
-                type={showPassword ? "text" : "password"}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Repita a senha"
-                required
-                className="w-full pl-12 pr-4 py-3 bg-surface text-textMain rounded-lg border-2 border-transparent focus:border-primary focus:outline-none transition-colors"
-              />
-            </div>
-          </div>
-
-          {/* Erro */}
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg"
-            >
-              <p className="text-sm text-red-500 font-medium">{error}</p>
-              {errorDetails.length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {errorDetails.map((detail, index) => (
-                    <li
-                      key={index}
-                      className="text-xs text-red-400 flex items-start gap-1"
-                    >
-                      <span className="mt-0.5">•</span>
-                      <span>{detail}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </motion.div>
-          )}
-
-          {/* Botão */}
-          <motion.button
-            whileTap={{ scale: 0.98 }}
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      <AnimatePresence mode="wait">
+        {state === "loading" && (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex flex-col items-center"
           >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Ativando...
-              </>
-            ) : (
-              "Ativar Conta"
-            )}
-          </motion.button>
-        </form>
+            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-5 ring-1 ring-primary/15">
+              <Loader2 className="w-7 h-7 text-primary animate-spin" />
+            </div>
+            <p className="text-textDim text-sm">Validando seu convite…</p>
+          </motion.div>
+        )}
 
-        <div className="mt-6 text-center">
-          <p className="text-textDim text-sm">
-            Já tem uma conta?{" "}
-            <button
+        {state === "invalid" && (
+          <motion.div
+            key="invalid"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="w-full max-w-sm text-center"
+          >
+            <div className="w-16 h-16 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto mb-5 ring-1 ring-red-500/15">
+              <XCircle className="w-8 h-8 text-red-400" />
+            </div>
+            <h1 className="text-2xl font-bold text-textMain mb-2">
+              Link Inválido
+            </h1>
+            <p className="text-textDim text-sm mb-8 leading-relaxed">
+              {invalidMessage}
+            </p>
+            <motion.button
+              whileTap={{ scale: 0.97 }}
               onClick={() => router.push("/auth/login")}
-              className="text-primary hover:text-primary/80 font-medium transition-colors"
+              className="px-6 py-3 bg-surface/80 backdrop-blur-sm text-textMain rounded-xl text-sm font-medium hover:bg-surface transition-colors border border-white/5"
             >
-              Fazer login
-            </button>
-          </p>
-        </div>
-      </motion.div>
+              Ir para o Login
+            </motion.button>
+          </motion.div>
+        )}
+
+        {state === "success" && (
+          <motion.div
+            key="success"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            className="w-full max-w-sm text-center"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{
+                type: "spring",
+                stiffness: 300,
+                damping: 20,
+                delay: 0.1,
+              }}
+              className="w-16 h-16 rounded-2xl bg-emerald-500/10 flex items-center justify-center mx-auto mb-5 ring-1 ring-emerald-500/15"
+            >
+              <CheckCircle className="w-8 h-8 text-emerald-400" />
+            </motion.div>
+            <h1 className="text-2xl font-bold text-textMain mb-2">
+              Conta Ativada!
+            </h1>
+            <p className="text-textDim text-sm mb-1">
+              Bem-vindo ao ManHQ,{" "}
+              <span className="text-white font-medium">{userName}</span>!
+            </p>
+            <div className="flex items-center justify-center gap-1.5 mt-4 text-textDim/50 text-xs">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Redirecionando…
+            </div>
+          </motion.div>
+        )}
+
+        {state === "form" && (
+          <motion.div
+            key="form"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="w-full max-w-sm relative"
+          >
+            <div className="text-center mb-8">
+              <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-5 ring-1 ring-primary/15">
+                <ShieldCheck className="w-7 h-7 text-primary" />
+              </div>
+              <h1 className="text-3xl font-bold text-primary tracking-tight mb-1">
+                ManHQ
+              </h1>
+              <p className="text-textMain font-medium">Ative sua conta</p>
+              <p className="text-textDim text-sm mt-1.5 leading-relaxed">
+                Olá, <span className="text-white font-medium">{userName}</span>!
+                Defina sua senha para começar.
+              </p>
+              <p className="text-textDim/50 text-xs mt-1">{userEmail}</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-textMain mb-2"
+                >
+                  Senha
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-textDim/50" />
+                  <input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Mínimo 8 caracteres"
+                    required
+                    minLength={8}
+                    className="w-full pl-11 pr-11 py-3 bg-surface/60 backdrop-blur-sm text-textMain rounded-xl border border-white/6 focus:border-primary/40 focus:ring-1 focus:ring-primary/20 focus:outline-none transition-all text-sm placeholder:text-textDim/30"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-textDim/40 hover:text-textDim transition-colors"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-[18px] h-[18px]" />
+                    ) : (
+                      <Eye className="w-[18px] h-[18px]" />
+                    )}
+                  </button>
+                </div>
+                <PasswordStrength password={password} />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="confirmPassword"
+                  className="block text-sm font-medium text-textMain mb-2"
+                >
+                  Confirmar Senha
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-textDim/50" />
+                  <input
+                    id="confirmPassword"
+                    type={showPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Repita a senha"
+                    required
+                    className="w-full pl-11 pr-4 py-3 bg-surface/60 backdrop-blur-sm text-textMain rounded-xl border border-white/6 focus:border-primary/40 focus:ring-1 focus:ring-primary/20 focus:outline-none transition-all text-sm placeholder:text-textDim/30"
+                  />
+                </div>
+                {confirmPassword && password !== confirmPassword && (
+                  <p className="text-[11px] text-red-400 mt-1.5 flex items-center gap-1">
+                    <X className="w-3 h-3" />
+                    As senhas não coincidem
+                  </p>
+                )}
+              </div>
+
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-3 bg-red-500/8 border border-red-500/15 rounded-xl"
+                >
+                  <p className="text-sm text-red-400 font-medium">{error}</p>
+                  {errorDetails.length > 0 && (
+                    <ul className="mt-2 space-y-0.5">
+                      {errorDetails.map((detail, index) => (
+                        <li
+                          key={index}
+                          className="text-xs text-red-400/70 flex items-start gap-1.5"
+                        >
+                          <span className="mt-0.5 shrink-0">•</span>
+                          <span>{detail}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </motion.div>
+              )}
+
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20 text-sm"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-[18px] h-[18px] animate-spin" />
+                    Ativando…
+                  </>
+                ) : (
+                  "Ativar Conta"
+                )}
+              </motion.button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <p className="text-textDim/50 text-xs">
+                Já tem uma conta?{" "}
+                <button
+                  onClick={() => router.push("/auth/login")}
+                  className="text-primary hover:text-primary/80 font-medium transition-colors"
+                >
+                  Fazer login
+                </button>
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

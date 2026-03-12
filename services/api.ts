@@ -9,9 +9,6 @@ export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*", // Ou seu domínio específico
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
   },
 });
 
@@ -99,7 +96,13 @@ export function clearStoredToken(): void {
 export function getStoredUser() {
   if (typeof window === "undefined") return null;
   const userStr = localStorage.getItem("user");
-  return userStr ? JSON.parse(userStr) : null;
+  if (!userStr) return null;
+  try {
+    return JSON.parse(userStr);
+  } catch {
+    localStorage.removeItem("user");
+    return null;
+  }
 }
 
 export function setStoredUser(user: User): void {

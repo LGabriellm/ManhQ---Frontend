@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, MoreVertical } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
@@ -22,34 +22,30 @@ export function TopBar({
   return (
     <header
       className={cn(
-        "fixed top-0 left-0 right-0 z-40 h-14 flex items-center justify-between px-4 backdrop-blur-lg transition-all",
+        "fixed top-0 left-0 right-0 z-40 h-14 flex items-center justify-between px-4 transition-all duration-200",
         transparent
           ? "bg-transparent"
-          : "bg-surface/95 border-b border-surface/50",
+          : "bg-background/80 backdrop-blur-xl border-b border-white/5",
       )}
     >
-      <div className="flex items-center gap-3 flex-1">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         {showBack && (
           <button
             onClick={() => router.back()}
-            className="p-2 -ml-2 rounded-full hover:bg-surface/50 transition-colors"
+            className="p-2 -ml-2 rounded-xl hover:bg-white/5 active:bg-white/8 transition-colors"
             aria-label="Voltar"
           >
-            <ArrowLeft className="w-6 h-6 text-textMain" />
+            <ArrowLeft className="w-5 h-5 text-textMain" />
           </button>
         )}
         {title && (
-          <h1 className="text-lg font-semibold text-textMain truncate">
+          <h1 className="text-base font-semibold text-textMain truncate">
             {title}
           </h1>
         )}
       </div>
 
-      {rightAction || (
-        <button className="p-2 -mr-2 rounded-full hover:bg-surface/50 transition-colors">
-          <MoreVertical className="w-6 h-6 text-textMain" />
-        </button>
-      )}
+      {rightAction && <div className="shrink-0 ml-2">{rightAction}</div>}
     </header>
   );
 }

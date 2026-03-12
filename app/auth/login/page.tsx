@@ -91,16 +91,20 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center px-5 relative overflow-hidden">
+      <div className="pointer-events-none absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary/8 rounded-full blur-[128px]" />
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
+        className="w-full max-w-sm relative"
       >
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-primary mb-2">ManHQ</h1>
-          <p className="text-textDim">Entre para continuar lendo</p>
+          <h1 className="text-4xl font-bold text-primary tracking-tight mb-1">
+            ManHQ
+          </h1>
+          <p className="text-textDim text-sm">Entre para continuar lendo</p>
         </div>
 
         {/* Offline banner */}
@@ -108,10 +112,10 @@ export default function LoginPage() {
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-3 p-3 mb-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg"
+            className="flex items-center gap-3 p-3 mb-4 bg-yellow-500/8 border border-yellow-500/15 rounded-xl"
           >
-            <WifiOff className="w-5 h-5 text-yellow-500 flex-shrink-0" />
-            <p className="text-sm text-yellow-500">
+            <WifiOff className="w-[18px] h-[18px] text-yellow-500 flex-shrink-0" />
+            <p className="text-sm text-yellow-400">
               Sem conexão com a internet
             </p>
           </motion.div>
@@ -127,7 +131,7 @@ export default function LoginPage() {
               Email
             </label>
             <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-textDim" />
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-textDim/50" />
               <input
                 id="email"
                 type="email"
@@ -136,7 +140,7 @@ export default function LoginPage() {
                 placeholder="seu@email.com"
                 required
                 autoComplete="email"
-                className="w-full pl-12 pr-4 py-3 bg-surface text-textMain rounded-lg border-2 border-transparent focus:border-primary focus:outline-none transition-colors"
+                className="w-full pl-11 pr-4 py-3 bg-surface/60 backdrop-blur-sm text-textMain rounded-xl border border-white/6 focus:border-primary/40 focus:ring-1 focus:ring-primary/20 focus:outline-none transition-all text-sm placeholder:text-textDim/30"
               />
             </div>
           </div>
@@ -149,7 +153,7 @@ export default function LoginPage() {
               Senha
             </label>
             <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-textDim" />
+              <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-textDim/50" />
               <input
                 id="password"
                 type={showPassword ? "text" : "password"}
@@ -158,17 +162,17 @@ export default function LoginPage() {
                 placeholder="••••••••"
                 required
                 autoComplete="current-password"
-                className="w-full pl-12 pr-12 py-3 bg-surface text-textMain rounded-lg border-2 border-transparent focus:border-primary focus:outline-none transition-colors"
+                className="w-full pl-11 pr-11 py-3 bg-surface/60 backdrop-blur-sm text-textMain rounded-xl border border-white/6 focus:border-primary/40 focus:ring-1 focus:ring-primary/20 focus:outline-none transition-all text-sm placeholder:text-textDim/30"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-textDim hover:text-textMain transition-colors"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-textDim/40 hover:text-textDim transition-colors"
               >
                 {showPassword ? (
-                  <EyeOff className="w-5 h-5" />
+                  <EyeOff className="w-[18px] h-[18px]" />
                 ) : (
-                  <Eye className="w-5 h-5" />
+                  <Eye className="w-[18px] h-[18px]" />
                 )}
               </button>
             </div>
@@ -176,26 +180,26 @@ export default function LoginPage() {
 
           {error && (
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg"
+              className="p-3 bg-red-500/8 border border-red-500/15 rounded-xl"
             >
-              <p className="text-sm text-red-500 font-medium">{error}</p>
+              <p className="text-sm text-red-400 font-medium">{error}</p>
               {errorDetails.length > 0 && (
-                <ul className="mt-2 space-y-1">
+                <ul className="mt-2 space-y-0.5">
                   {errorDetails.map((detail, index) => (
                     <li
                       key={index}
-                      className="text-xs text-red-400 flex items-start gap-1"
+                      className="text-xs text-red-400/70 flex items-start gap-1.5"
                     >
-                      <span className="mt-0.5">•</span>
+                      <span className="mt-0.5 shrink-0">•</span>
                       <span>{detail}</span>
                     </li>
                   ))}
                 </ul>
               )}
               {retryAfter && (
-                <p className="text-xs text-red-400 mt-2">
+                <p className="text-xs text-red-400/60 mt-2">
                   Aguarde {retryAfter} segundos antes de tentar novamente.
                 </p>
               )}
@@ -206,12 +210,12 @@ export default function LoginPage() {
             whileTap={{ scale: 0.98 }}
             type="submit"
             disabled={isLoading || isOffline}
-            className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3 px-6 rounded-lg flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20 text-sm"
           >
             {isLoading ? (
               <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Entrando...
+                <Loader2 className="w-[18px] h-[18px] animate-spin" />
+                Entrando…
               </>
             ) : (
               "Entrar"
@@ -219,17 +223,17 @@ export default function LoginPage() {
           </motion.button>
         </form>
 
-        <div className="mt-4 text-center">
+        <div className="mt-5 text-center">
           <button
             onClick={() => router.push("/auth/forgot-password")}
-            className="text-textDim text-sm hover:text-primary transition-colors"
+            className="text-textDim/60 text-sm hover:text-primary transition-colors"
           >
             Esqueceu sua senha?
           </button>
         </div>
 
-        <div className="mt-4 text-center">
-          <p className="text-textDim text-xs">
+        <div className="mt-5 text-center">
+          <p className="text-textDim/40 text-xs leading-relaxed">
             O acesso é exclusivo para assinantes.
             <br />
             Após a compra, você receberá um email para ativar sua conta.

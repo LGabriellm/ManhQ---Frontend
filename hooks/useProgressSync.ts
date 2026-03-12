@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { readerService } from "@/services/reader.service";
-import { progressService } from "@/services/progress.service";
 import { statsService } from "@/services/stats.service";
 
 /**
@@ -27,7 +26,6 @@ export function useProgressSync(
   const pendingPage = useRef(0);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSending = useRef(false);
-  const markedComplete = useRef<string | null>(null);
   const chapterIdRef = useRef(chapterId);
 
   // Stats tracking refs
@@ -42,12 +40,11 @@ export function useProgressSync(
     // Flush stats do capítulo anterior antes de resetar
     const elapsedSec = Math.round((Date.now() - lastStatsFlush.current) / 1000);
     if (pagesReadInSession.current > 0 || elapsedSec > 2) {
-      const wasCompleted = markedComplete.current === chapterIdRef.current;
       statsService
         .record({
           pages: pagesReadInSession.current,
           timeSpent: elapsedSec,
-          chapterCompleted: wasCompleted,
+          chapterCompleted: false,
         })
         .catch(() => {});
     }
@@ -55,7 +52,6 @@ export function useProgressSync(
     chapterIdRef.current = chapterId;
     lastSentPage.current = 0;
     pendingPage.current = 0;
-    markedComplete.current = null;
     pagesReadInSession.current = 0;
     highestPage.current = 0;
     sessionStartTime.current = Date.now();
@@ -99,18 +95,8 @@ export function useProgressSync(
     }
   };
 
-  // Marca como lido (100%)
-  const markComplete = async (chapter: string) => {
-    if (markedComplete.current === chapter) return;
-    markedComplete.current = chapter;
-    try {
-      await progressService.markAsRead(chapter);
-    } catch {
-      markedComplete.current = null;
-    }
-  };
-
   // Efeito principal: reage a mudanças de página
+  // O backend auto-marca finished em ≥90%, então não precisamos chamar markAsRead separado
   useEffect(() => {
     if (currentPage < 1) return;
 
@@ -130,14 +116,14 @@ export function useProgressSync(
       clearTimeout(debounceTimer.current);
     }
 
-    // Debounce de 1s
-    debounceTimer.current = setTimeout(() => {
-      sendProgress(pendingPage.current, chapterId);
-    }, 1000);
-
-    // Marcar como lido ao chegar na última página (sem debounce)
+    // Na última página, enviar imediatamente (sem debounce) para capturar a conclusão
     if (currentPage >= totalPages && totalPages > 1) {
-      markComplete(chapterId);
+      sendProgress(currentPage, chapterId);
+    } else {
+      // Debounce de 1s para páginas intermediárias
+      debounceTimer.current = setTimeout(() => {
+        sendProgress(pendingPage.current, chapterId);
+      }, 1000);
     }
 
     return () => {
@@ -179,14 +165,12 @@ export function useProgressSync(
       const page = pendingPage.current;
       const chapter = chapterIdRef.current;
       if (page > 0 && page !== lastSentPage.current) {
-        const baseUrl =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
         const token =
           typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
         if (token) {
           // fetch keepalive garante envio mesmo durante navegação
-          fetch(`${baseUrl}/read/${chapter}/progress`, {
+          fetch(`/api/read/${chapter}/progress`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -203,16 +187,12 @@ export function useProgressSync(
         (Date.now() - lastStatsFlush.current) / 1000,
       );
       const pages = pagesReadInSession.current;
-      const wasCompleted = markedComplete.current === chapterIdRef.current;
-
       if (pages > 0 || elapsedSec > 2) {
-        const baseUrl =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
         const token =
           typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
         if (token) {
-          fetch(`${baseUrl}/stats/record`, {
+          fetch(`/api/stats/record`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -221,7 +201,7 @@ export function useProgressSync(
             body: JSON.stringify({
               pages,
               timeSpent: elapsedSec,
-              chapterCompleted: wasCompleted,
+              chapterCompleted: false,
             }),
             keepalive: true,
           }).catch(() => {});

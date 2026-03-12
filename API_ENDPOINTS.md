@@ -3496,7 +3496,7 @@ Registra leitura de páginas (chamado pelo frontend durante a leitura ativa).
 
 ---
 
-## Resumo — Total de Endpoints: 113
+## Resumo — Total de Endpoints: 123
 
 | Seção                              | Endpoints | Métodos                                                                                                                                                          |
 | ---------------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -3522,6 +3522,9 @@ Registra leitura de páginas (chamado pelo frontend durante a leitura ativa).
 | 20. Editor — Submissões            | 1         | GET                                                                                                                                                              |
 | 21. Notificações                   | 4         | GET, POST, POST, DELETE                                                                                                                                          |
 | 22. Analytics                      | 5         | GET, GET, GET, GET, POST                                                                                                                                         |
+| 23. Webhooks (Kirvano)             | 1         | POST                                                                                                                                                             |
+| 24. Ativação de Conta              | 2         | GET, POST                                                                                                                                                        |
+| 25. Admin — Assinaturas            | 7         | GET (stats), GET (list), GET (tokens), POST (manual), POST (cancel), POST (reactivate), POST (check-expired)                                                     |
 
 ---
 
@@ -3994,4 +3997,4 @@ Eventos subsequentes:
 - **Boas-vindas:** Conta ativada com sucesso
 - **Cancelamento:** Notificação de cancelamento com motivo
 
-**Total: 123 endpoints** (113 base + 10 de assinaturas/webhooks)
+**Total: 123 endpoints** (61 GET, 42 POST, 4 PUT, 9 DELETE, 7 SSE/especiais)

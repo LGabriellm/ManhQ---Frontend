@@ -1,6 +1,50 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.API_URL || "https://api.manhq.com.br";
+
+// Prefixos de path permitidos — rejeita qualquer rota fora desta lista
+const ALLOWED_PREFIXES = [
+  "login",
+  "register",
+  "logout",
+  "logout-all",
+  "me",
+  "sessions",
+  "activate",
+  "forgot-password",
+  "reset-password",
+  "validate-activation-token",
+  "read/",
+  "series",
+  "discover",
+  "categories",
+  "progress",
+  "favorites",
+  "user/",
+  "upload/",
+  "jobs/",
+  "scan/",
+  "admin/",
+  "notifications",
+  "stats/",
+  "analytics/",
+  "collections",
+  "editor/",
+  "webhooks/",
+];
+
+const FETCH_TIMEOUT_MS = 30_000;
+
+function isPathAllowed(targetPath: string): boolean {
+  // Bloqueia path traversal
+  if (targetPath.includes("..") || targetPath.includes("//")) return false;
+  // Bloqueia caracteres suspeitos (line-breaks, null bytes)
+  if (/[\x00-\x1f]/.test(targetPath)) return false;
+
+  return ALLOWED_PREFIXES.some(
+    (prefix) => targetPath === prefix || targetPath.startsWith(prefix),
+  );
+}
 
 async function handler(
   req: NextRequest,
@@ -8,6 +52,11 @@ async function handler(
 ) {
   const { path } = await params;
   const targetPath = path.join("/");
+
+  if (!isPathAllowed(targetPath)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const url = new URL(targetPath, BACKEND_URL);
   url.search = req.nextUrl.search;
 
@@ -15,10 +64,12 @@ async function handler(
   // Remove headers que não devem ser repassados
   headers.delete("host");
   headers.delete("connection");
+  headers.delete("cookie");
 
   const init: RequestInit = {
     method: req.method,
     headers,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   };
 
   // Repassar body para métodos que suportam
@@ -28,19 +79,26 @@ async function handler(
     init.duplex = "half";
   }
 
-  const response = await fetch(url.toString(), init);
+  try {
+    const response = await fetch(url.toString(), init);
 
-  // Repassar response com headers originais
-  const responseHeaders = new Headers(response.headers);
-  // Remover headers que o Next.js gerencia
-  responseHeaders.delete("transfer-encoding");
-  responseHeaders.delete("content-encoding");
+    // Repassar response com headers originais
+    const responseHeaders = new Headers(response.headers);
+    // Remover headers que o Next.js gerencia
+    responseHeaders.delete("transfer-encoding");
+    responseHeaders.delete("content-encoding");
 
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: responseHeaders,
-  });
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      return NextResponse.json({ error: "Gateway timeout" }, { status: 504 });
+    }
+    return NextResponse.json({ error: "Backend unavailable" }, { status: 502 });
+  }
 }
 
 export const GET = handler;

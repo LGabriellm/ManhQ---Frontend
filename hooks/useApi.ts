@@ -5,6 +5,7 @@ import { notificationsService } from "@/services/notifications.service";
 import { statsService } from "@/services/stats.service";
 import { userListsService } from "@/services/userLists.service";
 import { progressService } from "@/services/progress.service";
+import { useAuth } from "@/contexts/AuthContext";
 import type { ContinueReadingParams, ProgressHistoryParams } from "@/types/api";
 
 // ===== SÉRIES =====
@@ -164,23 +165,29 @@ export function useSeriesProgress(seriesId: string | undefined) {
 }
 
 export function useContinueReading(params?: ContinueReadingParams) {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: ["progress", "continue-reading", params],
     queryFn: () => progressService.getContinueReading(params),
+    enabled: isAuthenticated,
   });
 }
 
 export function useProgressHistory(params?: ProgressHistoryParams) {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: ["progress", "history", params],
     queryFn: () => progressService.getHistory(params),
+    enabled: isAuthenticated,
   });
 }
 
 export function useProgressSeriesList() {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: ["progress", "series-list"],
     queryFn: () => progressService.getSeriesList(),
+    enabled: isAuthenticated,
   });
 }
 

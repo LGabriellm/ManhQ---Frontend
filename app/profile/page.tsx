@@ -177,11 +177,11 @@ export default function ProfilePage() {
                 };
 
   return (
-    <main className="min-h-screen pb-24">
+    <main className="min-h-screen pb-28">
       {/* Hero Header */}
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-linear-to-b from-primary/15 via-primary/5 to-transparent" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-125 h-75 bg-primary/8 rounded-full blur-[120px]" />
+        <div className="absolute inset-0 bg-linear-to-b from-primary/12 via-primary/4 to-transparent" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-125 h-75 bg-primary/6 rounded-full blur-[120px]" />
 
         <div className="relative px-5 pt-14 pb-6">
           <motion.div
@@ -261,7 +261,7 @@ export default function ProfilePage() {
           {/* ===== Quick Stats Grid ===== */}
           <div className="px-4 mt-1">
             <SectionHeader icon={BarChart3} title="Estatísticas" />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               {statCards.map((stat, i) => (
                 <motion.div
                   key={stat.label}
@@ -269,19 +269,21 @@ export default function ProfilePage() {
                   variants={fadeUp}
                   initial="hidden"
                   animate="visible"
-                  className="bg-surface rounded-2xl p-4 border border-white/4 hover:border-white/8 transition-colors"
+                  className="bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4 hover:border-white/8 transition-all duration-200"
                 >
                   <div
-                    className={`w-9 h-9 rounded-xl ${stat.bg} flex items-center justify-center mb-3`}
+                    className={`w-9 h-9 rounded-xl ${stat.bg} flex items-center justify-center mb-3 ring-1 ring-white/5`}
                   >
                     <stat.icon className={`w-4.5 h-4.5 ${stat.color}`} />
                   </div>
-                  <p className="text-2xl font-bold text-textMain tabular-nums">
+                  <p className="text-2xl font-bold text-textMain tabular-nums tracking-tight">
                     {typeof stat.value === "number"
                       ? stat.value.toLocaleString("pt-BR")
                       : stat.value}
                   </p>
-                  <p className="text-xs text-textDim mt-0.5">{stat.label}</p>
+                  <p className="text-[11px] text-textDim mt-0.5">
+                    {stat.label}
+                  </p>
                 </motion.div>
               ))}
             </div>
@@ -296,42 +298,42 @@ export default function ProfilePage() {
                 transition={{ delay: 0.35 }}
                 className="px-4 mt-5"
               >
-                <div className="bg-linear-to-r from-orange-500/10 via-red-500/10 to-yellow-500/10 rounded-2xl p-4 border border-orange-500/10">
+                <div className="bg-gradient-to-r from-orange-500/8 via-red-500/8 to-yellow-500/8 backdrop-blur-sm rounded-2xl p-4 border border-orange-500/8">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-xl bg-orange-500/15 flex items-center justify-center ring-1 ring-orange-500/15">
                       <Flame className="w-5 h-5 text-orange-400" />
                     </div>
                     <div className="flex-1">
-                      <p className="font-semibold text-textMain">
+                      <p className="font-semibold text-textMain text-sm">
                         Sequência de Leitura
                       </p>
-                      <p className="text-xs text-textDim">
+                      <p className="text-[11px] text-textDim">
                         {streaks.isActiveToday
                           ? "Você já leu hoje! Continue assim"
                           : "Leia hoje para manter a sequência!"}
                       </p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-background/40 rounded-xl p-3 text-center">
-                      <p className="text-2xl font-bold text-orange-400">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-background/30 rounded-xl p-2.5 text-center">
+                      <p className="text-xl font-bold text-orange-400 tabular-nums">
                         {streaks.currentStreak}
                       </p>
-                      <p className="text-[11px] text-textDim mt-0.5">
+                      <p className="text-[10px] text-textDim mt-0.5">
                         Dias seguidos
                       </p>
                     </div>
-                    <div className="bg-background/40 rounded-xl p-3 text-center">
-                      <p className="text-2xl font-bold text-yellow-400">
+                    <div className="bg-background/30 rounded-xl p-2.5 text-center">
+                      <p className="text-xl font-bold text-yellow-400 tabular-nums">
                         {streaks.longestStreak}
                       </p>
-                      <p className="text-[11px] text-textDim mt-0.5">Recorde</p>
+                      <p className="text-[10px] text-textDim mt-0.5">Recorde</p>
                     </div>
-                    <div className="bg-background/40 rounded-xl p-3 text-center">
-                      <p className="text-2xl font-bold text-emerald-400">
+                    <div className="bg-background/30 rounded-xl p-2.5 text-center">
+                      <p className="text-xl font-bold text-emerald-400 tabular-nums">
                         {streaks.totalActiveDays}
                       </p>
-                      <p className="text-[11px] text-textDim mt-0.5">
+                      <p className="text-[10px] text-textDim mt-0.5">
                         Dias ativos
                       </p>
                     </div>
@@ -365,7 +367,7 @@ export default function ProfilePage() {
               className="px-4 mt-5"
             >
               <SectionHeader icon={Star} title="Gêneros Favoritos" />
-              <div className="bg-surface rounded-2xl p-4 border border-white/4">
+              <div className="bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4">
                 {/* Favorite genre highlight */}
                 <div className="flex items-center gap-3 mb-4 pb-3 border-b border-white/5">
                   <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -509,7 +511,7 @@ export default function ProfilePage() {
               className="px-4 mt-5"
             >
               <SectionHeader icon={Library} title="Biblioteca" />
-              <div className="bg-surface rounded-2xl p-4 border border-white/4">
+              <div className="bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1.5">
@@ -580,52 +582,52 @@ export default function ProfilePage() {
             <Link href="/dashboard">
               <motion.div
                 whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-4 p-4 bg-surface rounded-2xl border border-yellow-500/10 hover:border-yellow-500/20 transition-colors"
+                className="flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm rounded-2xl border border-yellow-500/10 hover:border-yellow-500/20 transition-all"
               >
-                <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center ring-1 ring-yellow-400/10">
                   <Shield className="w-5 h-5 text-yellow-400" />
                 </div>
                 <div className="flex-1">
-                  <p className="font-medium text-textMain">
+                  <p className="font-medium text-textMain text-sm">
                     Painel Administrativo
                   </p>
-                  <p className="text-xs text-textDim">
+                  <p className="text-[11px] text-textDim">
                     Gerenciar séries, mídias e usuários
                   </p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-textDim" />
+                <ChevronRight className="w-4 h-4 text-textDim/40" />
               </motion.div>
             </Link>
           )}
 
           {/* App info */}
-          <div className="flex items-center gap-4 p-4 bg-surface rounded-2xl border border-white/4">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+          <div className="flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/10">
               <span className="text-lg font-bold text-primary">M</span>
             </div>
             <div className="flex-1">
-              <p className="font-medium text-textMain">ManhQ Reader</p>
-              <p className="text-xs text-textDim">Versão 1.0.0</p>
+              <p className="font-medium text-textMain text-sm">ManhQ Reader</p>
+              <p className="text-[11px] text-textDim">Versão 1.0.0</p>
             </div>
-            <Info className="w-4 h-4 text-textDim" />
+            <Info className="w-4 h-4 text-textDim/30" />
           </div>
 
           {/* Logout */}
           <motion.button
             onClick={handleLogout}
             whileTap={{ scale: 0.98 }}
-            className="w-full flex items-center gap-4 p-4 bg-surface hover:bg-red-500/5 rounded-2xl transition-colors border border-white/4 hover:border-red-500/20"
+            className="w-full flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm hover:bg-red-500/5 rounded-2xl transition-all border border-white/4 hover:border-red-500/15"
           >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/10">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/8 ring-1 ring-red-400/10">
               <LogOut className="w-5 h-5 text-red-400" />
             </div>
             <div className="flex-1 text-left">
-              <p className="font-medium text-red-400">Sair da conta</p>
-              <p className="text-xs text-textDim">
+              <p className="font-medium text-red-400 text-sm">Sair da conta</p>
+              <p className="text-[11px] text-textDim">
                 Desconectar deste dispositivo
               </p>
             </div>
-            <ChevronRight className="w-4 h-4 text-red-400/50" />
+            <ChevronRight className="w-4 h-4 text-red-400/30" />
           </motion.button>
         </div>
       </motion.div>
@@ -675,14 +677,14 @@ function WeeklyChart({
   const maxPages = Math.max(...data.map((d) => d.pages), 1);
 
   return (
-    <div className="bg-surface rounded-2xl p-4 border border-white/4">
+    <div className="bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4">
       <div className="flex items-end gap-2 h-28 mb-2">
         {data.map((d) => {
           const height = Math.max((d.pages / maxPages) * 100, 4);
           const isTop = d.day === mostProductiveDay;
           return (
             <div key={d.day} className="flex-1 flex flex-col items-center">
-              <span className="text-[10px] text-textDim mb-1 tabular-nums">
+              <span className="text-[10px] text-textDim/70 mb-1 tabular-nums">
                 {d.pages > 0 ? d.pages : ""}
               </span>
               <motion.div
@@ -690,7 +692,9 @@ function WeeklyChart({
                 animate={{ height: `${height}%` }}
                 transition={{ delay: 0.3, duration: 0.5 }}
                 className={`w-full rounded-lg ${
-                  isTop ? "bg-primary" : "bg-primary/30"
+                  isTop
+                    ? "bg-primary shadow-sm shadow-primary/20"
+                    : "bg-primary/25"
                 }`}
               />
             </div>
@@ -725,7 +729,7 @@ function TopSeriesCard({
     <Link href={`/serie/${series.id}`} className="shrink-0 w-36">
       <motion.div
         whileTap={{ scale: 0.96 }}
-        className="bg-surface rounded-2xl overflow-hidden border border-white/4 hover:border-white/8 transition-colors"
+        className="bg-surface/60 backdrop-blur-sm rounded-2xl overflow-hidden border border-white/4 hover:border-white/8 transition-all"
       >
         <div className="relative h-44 overflow-hidden">
           {series.coverUrl ? (

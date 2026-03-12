@@ -31,10 +31,10 @@ export const readerService = {
     chapterId: string,
     data: ReadProgressRequest,
   ): Promise<ReadProgress> {
-    const response = await api.post<ReadProgress>(
-      `/read/${chapterId}/progress`,
-      data,
-    );
-    return response.data;
+    const response = await api.post<{
+      success: boolean;
+      progress: ReadProgress;
+    }>(`/read/${chapterId}/progress`, data);
+    return response.data.progress;
   },
 };

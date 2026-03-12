@@ -232,7 +232,7 @@ function HeroCarousel({
                 <Link href={`/serie/${series.id}`} className="flex-1 min-w-0">
                   <motion.button
                     whileTap={{ scale: 0.95 }}
-                    className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/30 text-sm"
+                    className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/25 text-sm ring-1 ring-primary/50"
                   >
                     <Play className="w-4 h-4 fill-white" />
                     Ver Detalhes
@@ -243,7 +243,7 @@ function HeroCarousel({
                   whileTap={{ scale: 0.85 }}
                   onClick={() => toggleFavorite(series.id)}
                   disabled={isUpdating}
-                  className="w-11 h-11 bg-white/8 backdrop-blur-md hover:bg-white/15 rounded-xl flex items-center justify-center transition-all disabled:opacity-50 ring-1 ring-white/10 shrink-0"
+                  className="w-11 h-11 bg-white/6 backdrop-blur-md hover:bg-white/12 rounded-xl flex items-center justify-center transition-all disabled:opacity-50 ring-1 ring-white/8 shrink-0"
                 >
                   <Heart
                     className={`w-5 h-5 transition-all duration-300 ${
@@ -285,13 +285,13 @@ function GenrePills({ genres }: { genres: string[] }) {
   if (genres.length === 0) return null;
 
   return (
-    <div className="px-4 mt-3 mb-1">
+    <div className="px-4 mt-3 mb-0">
       <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
         {genres.map((genre) => (
           <Link key={genre} href={`/search?genre=${encodeURIComponent(genre)}`}>
             <motion.div
               whileTap={{ scale: 0.95 }}
-              className="px-3.5 py-1.5 bg-surface/80 border border-white/5 hover:border-primary/30 rounded-full text-xs font-medium text-textDim hover:text-primary whitespace-nowrap transition-all"
+              className="px-3.5 py-1.5 bg-white/5 backdrop-blur-sm border border-white/6 hover:border-primary/30 hover:bg-primary/8 rounded-full text-xs font-medium text-textDim hover:text-primary whitespace-nowrap transition-all duration-200"
             >
               {genre}
             </motion.div>
@@ -309,13 +309,19 @@ function RankingCard({ series, rank }: { series: Series; rank: number }) {
     <Link href={`/serie/${series.id}`}>
       <motion.div
         whileTap={{ scale: 0.97 }}
-        className="relative flex gap-3 items-center p-3 rounded-2xl bg-surface/50 hover:bg-surface/80 transition-all group border border-transparent hover:border-white/5"
+        className="relative flex gap-3 items-center p-3 rounded-2xl bg-surface/40 backdrop-blur-sm hover:bg-surface/70 transition-all group border border-white/4 hover:border-white/8"
       >
         {/* Ranking número */}
         <div className="w-8 text-center shrink-0">
           <span
             className={`text-2xl font-black tabular-nums ${
-              rank <= 3 ? "text-primary" : "text-white/20"
+              rank === 1
+                ? "text-yellow-400"
+                : rank === 2
+                  ? "text-gray-300"
+                  : rank === 3
+                    ? "text-amber-600"
+                    : "text-white/15"
             }`}
           >
             {rank}
@@ -323,7 +329,7 @@ function RankingCard({ series, rank }: { series: Series; rank: number }) {
         </div>
 
         {/* Capa */}
-        <div className="w-12 h-16 rounded-lg overflow-hidden shrink-0 shadow-md ring-1 ring-white/5">
+        <div className="w-11 h-15 rounded-lg overflow-hidden shrink-0 shadow-md ring-1 ring-white/5">
           <AuthCover
             coverUrl={series.coverUrl || `/series/${series.id}/cover`}
             alt={series.title}
@@ -336,9 +342,12 @@ function RankingCard({ series, rank }: { series: Series; rank: number }) {
           <h3 className="text-sm font-semibold text-textMain line-clamp-1 group-hover:text-white transition-colors">
             {series.title}
           </h3>
-          <div className="flex items-center gap-2 mt-0.5">
+          <div className="flex items-center gap-1.5 mt-0.5">
             {series.genres?.slice(0, 2).map((g) => (
-              <span key={g} className="text-[10px] text-textDim">
+              <span
+                key={g}
+                className="text-[10px] text-textDim/70 bg-white/4 px-1.5 py-0.5 rounded-md"
+              >
                 {g}
               </span>
             ))}
@@ -350,7 +359,7 @@ function RankingCard({ series, rank }: { series: Series; rank: number }) {
           )}
         </div>
 
-        <ChevronRight className="w-4 h-4 text-white/10 group-hover:text-white/30 transition-colors shrink-0" />
+        <ChevronRight className="w-4 h-4 text-white/8 group-hover:text-white/25 transition-colors shrink-0" />
       </motion.div>
     </Link>
   );
@@ -365,27 +374,27 @@ function UpdatedSeriesCard({ series }: { series: Series }) {
     <Link href={`/serie/${series.id}`}>
       <motion.div
         whileTap={{ scale: 0.97 }}
-        className="relative w-65 shrink-0 snap-start rounded-2xl overflow-hidden bg-surface/40 border border-white/5 hover:border-white/10 transition-all group"
+        className="relative w-60 shrink-0 snap-start rounded-2xl overflow-hidden bg-surface/40 backdrop-blur-sm border border-white/5 hover:border-white/10 transition-all group"
       >
         {/* Capa com overlay */}
-        <div className="relative h-36 overflow-hidden">
+        <div className="relative h-32 overflow-hidden">
           <AuthCover
             coverUrl={series.coverUrl || `/series/${series.id}/cover`}
             alt={series.title}
             className="object-cover group-hover:scale-105 transition-transform duration-500"
           />
-          <div className="absolute inset-0 bg-linear-to-t from-surface via-surface/40 to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-t from-surface via-surface/50 to-transparent" />
 
           {/* Badge de atualização */}
-          <div className="absolute top-2.5 left-2.5 flex items-center gap-1 bg-emerald-500/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg">
+          <div className="absolute top-2.5 left-2.5 flex items-center gap-1 bg-emerald-500/80 backdrop-blur-md text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg ring-1 ring-emerald-400/20">
             <RefreshCw className="w-2.5 h-2.5" />
-            Atualizado
+            Novo
           </div>
         </div>
 
         {/* Info */}
-        <div className="p-3 -mt-4 relative">
-          <h3 className="text-sm font-bold text-white line-clamp-1 mb-1">
+        <div className="p-3 -mt-3 relative">
+          <h3 className="text-[13px] font-bold text-white line-clamp-1 mb-0.5">
             {series.title}
           </h3>
           {latestChapter && (
@@ -422,6 +431,7 @@ function QuickNumbers({
       label: "No catálogo",
       color: "text-blue-400",
       bg: "bg-blue-400/10",
+      ring: "ring-blue-400/10",
     },
     {
       icon: TrendingUp,
@@ -429,6 +439,7 @@ function QuickNumbers({
       label: "Lendo agora",
       color: "text-emerald-400",
       bg: "bg-emerald-400/10",
+      ring: "ring-emerald-400/10",
     },
     {
       icon: Heart,
@@ -436,21 +447,22 @@ function QuickNumbers({
       label: "Favoritos",
       color: "text-primary",
       bg: "bg-primary/10",
+      ring: "ring-primary/10",
     },
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-2.5 px-4 mt-2 mb-2">
+    <div className="grid grid-cols-3 gap-2 px-4 mt-2 mb-1">
       {stats.map((stat, i) => (
         <motion.div
           key={stat.label}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.06 }}
-          className="bg-surface/60 border border-white/4 rounded-xl p-3 text-center"
+          className={`bg-surface/50 backdrop-blur-sm border border-white/4 rounded-2xl p-3 text-center ring-1 ${stat.ring}`}
         >
           <div
-            className={`w-8 h-8 rounded-lg ${stat.bg} flex items-center justify-center mx-auto mb-2`}
+            className={`w-8 h-8 rounded-xl ${stat.bg} flex items-center justify-center mx-auto mb-2`}
           >
             <stat.icon className={`w-4 h-4 ${stat.color}`} />
           </div>
@@ -507,7 +519,7 @@ export default function HomePage() {
     return (
       <main className="min-h-screen bg-background">
         <HeroSkeleton />
-        <div className="mt-1 space-y-1 pb-24">
+        <div className="mt-1 space-y-1 pb-28">
           <ContinueReadingSkeleton />
           <SectionSkeleton />
           <SectionSkeleton count={3} />
@@ -584,7 +596,7 @@ export default function HomePage() {
       {/* ===== QUICK GENRE PILLS ===== */}
       {topGenres.length > 0 && <GenrePills genres={topGenres} />}
 
-      <div className="mt-1 space-y-1 pb-24">
+      <div className="mt-1 space-y-1 pb-28">
         {/* ===== NÚMEROS RÁPIDOS ===== */}
         <QuickNumbers
           totalSeries={totalCatalog}

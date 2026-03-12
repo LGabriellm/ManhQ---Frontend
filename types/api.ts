@@ -130,11 +130,21 @@ export interface ReadProgressRequest {
 
 export interface ReadProgress {
   id: string;
-  userId: string;
-  mediaId: string;
-  currentPage: number;
-  completed: boolean;
+  page: number;
+  finished: boolean;
+  readCount: number;
   lastReadAt: string;
+  media?: {
+    id: string;
+    title: string;
+    number: number;
+    pageCount: number;
+    series?: {
+      id: string;
+      title: string;
+      coverPath?: string;
+    };
+  };
 }
 
 // ===== Coleções =====
@@ -379,41 +389,57 @@ export interface MediaProgress {
 }
 
 export interface SeriesProgress {
+  seriesId?: string;
   totalChapters: number;
   readChapters: number;
+  chaptersRead?: number;
+  chaptersInProgress?: number;
   completionPercentage: number;
+  progressPercent?: number;
+  chapters?: Array<{
+    mediaId: string;
+    number: number;
+    title: string;
+    page: number;
+    pageCount: number;
+    finished: boolean;
+    readCount: number;
+    lastReadAt: string;
+  }>;
 }
 
 export interface ContinueReadingItem {
+  progressId: string | null;
   mediaId: string;
-  mediaNumber: number;
   mediaTitle: string;
-  page: number;
-  percent: number;
+  mediaNumber: number;
   seriesId: string;
   seriesTitle: string;
-  pageCount: number;
-  lastReadAt: string;
-  finished: boolean;
-  progressId: string;
-  startedAt: string;
   coverUrl: string;
+  page: number;
+  pageCount: number;
+  percent: number;
+  finished: boolean;
+  lastReadAt: string;
+  startedAt: string | null;
+  type: "in-progress" | "next-chapter";
 }
 
 export interface ProgressHistoryItem {
-  mediaId: string;
   progressId: string;
+  mediaId: string;
+  mediaTitle: string;
+  mediaNumber: number;
   seriesId: string;
   seriesTitle: string;
   coverUrl: string;
-  percent: number;
-  pageCount: number;
-  mediaTitle: string;
-  mediaNumber: number;
   page: number;
+  pageCount: number;
+  percent: number;
   finished: boolean;
   startedAt: string;
   lastReadAt: string;
+  completedAt: string | null;
   readCount: number;
 }
 

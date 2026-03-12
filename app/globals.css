@@ -49,3 +49,9 @@ body::-webkit-scrollbar {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Desativar tap highlight em todos os links */
+a,
+button {
+  -webkit-tap-highlight-color: transparent;
+}

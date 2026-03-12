@@ -105,10 +105,10 @@ function HistoryItemCard({ item }: { item: ProgressHistoryItem }) {
     <Link href={readLink} className="block">
       <motion.div
         whileTap={{ scale: 0.97 }}
-        className="relative flex gap-3 p-3 bg-surface rounded-2xl overflow-hidden group"
+        className="relative flex gap-3 p-3 bg-surface/60 backdrop-blur-sm rounded-2xl overflow-hidden group border border-white/4 hover:border-white/8 transition-all"
       >
         {/* Capa */}
-        <div className="relative w-14 h-20 shrink-0 rounded-xl overflow-hidden shadow-md">
+        <div className="relative w-13 h-18 shrink-0 rounded-xl overflow-hidden shadow-md ring-1 ring-white/5">
           {coverUrl ? (
             <AuthCover
               coverUrl={coverUrl}
@@ -124,37 +124,37 @@ function HistoryItemCard({ item }: { item: ProgressHistoryItem }) {
 
         {/* Info */}
         <div className="flex-1 flex flex-col justify-center min-w-0">
-          <h3 className="text-sm font-semibold text-textMain line-clamp-1">
+          <h3 className="text-sm font-semibold text-textMain line-clamp-1 group-hover:text-white transition-colors">
             {item.seriesTitle || "Série desconhecida"}
           </h3>
-          <p className="text-xs text-textDim mt-0.5 line-clamp-1">
+          <p className="text-[11px] text-textDim mt-0.5 line-clamp-1">
             {chapterLabel}
           </p>
 
           {/* Detalhes */}
           <div className="flex items-center gap-3 mt-1.5">
             {item.finished ? (
-              <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
+              <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium bg-emerald-400/8 px-1.5 py-0.5 rounded-md">
                 <CheckCircle2 className="w-3 h-3" />
                 Concluído
               </span>
             ) : (
-              <span className="text-[11px] text-textDim">
-                Página {item.page}
-                {pageCount > 0 && ` de ${pageCount}`}
+              <span className="text-[10px] text-textDim tabular-nums">
+                Pág. {item.page}
+                {pageCount > 0 && ` / ${pageCount}`}
               </span>
             )}
-            <span className="flex items-center gap-1 text-[11px] text-textDim">
-              <Clock className="w-3 h-3" />
+            <span className="flex items-center gap-1 text-[10px] text-textDim/70">
+              <Clock className="w-2.5 h-2.5" />
               {timeAgo(item.lastReadAt)}
             </span>
           </div>
 
-          {/* Barra de progresso (só se não concluído) */}
+          {/* Barra de progresso */}
           {!item.finished && pageCount > 0 && (
-            <div className="mt-2 h-1 bg-background rounded-full overflow-hidden">
+            <div className="mt-2 h-0.75 bg-white/5 rounded-full overflow-hidden">
               <div
-                className="h-full bg-primary rounded-full transition-all"
+                className="h-full bg-primary/80 rounded-full transition-all"
                 style={{ width: `${Math.min(progress, 100)}%` }}
               />
             </div>
@@ -164,12 +164,12 @@ function HistoryItemCard({ item }: { item: ProgressHistoryItem }) {
         {/* Ação */}
         <div className="flex items-center shrink-0">
           {item.finished ? (
-            <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/8 flex items-center justify-center ring-1 ring-emerald-400/15">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
             </div>
           ) : (
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-              <Play className="w-3.5 h-3.5 text-primary fill-primary" />
+            <div className="w-8 h-8 rounded-xl bg-primary/8 flex items-center justify-center group-hover:bg-primary/15 transition-colors ring-1 ring-primary/15">
+              <Play className="w-3 h-3 text-primary fill-primary" />
             </div>
           )}
         </div>
@@ -184,9 +184,9 @@ function FavoriteListItem({ series }: { series: Series }) {
     <Link href={`/serie/${series.id}`} className="block">
       <motion.div
         whileTap={{ scale: 0.97 }}
-        className="flex gap-3 p-3 bg-surface rounded-2xl group"
+        className="flex gap-3 p-3 bg-surface/60 backdrop-blur-sm rounded-2xl group border border-white/4 hover:border-white/8 transition-all"
       >
-        <div className="relative w-14 h-20 shrink-0 rounded-xl overflow-hidden shadow-md">
+        <div className="relative w-13 h-18 shrink-0 rounded-xl overflow-hidden shadow-md ring-1 ring-white/5">
           <AuthCover
             coverUrl={series.coverUrl || `/series/${series.id}/cover`}
             alt={series.title}
@@ -194,21 +194,21 @@ function FavoriteListItem({ series }: { series: Series }) {
           />
         </div>
         <div className="flex-1 flex flex-col justify-center min-w-0">
-          <h3 className="text-sm font-semibold text-textMain line-clamp-1 group-hover:text-primary transition-colors">
+          <h3 className="text-sm font-semibold text-textMain line-clamp-1 group-hover:text-white transition-colors">
             {series.title}
           </h3>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-1.5 mt-1">
             {series.genres?.slice(0, 2).map((g) => (
               <span
                 key={g}
-                className="text-[10px] px-1.5 py-0.5 bg-white/5 rounded-full text-textDim"
+                className="text-[10px] px-1.5 py-0.5 bg-white/5 rounded-md text-textDim"
               >
                 {g}
               </span>
             ))}
           </div>
           {series._count?.medias != null && (
-            <p className="text-[11px] text-textDim mt-1">
+            <p className="text-[10px] text-textDim mt-1">
               {series._count.medias} capítulos
             </p>
           )}
@@ -335,11 +335,18 @@ export default function LibraryPage() {
   ];
 
   return (
-    <main className="min-h-screen pt-4 pb-20">
+    <main className="min-h-screen pt-4 pb-24">
       {/* Header */}
       <div className="px-4 mb-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-textMain">Minha Biblioteca</h1>
+          <div>
+            <h1 className="text-2xl font-bold text-textMain tracking-tight">
+              Minha Biblioteca
+            </h1>
+            <p className="text-xs text-textDim mt-0.5">
+              {(favorites?.length ?? 0) + (readingItems?.length ?? 0)} itens
+            </p>
+          </div>
           <div className="flex items-center gap-2">
             {/* Toggle busca */}
             <motion.button
@@ -396,7 +403,7 @@ export default function LibraryPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 px-4 mb-4 overflow-x-auto scrollbar-hide">
+      <div className="flex gap-1.5 px-4 mb-4 overflow-x-auto scrollbar-hide">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -409,20 +416,20 @@ export default function LibraryPage() {
                 setActiveTab(tab.id);
                 setSearchQuery("");
               }}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium whitespace-nowrap transition-all ${
+              className={`relative flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium whitespace-nowrap transition-all duration-200 ${
                 isActive
                   ? "bg-primary text-white shadow-lg shadow-primary/20"
-                  : "bg-surface text-textDim hover:text-textMain"
+                  : "bg-white/5 text-textDim hover:text-textMain hover:bg-white/8"
               }`}
             >
               <Icon className="w-4 h-4" />
               {tab.label}
               {tab.count != null && tab.count > 0 && (
                 <span
-                  className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold tabular-nums ${
                     isActive
                       ? "bg-white/20 text-white"
-                      : "bg-background text-textDim"
+                      : "bg-white/8 text-textDim"
                   }`}
                 >
                   {tab.count}

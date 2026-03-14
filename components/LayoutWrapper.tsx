@@ -18,7 +18,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
 
-  const isPublicRoute = PUBLIC_ROUTES.some((r) => pathname?.startsWith(r));
+  const isPublicRoute =
+    pathname === "/" || PUBLIC_ROUTES.some((r) => pathname?.startsWith(r));
   const shouldHideNav =
     pathname?.includes("/reader") ||
     pathname?.startsWith("/dashboard") ||

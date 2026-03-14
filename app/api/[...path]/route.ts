@@ -31,6 +31,8 @@ const ALLOWED_PREFIXES = [
   "collections",
   "editor/",
   "webhooks/",
+  "v1/comments/",
+  "v1/account/",
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;

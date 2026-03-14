@@ -9,7 +9,6 @@ import {
   FileText,
   TrendingUp,
   LogOut,
-  Loader2,
   ChevronRight,
   Shield,
   Zap,
@@ -30,6 +29,7 @@ import { useUserStats } from "@/hooks/useApi";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AuthCover } from "@/components/AuthCover";
+import { UserAvatar } from "@/components/community/UserAvatar";
 import type { Milestone, TopSeriesStats } from "@/types/api";
 import { useState } from "react";
 
@@ -81,16 +81,6 @@ export default function ProfilePage() {
   const handleLogout = async () => {
     await logout();
     router.push("/auth/login");
-  };
-
-  const getInitials = (name?: string | null) => {
-    if (!name) return "U";
-    return name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .toUpperCase()
-      .slice(0, 2);
   };
 
   const reading = stats?.reading;
@@ -192,13 +182,11 @@ export default function ProfilePage() {
           >
             {/* Avatar */}
             <div className="relative mb-4">
-              <div className="w-24 h-24 rounded-full bg-linear-to-br from-primary via-primary/80 to-primary/50 p-0.75">
-                <div className="w-full h-full rounded-full bg-background flex items-center justify-center">
-                  <span className="text-3xl font-bold text-primary">
-                    {getInitials(user?.name)}
-                  </span>
-                </div>
-              </div>
+              <UserAvatar
+                userId={user?.id}
+                name={user?.name || undefined}
+                className="h-24 w-24 rounded-full"
+              />
               {user?.role === "ADMIN" && (
                 <div className="absolute -bottom-1 -right-1 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5">
                   <Shield className="w-3 h-3" />
@@ -298,7 +286,7 @@ export default function ProfilePage() {
                 transition={{ delay: 0.35 }}
                 className="px-4 mt-5"
               >
-                <div className="bg-gradient-to-r from-orange-500/8 via-red-500/8 to-yellow-500/8 backdrop-blur-sm rounded-2xl p-4 border border-orange-500/8">
+                <div className="bg-linear-to-r from-orange-500/8 via-red-500/8 to-yellow-500/8 backdrop-blur-sm rounded-2xl p-4 border border-orange-500/8">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-10 h-10 rounded-xl bg-orange-500/15 flex items-center justify-center ring-1 ring-orange-500/15">
                       <Flame className="w-5 h-5 text-orange-400" />
@@ -599,6 +587,26 @@ export default function ProfilePage() {
               </motion.div>
             </Link>
           )}
+
+          <Link href="/profile/edit">
+            <motion.div
+              whileTap={{ scale: 0.98 }}
+              className="flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4 hover:border-primary/20 transition-all"
+            >
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/10">
+                <Settings className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-textMain text-sm">
+                  Editar perfil
+                </p>
+                <p className="text-[11px] text-textDim">
+                  Gerenciar conta, sessões e segurança
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-textDim/40" />
+            </motion.div>
+          </Link>
 
           {/* App info */}
           <div className="flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4">

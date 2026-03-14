@@ -138,7 +138,7 @@ function JobLogsModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-lg max-h-[80vh] flex flex-col">
+      <div className="relative ui-modal w-full max-w-lg max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-white/5">
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-semibold text-[var(--color-textMain)] truncate">

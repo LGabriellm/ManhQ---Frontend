@@ -29,7 +29,7 @@ function StatCard({
   color?: string;
 }) {
   return (
-    <div className="bg-[var(--color-surface)] rounded-xl p-5 border border-white/5">
+    <div className="surface-panel glass-card ui-card rounded-3xl p-5">
       <div className="flex items-center justify-between mb-3">
         <div
           className="w-10 h-10 rounded-lg flex items-center justify-center"
@@ -65,7 +65,7 @@ function HealthCard({
   const color = colors[severity];
 
   return (
-    <div className="bg-[var(--color-surface)] rounded-xl p-4 border border-white/5 flex items-center gap-4">
+    <div className="surface-panel glass-card rounded-3xl p-4 flex items-center gap-4">
       <div
         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
         style={{ backgroundColor: `${color}15` }}
@@ -125,7 +125,7 @@ export default function DashboardPage() {
         <button
           onClick={() => refetch()}
           disabled={isRefetching}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-surface)] border border-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] transition-colors text-sm"
+          className="ui-btn-ghost flex items-center gap-2 px-4 py-2 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] transition-colors text-sm"
         >
           <RefreshCw
             className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
@@ -196,7 +196,7 @@ export default function DashboardPage() {
           <Clock className="h-5 w-5 text-[var(--color-primary)]" />
           Séries Recentes
         </h2>
-        <div className="bg-[var(--color-surface)] rounded-xl border border-white/5 overflow-hidden">
+        <div className="surface-panel glass-card rounded-3xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

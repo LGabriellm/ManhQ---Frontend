@@ -1,14 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Manrope, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { QueryProvider } from "@/contexts/QueryProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { LayoutWrapper } from "@/components/LayoutWrapper";
 import { Toaster } from "react-hot-toast";
 
-const inter = Inter({
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-manrope",
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-display",
   display: "swap",
 });
 
@@ -40,7 +46,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body
-        className={`${inter.variable} font-sans antialiased bg-background text-textMain`}
+        className={`${manrope.variable} ${spaceGrotesk.variable} bg-background font-sans text-textMain antialiased`}
       >
         <QueryProvider>
           <AuthProvider>

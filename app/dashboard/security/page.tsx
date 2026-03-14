@@ -22,7 +22,7 @@ function IPInfoModal({ ip, onClose }: { ip: string; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-md p-6">
+      <div className="relative ui-modal w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-[var(--color-textMain)]">
             Informações do IP
@@ -244,7 +244,7 @@ export default function SecurityPage() {
             className="absolute inset-0 bg-black/70"
             onClick={() => setConfirmUnblock(null)}
           />
-          <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-sm p-6">
+          <div className="relative ui-modal w-full max-w-sm p-6">
             <div className="flex flex-col items-center text-center">
               <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
                 <ShieldOff className="h-6 w-6 text-green-500" />

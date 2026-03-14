@@ -21,6 +21,7 @@ import {
 import { useProgressSync } from "@/hooks/useProgressSync";
 import { useFavorites } from "@/hooks/useFavoritesApi";
 import { AuthImage } from "@/components/AuthImage";
+import { CommentSection } from "@/components/community/CommentSection";
 
 export default function ReaderPage() {
   const router = useRouter();
@@ -428,7 +429,6 @@ export default function ReaderPage() {
               </div>
             )}
 
-            {/* Botão Ver Todos os Capítulos */}
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={() => router.push(`/serie/${seriesId}`)}
@@ -449,6 +449,15 @@ export default function ReaderPage() {
             </motion.button>
           </div>
         </div>
+
+        <section className="min-h-screen snap-start bg-background px-4 py-10">
+          <div className="mx-auto max-w-2xl">
+            <CommentSection
+              scope={{ type: "media", id: chapterId }}
+              title="Comentários do capítulo"
+            />
+          </div>
+        </section>
       </div>
 
       {/* Painel de configurações */}

@@ -103,6 +103,77 @@ export interface Series {
   };
 }
 
+// ===== Comunidade =====
+export type CommentType =
+  | "DISCUSSION"
+  | "SPOILER_WARNING"
+  | "THEORY"
+  | "CORRECTION"
+  | "TRANSLATION"
+  | "ARTWORK";
+
+export interface CommunityUser {
+  id: string;
+  name: string;
+  username?: string;
+  avatarKey?: string | null;
+}
+
+export interface CommentItem {
+  id: string;
+  userId: string;
+  user?: CommunityUser;
+  seriesId: string;
+  mediaId?: string | null;
+  title?: string | null;
+  content: string;
+  type: CommentType;
+  hasSpoilers: boolean;
+  approved: boolean;
+  moderated?: boolean;
+  pinnedAt?: string | null;
+  helpful: number;
+  unhelpful: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommentsResponse {
+  comments: CommentItem[];
+  total: number;
+}
+
+export interface CommentQueryParams {
+  sortBy?: "recent" | "helpful" | "controversial";
+  limit?: number;
+  offset?: number;
+  type?: CommentType;
+  hasSpoilers?: boolean;
+}
+
+export interface CreateCommentRequest {
+  title?: string;
+  content: string;
+  type: CommentType;
+  hasSpoilers?: boolean;
+}
+
+export interface UpdateCommentRequest {
+  title?: string;
+  content?: string;
+  hasSpoilers?: boolean;
+}
+
+export interface VoteCommentRequest {
+  value: -1 | 0 | 1;
+}
+
+export interface CommentVoteResponse {
+  helpful: number;
+  unhelpful: number;
+  updatedAt: string;
+}
+
 // ===== Leitor =====
 export interface ChapterInfo {
   id: string;
@@ -386,6 +457,107 @@ export interface MediaProgress {
   startedAt: string;
   lastReadAt: string;
   readCount: number;
+}
+
+// ===== Account & Perfil Expandido (API v2.1) =====
+export interface Account {
+  id: string;
+  name: string;
+  username: string;
+  email: string;
+  bio?: string | null;
+  website?: string | null;
+  location?: string | null;
+  avatarUrl?: string | null;
+  role: string;
+  subStatus: string;
+  subExpiresAt?: string | null;
+  maxDevices: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserPreferences {
+  readingMode: "SINGLE" | "DOUBLE" | "CONTINUOUS";
+  readingDir: "LTR" | "RTL";
+  autoNext: boolean;
+  theme: "DARK" | "LIGHT" | "SEPIA";
+  brightness: number;
+  language: string;
+  timezone: string;
+  imageQuality: "LOW" | "MEDIUM" | "HIGH";
+  prefetch: number;
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  notifyNewChapters: boolean;
+  notifySeriesComplete: boolean;
+  isProfilePublic: boolean;
+  showReadingStats: boolean;
+  showCommunityProfile: boolean;
+}
+
+export interface AccountResponse {
+  account: Account;
+  preferences: UserPreferences;
+}
+
+export interface UpdateProfileRequest {
+  name?: string;
+  username?: string;
+  bio?: string;
+  website?: string;
+  location?: string;
+}
+
+export interface UpdateProfileResponse {
+  profile: Account;
+}
+
+export interface UpdatePreferencesRequest {
+  readingMode?: string;
+  readingDir?: string;
+  autoNext?: boolean;
+  theme?: string;
+  brightness?: number;
+  language?: string;
+  timezone?: string;
+  imageQuality?: string;
+  prefetch?: number;
+  emailNotifications?: boolean;
+  pushNotifications?: boolean;
+  notifyNewChapters?: boolean;
+  notifySeriesComplete?: boolean;
+  isProfilePublic?: boolean;
+  showReadingStats?: boolean;
+  showCommunityProfile?: boolean;
+}
+
+export interface UpdatePreferencesResponse {
+  preferences: Partial<UserPreferences>;
+}
+
+export interface ChangeEmailRequest {
+  currentPassword: string;
+  email: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface UsernameCheckResponse {
+  username: string;
+  available: boolean;
+  suggestions: string[];
+}
+
+export interface AvatarUploadResponse {
+  profile: Pick<Account, "id" | "name" | "avatarUrl">;
+}
+
+export interface AvatarRemoveResponse {
+  profile: Pick<Account, "id" | "avatarUrl">;
 }
 
 export interface SeriesProgress {

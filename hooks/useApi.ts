@@ -5,6 +5,7 @@ import { notificationsService } from "@/services/notifications.service";
 import { statsService } from "@/services/stats.service";
 import { userListsService } from "@/services/userLists.service";
 import { progressService } from "@/services/progress.service";
+import { authService } from "@/services/auth.service";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ContinueReadingParams, ProgressHistoryParams } from "@/types/api";
 
@@ -238,6 +239,38 @@ export function useRemoveSeriesProgress() {
       queryClient.invalidateQueries({ queryKey: ["progress"] });
       queryClient.invalidateQueries({ queryKey: ["history"] });
       queryClient.invalidateQueries({ queryKey: ["series"] });
+    },
+  });
+}
+
+// ===== SESSÕES / PERFIL =====
+export function useSessions() {
+  return useQuery({
+    queryKey: ["sessions"],
+    queryFn: () => authService.getSessions(),
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useRevokeSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (sessionId: string) => authService.revokeSession(sessionId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+}
+
+export function useLogoutAllSessions() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => authService.logoutAll(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
     },
   });
 }

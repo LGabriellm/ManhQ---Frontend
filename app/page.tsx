@@ -1,724 +1,629 @@
 "use client";
 
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
-  Play,
-  Loader2,
-  Heart,
-  Clock,
-  Flame,
-  Sparkles,
-  RefreshCw,
+  Check,
   ChevronRight,
-  BookOpen,
+  Crown,
+  Flame,
+  Heart,
+  Library,
+  Play,
+  ShieldCheck,
+  Smartphone,
+  Sparkles,
+  Star,
   TrendingUp,
+  Users,
+  Zap,
 } from "lucide-react";
-import { MangaCard } from "@/components/MangaCard";
-import { ContinueReadingCard } from "@/components/ContinueReadingCard";
-import { Section } from "@/components/Section";
-import { HorizontalScroll } from "@/components/HorizontalScroll";
-import { useContinueReading } from "@/hooks/useApi";
-import { useDiscover } from "@/hooks/useDiscover";
-import { useFavorites } from "@/hooks/useFavoritesApi";
 import { useAuth } from "@/contexts/AuthContext";
-import { AuthCover } from "@/components/AuthCover";
-import { useMemo, useState, useEffect, useCallback } from "react";
-import type { Series } from "@/types/api";
 
-// ─── Saudação com base na hora ─────────────────────────────────────────────
-function getGreeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 6) return "Boa madrugada";
-  if (hour < 12) return "Bom dia";
-  if (hour < 18) return "Boa tarde";
-  return "Boa noite";
-}
+const CHECKOUT_URL =
+  "https://pay.kirvano.com/fa717258-dae4-4eea-9368-970ee9cee695";
 
-// ─── Skeleton Loader ────────────────────────────────────────────────────────
+const highlights = [
+  {
+    icon: Flame,
+    title: "Atualizações frequentes",
+    description:
+      "Novos capítulos e títulos chegando em ritmo constante para manter o catálogo sempre vivo.",
+  },
+  {
+    icon: Smartphone,
+    title: "Experiência mobile-first",
+    description:
+      "Leitura rápida, interface limpa e navegação pensada para celular sem sacrificar desktop.",
+  },
+  {
+    icon: Library,
+    title: "Biblioteca organizada",
+    description:
+      "Salve favoritos, acompanhe progresso e volte exatamente de onde parou em segundos.",
+  },
+  {
+    icon: Users,
+    title: "Comunidade integrada",
+    description:
+      "Discuta capítulos, compartilhe teorias e acompanhe a reação da comunidade dentro da plataforma.",
+  },
+];
 
-function HeroSkeleton() {
-  return (
-    <section className="relative h-[65vh] min-h-105 max-h-140 overflow-hidden">
-      <div className="absolute inset-0 bg-surface/30 animate-pulse" />
-      <div className="absolute inset-0 bg-linear-to-t from-background via-background/60 to-background/20" />
-      <div className="relative h-full flex flex-col justify-end px-5 pb-6">
-        <div className="flex gap-4 items-end">
-          <div className="w-30 h-42.5 shrink-0 rounded-2xl bg-surface/50 animate-pulse" />
-          <div className="flex-1 space-y-3 pb-0.5">
-            <div className="flex gap-1.5">
-              <div className="h-5 w-20 rounded-full bg-surface/50 animate-pulse" />
-              <div className="h-5 w-14 rounded-full bg-surface/50 animate-pulse" />
-            </div>
-            <div className="h-7 w-3/4 rounded-lg bg-surface/50 animate-pulse" />
-            <div className="h-4 w-full rounded-lg bg-surface/50 animate-pulse" />
-            <div className="flex gap-2.5 mt-2">
-              <div className="flex-1 h-11 rounded-xl bg-surface/50 animate-pulse" />
-              <div className="w-11 h-11 rounded-xl bg-surface/50 animate-pulse" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
+const benefits = [
+  "Catálogo curado com foco em leitura fluida",
+  "Acesso rápido ao que você está lendo agora",
+  "Visual premium com navegação simples e objetiva",
+  "Perfil com progresso, histórico e favoritos",
+  "Ambiente contínuo para descoberta e retenção",
+  "Interface otimizada para sessões longas de leitura",
+];
 
-function SectionSkeleton({ count = 4 }: { count?: number }) {
-  return (
-    <div className="mb-8">
-      <div className="flex items-center gap-2 mb-4 px-4">
-        <div className="w-5 h-5 rounded bg-surface/50 animate-pulse" />
-        <div className="h-6 w-40 rounded-lg bg-surface/50 animate-pulse" />
-      </div>
-      <div className="flex gap-3 px-4 overflow-hidden">
-        {Array.from({ length: count }).map((_, i) => (
-          <div key={i} className="w-32.5 shrink-0">
-            <div className="aspect-2/3 rounded-xl bg-surface/50 animate-pulse" />
-            <div className="mt-2 h-4 w-3/4 rounded bg-surface/50 animate-pulse" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+const featureCards = [
+  {
+    eyebrow: "Descoberta",
+    title: "Encontre sua próxima obsessão em minutos",
+    description:
+      "Destaques certeiros, catálogo organizado e atalhos rápidos para você começar a ler sem perder tempo.",
+    stat: "+ descobertas",
+    icon: Sparkles,
+  },
+  {
+    eyebrow: "Retenção",
+    title: "Continue de onde parou sem atrito",
+    description:
+      "Abra o ManHQ e retome sua leitura no ponto exato, com menos fricção e mais continuidade.",
+    stat: "+ conforto",
+    icon: Zap,
+  },
+  {
+    eyebrow: "Prestígio",
+    title: "Experiência premium de verdade",
+    description:
+      "Um visual elegante, leitura fluida e navegação limpa para fazer a assinatura parecer valer cada centavo.",
+    stat: "+ valor",
+    icon: Crown,
+  },
+];
 
-function ContinueReadingSkeleton() {
-  return (
-    <div className="mb-8">
-      <div className="flex items-center gap-2 mb-4 px-4">
-        <div className="w-5 h-5 rounded bg-surface/50 animate-pulse" />
-        <div className="h-6 w-40 rounded-lg bg-surface/50 animate-pulse" />
-      </div>
-      <div className="px-4 space-y-2.5">
-        {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="flex gap-3 p-3 bg-surface/50 rounded-2xl animate-pulse"
-          >
-            <div className="w-16 h-22 rounded-xl bg-surface animate-pulse" />
-            <div className="flex-1 space-y-2 py-1">
-              <div className="h-4 w-2/3 rounded bg-surface animate-pulse" />
-              <div className="h-3 w-1/3 rounded bg-surface animate-pulse" />
-              <div className="h-1.5 w-full rounded-full bg-surface animate-pulse mt-3" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+const steps = [
+  {
+    step: "01",
+    title: "Assine e desbloqueie o acesso",
+    description:
+      "Entre no checkout, conclua sua assinatura e receba o acesso para começar sua experiência no ManHQ.",
+  },
+  {
+    step: "02",
+    title: "Descubra, salve e acompanhe",
+    description:
+      "Monte sua biblioteca, favorite séries e mantenha seu progresso sempre sincronizado.",
+  },
+  {
+    step: "03",
+    title: "Leia com constância",
+    description:
+      "Retome capítulos, acompanhe novidades e transforme leitura em hábito recorrente.",
+  },
+];
 
-// ─── Hero Carousel ─────────────────────────────────────────────────────────────
+const faqs = [
+  {
+    question: "O que torna o ManHQ diferente?",
+    answer:
+      "O ManHQ une catálogo, progresso contínuo, favoritos e comunidade em uma experiência premium focada em leitura de verdade.",
+  },
+  {
+    question: "A plataforma funciona bem no celular?",
+    answer:
+      "Sim. O produto foi estruturado com prioridade para mobile, com leitura rápida, navegação leve e baixa fricção.",
+  },
+  {
+    question: "Consigo voltar exatamente para onde parei?",
+    answer:
+      "Sim. O ManHQ registra progresso e facilita retomar capítulos e páginas em andamento.",
+  },
+];
 
-function HeroCarousel({
-  items,
-  isFavorite,
-  toggleFavorite,
-  isUpdating,
+function GlassCard({
+  children,
+  className = "",
 }: {
-  items: Series[];
-  isFavorite: (id: string) => boolean;
-  toggleFavorite: (id: string) => Promise<void>;
-  isUpdating: boolean;
+  children: React.ReactNode;
+  className?: string;
 }) {
-  const [current, setCurrent] = useState(0);
-  const series = items[current];
-
-  useEffect(() => {
-    if (items.length <= 1) return;
-    const timer = setInterval(() => {
-      setCurrent((prev) => (prev + 1) % items.length);
-    }, 6000);
-    return () => clearInterval(timer);
-  }, [items.length]);
-
-  const goTo = useCallback((index: number) => setCurrent(index), []);
-
-  if (!series) return null;
-
-  const statusLabel =
-    series.status === "ONGOING"
-      ? "Em Andamento"
-      : series.status === "COMPLETED"
-        ? "Completo"
-        : series.status === "HIATUS"
-          ? "Hiato"
-          : null;
-
   return (
-    <section className="relative h-[65vh] min-h-105 max-h-140 overflow-hidden">
-      {/* Background com crossfade */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={series.id}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.6 }}
-          className="absolute inset-0"
-        >
-          <AuthCover
-            coverUrl={series.coverUrl!}
-            alt={series.title}
-            className="object-cover scale-110 blur-xl opacity-50"
-            loading="eager"
-          />
-        </motion.div>
-      </AnimatePresence>
-
-      {/* Gradientes */}
-      <div className="absolute inset-0 bg-linear-to-t from-background via-background/60 to-background/20" />
-      <div className="absolute inset-0 bg-linear-to-r from-background/70 via-transparent to-background/70" />
-
-      {/* Conteúdo */}
-      <div className="relative h-full flex flex-col justify-end px-5 pb-6">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={series.id}
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
-            className="flex gap-4 items-end"
-          >
-            {/* Capa */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.1, duration: 0.4 }}
-              className="w-30 h-42.5 shrink-0 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10"
-            >
-              <AuthCover
-                coverUrl={series.coverUrl!}
-                alt={series.title}
-                className="object-cover"
-                loading="eager"
-              />
-            </motion.div>
-
-            {/* Info */}
-            <div className="flex-1 min-w-0 pb-0.5">
-              {/* Tags */}
-              <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                {statusLabel && (
-                  <span className="text-[10px] px-2 py-0.5 bg-primary/20 text-primary font-semibold rounded-full border border-primary/30">
-                    {statusLabel}
-                  </span>
-                )}
-                {series.genres?.slice(0, 2).map((genre) => (
-                  <span
-                    key={genre}
-                    className="text-[10px] px-2 py-0.5 bg-white/8 backdrop-blur-sm rounded-full text-textDim font-medium"
-                  >
-                    {genre}
-                  </span>
-                ))}
-              </div>
-
-              {/* Título */}
-              <h1 className="text-[22px] leading-tight font-extrabold text-white line-clamp-2 mb-1 tracking-tight">
-                {series.title}
-              </h1>
-
-              {/* Descrição */}
-              {series.description && (
-                <p className="text-[11px] text-white/50 line-clamp-2 mb-3.5 leading-relaxed">
-                  {series.description}
-                </p>
-              )}
-
-              {/* Ações */}
-              <div className="flex gap-2.5">
-                <Link href={`/serie/${series.id}`} className="flex-1 min-w-0">
-                  <motion.button
-                    whileTap={{ scale: 0.95 }}
-                    className="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2.5 px-5 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/25 text-sm ring-1 ring-primary/50"
-                  >
-                    <Play className="w-4 h-4 fill-white" />
-                    Ver Detalhes
-                  </motion.button>
-                </Link>
-
-                <motion.button
-                  whileTap={{ scale: 0.85 }}
-                  onClick={() => toggleFavorite(series.id)}
-                  disabled={isUpdating}
-                  className="w-11 h-11 bg-white/6 backdrop-blur-md hover:bg-white/12 rounded-xl flex items-center justify-center transition-all disabled:opacity-50 ring-1 ring-white/8 shrink-0"
-                >
-                  <Heart
-                    className={`w-5 h-5 transition-all duration-300 ${
-                      isFavorite(series.id)
-                        ? "fill-primary text-primary scale-110"
-                        : "text-white/70"
-                    }`}
-                  />
-                </motion.button>
-              </div>
-            </div>
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Dots do carrossel */}
-        {items.length > 1 && (
-          <div className="flex justify-center gap-1.5 mt-5">
-            {items.map((_, index) => (
-              <button
-                key={index}
-                onClick={() => goTo(index)}
-                className={`h-1 rounded-full transition-all duration-500 ${
-                  index === current
-                    ? "w-6 bg-primary"
-                    : "w-1.5 bg-white/20 hover:bg-white/40"
-                }`}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-// ─── Quick Genre Pills ──────────────────────────────────────────────────────
-
-function GenrePills({ genres }: { genres: string[] }) {
-  if (genres.length === 0) return null;
-
-  return (
-    <div className="px-4 mt-3 mb-0">
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-        {genres.map((genre) => (
-          <Link key={genre} href={`/search?genre=${encodeURIComponent(genre)}`}>
-            <motion.div
-              whileTap={{ scale: 0.95 }}
-              className="px-3.5 py-1.5 bg-white/5 backdrop-blur-sm border border-white/6 hover:border-primary/30 hover:bg-primary/8 rounded-full text-xs font-medium text-textDim hover:text-primary whitespace-nowrap transition-all duration-200"
-            >
-              {genre}
-            </motion.div>
-          </Link>
-        ))}
-      </div>
+    <div
+      className={`rounded-[28px] border border-white/8 bg-white/4 shadow-[0_20px_80px_rgba(0,0,0,0.38)] backdrop-blur-xl ${className}`}
+    >
+      {children}
     </div>
   );
 }
-
-// ─── Ranking Card (para "Mais Populares") ────────────────────────────────────
-
-function RankingCard({ series, rank }: { series: Series; rank: number }) {
-  return (
-    <Link href={`/serie/${series.id}`}>
-      <motion.div
-        whileTap={{ scale: 0.97 }}
-        className="relative flex gap-3 items-center p-3 rounded-2xl bg-surface/40 backdrop-blur-sm hover:bg-surface/70 transition-all group border border-white/4 hover:border-white/8"
-      >
-        {/* Ranking número */}
-        <div className="w-8 text-center shrink-0">
-          <span
-            className={`text-2xl font-black tabular-nums ${
-              rank === 1
-                ? "text-yellow-400"
-                : rank === 2
-                  ? "text-gray-300"
-                  : rank === 3
-                    ? "text-amber-600"
-                    : "text-white/15"
-            }`}
-          >
-            {rank}
-          </span>
-        </div>
-
-        {/* Capa */}
-        <div className="w-11 h-15 rounded-lg overflow-hidden shrink-0 shadow-md ring-1 ring-white/5">
-          <AuthCover
-            coverUrl={series.coverUrl || `/series/${series.id}/cover`}
-            alt={series.title}
-            className="object-cover"
-          />
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <h3 className="text-sm font-semibold text-textMain line-clamp-1 group-hover:text-white transition-colors">
-            {series.title}
-          </h3>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            {series.genres?.slice(0, 2).map((g) => (
-              <span
-                key={g}
-                className="text-[10px] text-textDim/70 bg-white/4 px-1.5 py-0.5 rounded-md"
-              >
-                {g}
-              </span>
-            ))}
-          </div>
-          {series._count?.medias != null && (
-            <p className="text-[10px] text-textDim mt-0.5">
-              {series._count.medias} capítulos
-            </p>
-          )}
-        </div>
-
-        <ChevronRight className="w-4 h-4 text-white/8 group-hover:text-white/25 transition-colors shrink-0" />
-      </motion.div>
-    </Link>
-  );
-}
-
-// ─── Wide Card (para "Atualizados Recentemente") ────────────────────────────
-
-function UpdatedSeriesCard({ series }: { series: Series }) {
-  const latestChapter = series.medias?.[0];
-
-  return (
-    <Link href={`/serie/${series.id}`}>
-      <motion.div
-        whileTap={{ scale: 0.97 }}
-        className="relative w-60 shrink-0 snap-start rounded-2xl overflow-hidden bg-surface/40 backdrop-blur-sm border border-white/5 hover:border-white/10 transition-all group"
-      >
-        {/* Capa com overlay */}
-        <div className="relative h-32 overflow-hidden">
-          <AuthCover
-            coverUrl={series.coverUrl || `/series/${series.id}/cover`}
-            alt={series.title}
-            className="object-cover group-hover:scale-105 transition-transform duration-500"
-          />
-          <div className="absolute inset-0 bg-linear-to-t from-surface via-surface/50 to-transparent" />
-
-          {/* Badge de atualização */}
-          <div className="absolute top-2.5 left-2.5 flex items-center gap-1 bg-emerald-500/80 backdrop-blur-md text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg ring-1 ring-emerald-400/20">
-            <RefreshCw className="w-2.5 h-2.5" />
-            Novo
-          </div>
-        </div>
-
-        {/* Info */}
-        <div className="p-3 -mt-3 relative">
-          <h3 className="text-[13px] font-bold text-white line-clamp-1 mb-0.5">
-            {series.title}
-          </h3>
-          {latestChapter && (
-            <p className="text-[11px] text-textDim line-clamp-1">
-              {latestChapter.title || `Capítulo ${latestChapter.number}`}
-            </p>
-          )}
-          {!latestChapter && series.author && (
-            <p className="text-[11px] text-textDim line-clamp-1">
-              {series.author}
-            </p>
-          )}
-        </div>
-      </motion.div>
-    </Link>
-  );
-}
-
-// ─── Stats rápidas da Home ──────────────────────────────────────────────────
-
-function QuickNumbers({
-  totalSeries,
-  totalReading,
-  totalFavorites,
-}: {
-  totalSeries: number;
-  totalReading: number;
-  totalFavorites: number;
-}) {
-  const stats = [
-    {
-      icon: BookOpen,
-      value: totalSeries,
-      label: "No catálogo",
-      color: "text-blue-400",
-      bg: "bg-blue-400/10",
-      ring: "ring-blue-400/10",
-    },
-    {
-      icon: TrendingUp,
-      value: totalReading,
-      label: "Lendo agora",
-      color: "text-emerald-400",
-      bg: "bg-emerald-400/10",
-      ring: "ring-emerald-400/10",
-    },
-    {
-      icon: Heart,
-      value: totalFavorites,
-      label: "Favoritos",
-      color: "text-primary",
-      bg: "bg-primary/10",
-      ring: "ring-primary/10",
-    },
-  ];
-
-  return (
-    <div className="grid grid-cols-3 gap-2 px-4 mt-2 mb-1">
-      {stats.map((stat, i) => (
-        <motion.div
-          key={stat.label}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.06 }}
-          className={`bg-surface/50 backdrop-blur-sm border border-white/4 rounded-2xl p-3 text-center ring-1 ${stat.ring}`}
-        >
-          <div
-            className={`w-8 h-8 rounded-xl ${stat.bg} flex items-center justify-center mx-auto mb-2`}
-          >
-            <stat.icon className={`w-4 h-4 ${stat.color}`} />
-          </div>
-          <p className="text-lg font-bold text-textMain tabular-nums">
-            {stat.value}
-          </p>
-          <p className="text-[10px] text-textDim mt-0.5">{stat.label}</p>
-        </motion.div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Home Page ──────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
-  const { user } = useAuth();
-  const { data: discover, isLoading, error } = useDiscover();
-  const { data: continueReading, isLoading: isLoadingReading } =
-    useContinueReading({
-      limit: 5,
-      onlyInProgress: true,
-    });
-  const { isFavorite, toggleFavorite, isUpdating, favorites } = useFavorites();
-
-  // Selecionar séries para o hero carousel (top 5 populares com capa)
-  const heroItems = useMemo(() => {
-    if (!discover?.mostViewed) return [];
-    return discover.mostViewed.filter((s) => s.coverUrl).slice(0, 5);
-  }, [discover]);
-
-  // Extrair gêneros únicos das séries
-  const topGenres = useMemo(() => {
-    if (!discover) return [];
-    const allSeries = [
-      ...discover.mostViewed,
-      ...discover.recentlyAdded,
-      ...discover.recentlyUpdated,
-    ];
-    const genreCount = new Map<string, number>();
-    allSeries.forEach((s) => {
-      s.genres?.forEach((g) => {
-        genreCount.set(g, (genreCount.get(g) || 0) + 1);
-      });
-    });
-    return Array.from(genreCount.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([genre]) => genre);
-  }, [discover]);
-
-  // Loading State com skeletons
-  if (isLoading) {
-    return (
-      <main className="min-h-screen bg-background">
-        <HeroSkeleton />
-        <div className="mt-1 space-y-1 pb-28">
-          <ContinueReadingSkeleton />
-          <SectionSkeleton />
-          <SectionSkeleton count={3} />
-        </div>
-      </main>
-    );
-  }
-
-  if (error || !discover) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="text-center">
-          <div className="w-16 h-16 rounded-full bg-surface flex items-center justify-center mx-auto mb-4">
-            <BookOpen className="w-7 h-7 text-textDim" />
-          </div>
-          <p className="text-textMain mb-2 text-lg font-semibold">
-            Erro ao carregar
-          </p>
-          <p className="text-textDim text-sm mb-4">
-            Verifique sua conexão e tente novamente
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm"
-          >
-            Tentar novamente
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const { recentlyAdded, recentlyUpdated, mostViewed } = discover;
-  const readingCount = continueReading?.filter((i) => !i.finished).length ?? 0;
-  const totalCatalog = new Set([
-    ...recentlyAdded.map((s) => s.id),
-    ...recentlyUpdated.map((s) => s.id),
-    ...mostViewed.map((s) => s.id),
-  ]).size;
+  const { isAuthenticated, user } = useAuth();
 
   return (
-    <main className="min-h-screen bg-background">
-      {/* ===== GREETING HEADER ===== */}
-      <div className="absolute top-0 left-0 right-0 z-10 px-5 pt-11 pb-3">
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-        >
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className="text-lg font-extrabold text-primary tracking-tight">
-              ManHQ
-            </span>
-          </div>
-          <p className="text-[13px] text-white/50 font-medium">
-            {getGreeting()},{" "}
-            <span className="text-white/80 font-semibold">
-              {user?.name?.split(" ")[0] || "Leitor"}
-            </span>
-          </p>
-        </motion.div>
+    <main className="min-h-screen overflow-x-hidden bg-background text-textMain">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute left-1/2 top-0 h-128 w-lg -translate-x-1/2 rounded-full bg-primary/18 blur-[140px]" />
+        <div className="absolute -right-32 top-40 h-80 w-80 rounded-full bg-primary/10 blur-[120px]" />
+        <div className="absolute -left-32 top-128 h-72 w-72 rounded-full bg-primary/8 blur-[120px]" />
       </div>
 
-      {/* ===== HERO CAROUSEL ===== */}
-      {heroItems.length > 0 && (
-        <HeroCarousel
-          items={heroItems}
-          isFavorite={isFavorite}
-          toggleFavorite={toggleFavorite}
-          isUpdating={isUpdating}
-        />
-      )}
-
-      {/* ===== QUICK GENRE PILLS ===== */}
-      {topGenres.length > 0 && <GenrePills genres={topGenres} />}
-
-      <div className="mt-1 space-y-1 pb-28">
-        {/* ===== NÚMEROS RÁPIDOS ===== */}
-        <QuickNumbers
-          totalSeries={totalCatalog}
-          totalReading={readingCount}
-          totalFavorites={favorites?.length ?? 0}
-        />
-
-        {/* ===== CONTINUAR LENDO ===== */}
-        {!isLoadingReading && continueReading && continueReading.length > 0 && (
-          <Section
-            title="Continuar Lendo"
-            icon={<Clock className="w-5 h-5 text-primary" />}
-            href="/library"
-          >
-            <div className="px-4 space-y-2.5">
-              {continueReading.slice(0, 3).map((item, index) => (
-                <motion.div
-                  key={item.mediaId}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.08 }}
-                >
-                  <ContinueReadingCard
-                    seriesId={item.seriesId}
-                    mediaId={item.mediaId}
-                    title={item.seriesTitle || "Sem título"}
-                    coverUrl={item.coverUrl || `/series/${item.seriesId}/cover`}
-                    chapterTitle={item.mediaTitle}
-                    currentPage={item.page}
-                    totalPages={item.pageCount}
-                  />
-                </motion.div>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {isLoadingReading && <ContinueReadingSkeleton />}
-
-        {/* ===== ATUALIZADOS RECENTEMENTE (Wide cards) ===== */}
-        {recentlyUpdated.length > 0 && (
-          <Section
-            title="Atualizados Recentemente"
-            icon={<RefreshCw className="w-5 h-5 text-emerald-400" />}
-          >
-            <HorizontalScroll>
-              {recentlyUpdated.map((series, index) => (
-                <motion.div
-                  key={series.id}
-                  initial={{ opacity: 0, x: 24 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.06 }}
-                >
-                  <UpdatedSeriesCard series={series} />
-                </motion.div>
-              ))}
-            </HorizontalScroll>
-          </Section>
-        )}
-
-        {/* ===== MAIS POPULARES (Ranking top 5 + ver tudo) ===== */}
-        {mostViewed.length > 0 && (
-          <Section
-            title="Mais Populares"
-            icon={<Flame className="w-5 h-5 text-orange-400" />}
-          >
-            <div className="px-4 space-y-2">
-              {mostViewed.slice(0, 5).map((series, index) => (
-                <motion.div
-                  key={series.id}
-                  initial={{ opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.04 }}
-                >
-                  <RankingCard series={series} rank={index + 1} />
-                </motion.div>
-              ))}
-            </div>
-            {mostViewed.length > 5 && (
-              <div className="px-4 mt-3">
-                <Link href="/search?sort=popular">
-                  <motion.button
-                    whileTap={{ scale: 0.97 }}
-                    className="w-full py-2.5 rounded-xl border border-white/8 text-sm font-medium text-textDim hover:text-textMain hover:border-white/15 transition-all flex items-center justify-center gap-2"
-                  >
-                    Ver ranking completo
-                    <ChevronRight className="w-4 h-4" />
-                  </motion.button>
-                </Link>
+      <section className="relative px-5 pb-16 pt-6 sm:px-8 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-10 flex items-center justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-white/4 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-white/72 backdrop-blur-xl">
+                <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_14px_rgba(229,9,20,0.7)]" />
+                streaming reading experience
               </div>
-            )}
-          </Section>
-        )}
+              <p className="mt-4 font-display text-2xl font-bold tracking-tight text-primary sm:text-3xl">
+                ManHQ
+              </p>
+            </div>
 
-        {/* ===== ADICIONADOS RECENTEMENTE (Grid) ===== */}
-        {recentlyAdded.length > 0 && (
-          <Section
-            title="Novos no Catálogo"
-            icon={<Sparkles className="w-5 h-5 text-violet-400" />}
-          >
-            <HorizontalScroll>
-              {recentlyAdded.map((series, index) => (
-                <motion.div
-                  key={series.id}
-                  className="w-32.5 shrink-0 snap-start"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <MangaCard
-                    id={series.id}
-                    title={series.title}
-                    coverUrl={series.coverUrl || `/series/${series.id}/cover`}
-                    rating={series.rating}
-                    isNew
-                  />
-                </motion.div>
-              ))}
-            </HorizontalScroll>
-          </Section>
-        )}
-      </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href={isAuthenticated ? "/library" : "/auth/login"}
+                className="rounded-full border border-white/8 bg-white/4 px-4 py-2 text-sm font-medium text-textMain transition-colors hover:border-primary/25 hover:bg-white/7"
+              >
+                {isAuthenticated ? "Abrir biblioteca" : "Entrar"}
+              </Link>
+              <a
+                href={CHECKOUT_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-[0_14px_38px_rgba(229,9,20,0.34)] transition-transform hover:scale-[1.02]"
+              >
+                Assinar agora
+              </a>
+            </div>
+          </div>
+
+          <div className="grid items-center gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:gap-12">
+            <div>
+              <motion.div
+                initial={{ opacity: 0, y: 24 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
+              >
+                <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                  <Star className="h-3.5 w-3.5 fill-primary text-primary" />
+                  assinatura premium para leitores exigentes
+                </div>
+
+                <h1 className="max-w-4xl font-display text-[2.8rem] font-bold leading-[0.95] tracking-[-0.05em] text-white sm:text-[4.4rem] lg:text-[5.4rem]">
+                  Assine uma experiência de leitura que parece streaming
+                  premium.
+                </h1>
+
+                <p className="mt-6 max-w-2xl text-base leading-7 text-white/68 sm:text-lg">
+                  Entre no ManHQ para ler com conforto, continuar de onde parou,
+                  descobrir novas séries e viver tudo isso em uma interface
+                  rápida, elegante e feita para maratonar capítulos.
+                </p>
+
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                  <a href={CHECKOUT_URL} target="_blank" rel="noreferrer">
+                    <motion.div
+                      whileTap={{ scale: 0.98 }}
+                      className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)]"
+                    >
+                      <Play className="h-4 w-4 fill-white" />
+                      Assinar e começar agora
+                    </motion.div>
+                  </a>
+
+                  <a href={CHECKOUT_URL} target="_blank" rel="noreferrer">
+                    <motion.div
+                      whileTap={{ scale: 0.98 }}
+                      className="flex items-center justify-center gap-2 rounded-2xl border border-white/8 bg-white/4 px-6 py-4 text-sm font-semibold text-textMain backdrop-blur-xl transition-colors hover:border-primary/20 hover:bg-white/7"
+                    >
+                      Ver oferta completa
+                      <ChevronRight className="h-4 w-4" />
+                    </motion.div>
+                  </a>
+                </div>
+
+                <div className="mt-10 grid gap-3 sm:grid-cols-3">
+                  {[
+                    { value: "UX", label: "focada em retenção" },
+                    { value: "24/7", label: "catálogo disponível" },
+                    { value: "Mobile", label: "primeiro de verdade" },
+                  ].map((item) => (
+                    <GlassCard key={item.label} className="p-4">
+                      <p className="text-2xl font-bold text-white">
+                        {item.value}
+                      </p>
+                      <p className="mt-1 text-sm text-white/60">{item.label}</p>
+                    </GlassCard>
+                  ))}
+                </div>
+              </motion.div>
+            </div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 28 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.55, delay: 0.08 }}
+              className="relative"
+            >
+              <GlassCard className="overflow-hidden p-3 sm:p-4">
+                <div className="rounded-3xl border border-white/8 bg-black/35 p-4 sm:p-5">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.24em] text-white/45">
+                        premium reader flow
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-white">
+                        Tudo o que faz sua assinatura valer a pena desde o
+                        primeiro toque
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-primary/16 p-3 text-primary">
+                      <Crown className="h-5 w-5" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="rounded-[22px] border border-white/8 bg-white/4 p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-white">
+                            Continue lendo
+                          </p>
+                          <p className="text-xs text-white/52">
+                            Retome exatamente do ponto em que você parou
+                          </p>
+                        </div>
+                        <div className="rounded-full bg-primary/14 px-3 py-1 text-[11px] font-semibold text-primary">
+                          leitura contínua
+                        </div>
+                      </div>
+                      <div className="h-2 rounded-full bg-white/7">
+                        <div className="h-full w-[74%] rounded-full bg-linear-to-r from-primary to-[#ff7a84]" />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-[22px] border border-white/8 bg-white/4 p-4">
+                        <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                          <Heart className="h-5 w-5 fill-primary" />
+                        </div>
+                        <p className="text-sm font-semibold text-white">
+                          Biblioteca e favoritos
+                        </p>
+                        <p className="mt-1 text-xs leading-6 text-white/55">
+                          Guarde séries, acompanhe favoritos e monte sua rotina
+                          de leitura sem confusão.
+                        </p>
+                      </div>
+
+                      <div className="rounded-[22px] border border-white/8 bg-white/4 p-4">
+                        <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                          <TrendingUp className="h-5 w-5" />
+                        </div>
+                        <p className="text-sm font-semibold text-white">
+                          Descoberta contínua
+                        </p>
+                        <p className="mt-1 text-xs leading-6 text-white/55">
+                          Novidades, destaques e recomendações para você sempre
+                          ter algo bom para ler.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </GlassCard>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
+      <section className="relative px-5 py-8 sm:px-8 lg:px-12">
+        <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {highlights.map((item, index) => (
+            <motion.div
+              key={item.title}
+              initial={{ opacity: 0, y: 22 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.35 }}
+              transition={{ delay: index * 0.06, duration: 0.4 }}
+            >
+              <GlassCard className="h-full p-6">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+                  <item.icon className="h-5 w-5" />
+                </div>
+                <h2 className="text-lg font-semibold text-white">
+                  {item.title}
+                </h2>
+                <p className="mt-2 text-sm leading-7 text-white/58">
+                  {item.description}
+                </p>
+              </GlassCard>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      <section className="px-5 py-12 sm:px-8 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-8 max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">
+              por que assinar
+            </p>
+            <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
+              Tudo foi pensado para deixar sua leitura mais prazerosa, prática e
+              viciante.
+            </h2>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            {featureCards.map((item, index) => (
+              <motion.div
+                key={item.title}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ delay: index * 0.05, duration: 0.4 }}
+              >
+                <GlassCard className="h-full p-6">
+                  <div className="mb-5 flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+                      {item.eyebrow}
+                    </span>
+                    <div className="rounded-2xl bg-primary/12 p-2.5 text-primary">
+                      <item.icon className="h-4.5 w-4.5" />
+                    </div>
+                  </div>
+                  <h3 className="text-xl font-semibold text-white">
+                    {item.title}
+                  </h3>
+                  <p className="mt-3 text-sm leading-7 text-white/58">
+                    {item.description}
+                  </p>
+                  <div className="mt-6 inline-flex rounded-full border border-primary/18 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                    {item.stat}
+                  </div>
+                </GlassCard>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 py-12 sm:px-8 lg:px-12">
+        <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <GlassCard className="p-6 sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary/80">
+              benefícios principais
+            </p>
+            <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white">
+              Uma assinatura boa precisa melhorar sua rotina de leitura.
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-white/58">
+              O ManHQ entrega acesso, conforto, organização e continuidade para
+              você ler mais e melhor todos os dias.
+            </p>
+          </GlassCard>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {benefits.map((item, index) => (
+              <motion.div
+                key={item}
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.35 }}
+                transition={{ delay: index * 0.04, duration: 0.35 }}
+              >
+                <GlassCard className="flex h-full items-start gap-3 p-5">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                    <Check className="h-4 w-4" />
+                  </div>
+                  <p className="text-sm leading-7 text-white/68">{item}</p>
+                </GlassCard>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 py-12 sm:px-8 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-8 max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">
+              jornada do usuário
+            </p>
+            <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
+              Da ativação ao hábito de leitura.
+            </h2>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            {steps.map((item, index) => (
+              <motion.div
+                key={item.step}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.35 }}
+                transition={{ delay: index * 0.05, duration: 0.35 }}
+              >
+                <GlassCard className="h-full p-6">
+                  <p className="text-4xl font-bold tracking-[-0.05em] text-primary/85">
+                    {item.step}
+                  </p>
+                  <h3 className="mt-5 text-xl font-semibold text-white">
+                    {item.title}
+                  </h3>
+                  <p className="mt-3 text-sm leading-7 text-white/58">
+                    {item.description}
+                  </p>
+                </GlassCard>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 py-12 sm:px-8 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <GlassCard className="overflow-hidden p-6 sm:p-8 lg:p-10">
+            <div className="grid gap-8 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">
+                  oferta
+                </p>
+                <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
+                  Assine para ter acesso a uma experiência completa de leitura.
+                </h2>
+                <p className="mt-4 max-w-xl text-sm leading-7 text-white/60 sm:text-base">
+                  Não é só abrir capítulos. É ter catálogo, progresso,
+                  favoritos, descoberta e comunidade dentro de uma experiência
+                  premium e fluida.
+                </p>
+              </div>
+
+              <div className="rounded-[28px] border border-white/8 bg-black/30 p-6">
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">
+                      Assinatura premium
+                    </p>
+                    <p className="mt-1 text-xs text-white/52">
+                      Acesso pensado para leitores que querem conforto e
+                      constância
+                    </p>
+                  </div>
+                  <div className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary">
+                    acesso imediato
+                  </div>
+                </div>
+
+                <div className="mb-5 border-b border-white/8 pb-5">
+                  <p className="text-5xl font-bold tracking-[-0.06em] text-white">
+                    Premium
+                  </p>
+                  <p className="mt-2 text-sm text-white/58">
+                    Entre para ler com continuidade, salvar favoritos,
+                    acompanhar seu progresso e aproveitar o catálogo completo.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  {[
+                    "Acesso ao ecossistema completo do ManHQ",
+                    "Experiência de leitura contínua",
+                    "Descoberta e favoritos no mesmo fluxo",
+                    "Interface rápida e elegante para maratonar",
+                  ].map((item) => (
+                    <div
+                      key={item}
+                      className="flex items-center gap-3 text-sm text-white/72"
+                    >
+                      <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                        <ShieldCheck className="h-4 w-4" />
+                      </div>
+                      {item}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+                  <a
+                    href={CHECKOUT_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1"
+                  >
+                    <div className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.33)]">
+                      Assinar pela Kirvano
+                    </div>
+                  </a>
+                  <Link
+                    href={isAuthenticated ? "/profile" : "/auth/login"}
+                    className="flex-1"
+                  >
+                    <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/8 bg-white/4 px-5 py-3.5 text-sm font-semibold text-textMain">
+                      {isAuthenticated
+                        ? "Ir para meu perfil"
+                        : "Já tenho acesso"}
+                    </div>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </GlassCard>
+        </div>
+      </section>
+
+      <section className="px-5 py-12 sm:px-8 lg:px-12">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-8 text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">
+              perguntas frequentes
+            </p>
+            <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
+              O que você precisa saber antes de assinar.
+            </h2>
+          </div>
+
+          <div className="space-y-3">
+            {faqs.map((faq, index) => (
+              <motion.div
+                key={faq.question}
+                initial={{ opacity: 0, y: 18 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.35 }}
+                transition={{ delay: index * 0.04, duration: 0.35 }}
+              >
+                <GlassCard className="p-5 sm:p-6">
+                  <p className="text-lg font-semibold text-white">
+                    {faq.question}
+                  </p>
+                  <p className="mt-2 text-sm leading-7 text-white/58">
+                    {faq.answer}
+                  </p>
+                </GlassCard>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 pb-18 pt-8 sm:px-8 lg:px-12">
+        <div className="mx-auto max-w-6xl">
+          <GlassCard className="relative overflow-hidden border-primary/16 bg-linear-to-br from-primary/16 via-white/5 to-white/2 p-8 text-center sm:p-10 lg:p-12">
+            <div className="pointer-events-none absolute left-1/2 top-0 h-48 w-48 -translate-x-1/2 rounded-full bg-primary/20 blur-[110px]" />
+            <p className="relative text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">
+              call to action final
+            </p>
+            <h2 className="relative mt-4 font-display text-3xl font-bold tracking-[-0.05em] text-white sm:text-5xl">
+              {isAuthenticated
+                ? `Pronto para voltar, ${user?.name?.split(" ")[0] || "leitor"}?`
+                : "Assine agora e desbloqueie uma experiência premium de leitura no ManHQ."}
+            </h2>
+            <p className="relative mx-auto mt-4 max-w-3xl text-sm leading-7 text-white/64 sm:text-base">
+              Tenha acesso ao catálogo, leitura contínua, favoritos, progresso e
+              uma interface que faz você querer voltar todos os dias.
+            </p>
+            <div className="relative mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+              <a href={CHECKOUT_URL} target="_blank" rel="noreferrer">
+                <div className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)]">
+                  Assinar agora pela Kirvano
+                </div>
+              </a>
+              <Link href={isAuthenticated ? "/search" : "/auth/login"}>
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm font-semibold text-textMain backdrop-blur-xl">
+                  {isAuthenticated ? "Explorar catálogo" : "Já sou assinante"}
+                </div>
+              </Link>
+            </div>
+          </GlassCard>
+        </div>
+      </section>
     </main>
   );
 }

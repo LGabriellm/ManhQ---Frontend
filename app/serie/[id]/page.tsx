@@ -17,10 +17,12 @@ import {
 } from "lucide-react";
 import { useRouter, useParams } from "next/navigation";
 import { useState } from "react";
+import toast from "react-hot-toast";
 import { useSeriesById } from "@/hooks/useApi";
 import { useFavorites } from "@/hooks/useFavoritesApi";
 import { useSeriesChapterProgress } from "@/hooks/useSeriesChapterProgress";
 import { AuthCover } from "@/components/AuthCover";
+import { CommentSection } from "@/components/community/CommentSection";
 
 export default function MangaDetailsPage() {
   const router = useRouter();
@@ -35,6 +37,25 @@ export default function MangaDetailsPage() {
 
   const handleToggleFavorite = async () => {
     await toggleFavorite(seriesId);
+  };
+
+  const handleShare = async () => {
+    if (!series) return;
+    const url = `${window.location.origin}/serie/${seriesId}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: series.title,
+          text: `Veja ${series.title} no ManHQ`,
+          url,
+        });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copiado para a área de transferência.");
+    } catch {
+      toast.error("Não foi possível compartilhar agora.");
+    }
   };
 
   if (isLoading) {
@@ -111,6 +132,7 @@ export default function MangaDetailsPage() {
             </motion.button>
             <motion.button
               whileTap={{ scale: 0.9 }}
+              onClick={() => void handleShare()}
               className="p-2 rounded-full hover:bg-surface transition-colors"
             >
               <Share2 className="w-6 h-6 text-textMain" />
@@ -404,6 +426,18 @@ export default function MangaDetailsPage() {
             )}
           </motion.div>
         )}
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.55 }}
+          className="mb-8"
+        >
+          <CommentSection
+            scope={{ type: "series", id: seriesId }}
+            title="Comentários da série"
+          />
+        </motion.div>
       </div>
     </main>
   );

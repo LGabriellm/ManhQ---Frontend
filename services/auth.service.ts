@@ -46,8 +46,15 @@ export const authService = {
 
   // Listar sessões ativas
   async getSessions(): Promise<Session[]> {
-    const response = await api.get<Session[]>("/sessions");
-    return response.data;
+    const response = await api.get<
+      Session[] | { sessions?: Session[]; data?: Session[] }
+    >("/sessions");
+
+    const payload = response.data;
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.sessions)) return payload.sessions;
+    if (Array.isArray(payload?.data)) return payload.data;
+    return [];
   },
 
   // Revogar sessão específica

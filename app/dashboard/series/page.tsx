@@ -207,7 +207,7 @@ function EditSeriesModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="relative ui-modal w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-5 border-b border-white/5">
           <h2 className="text-lg font-semibold text-[var(--color-textMain)]">
             Editar Série
@@ -405,7 +405,7 @@ function EnrichModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="relative ui-modal w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between p-5 border-b border-white/5">
           <h2 className="text-lg font-semibold text-[var(--color-textMain)]">
             Enriquecer: {series.title}
@@ -546,7 +546,7 @@ function DeleteSeriesConfirm({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-sm p-6">
+      <div className="relative ui-modal w-full max-w-sm p-6">
         <div className="flex flex-col items-center text-center">
           <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
             <AlertTriangle className="h-6 w-6 text-red-500" />
@@ -614,7 +614,7 @@ function EditMediaModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-md">
+      <div className="relative ui-modal w-full max-w-md">
         <div className="flex items-center justify-between p-5 border-b border-white/5">
           <h2 className="text-lg font-semibold text-[var(--color-textMain)]">
             Editar Mídia
@@ -890,7 +890,7 @@ function PageEditorModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="relative ui-modal w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/5 shrink-0">
           <div>
@@ -1144,7 +1144,7 @@ function BulkDeleteMediaConfirm({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-sm p-6">
+      <div className="relative ui-modal w-full max-w-sm p-6">
         <div className="flex flex-col items-center text-center">
           <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
             <AlertTriangle className="h-6 w-6 text-red-500" />
@@ -1300,7 +1300,7 @@ function UploadToSeriesModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-lg max-h-[85vh] flex flex-col">
+      <div className="relative ui-modal w-full max-w-lg max-h-[85vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-white/5">
           <div className="min-w-0">

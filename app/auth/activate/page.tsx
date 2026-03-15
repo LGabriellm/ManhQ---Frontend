@@ -136,7 +136,7 @@ export default function ActivatePage() {
       setStoredUser(result.user);
       setState("success");
       setTimeout(() => {
-        window.location.href = "/";
+        window.location.href = "/home";
       }, 2500);
     } catch (err) {
       const apiError = err as ApiError;

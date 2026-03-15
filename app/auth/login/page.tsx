@@ -23,7 +23,7 @@ export default function LoginPage() {
   // Redirecionar se já estiver autenticado
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      router.replace("/");
+      router.replace("/home");
     }
   }, [isAuthenticated, authLoading, router]);
 

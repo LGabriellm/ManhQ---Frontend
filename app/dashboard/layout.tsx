@@ -43,8 +43,13 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && (!isAuthenticated || user?.role !== "ADMIN")) {
-      router.replace("/");
+    if (!isLoading && !isAuthenticated) {
+      router.replace("/auth/login");
+      return;
+    }
+
+    if (!isLoading && isAuthenticated && user?.role !== "ADMIN") {
+      router.replace("/home");
     }
   }, [isLoading, isAuthenticated, user, router]);
 
@@ -101,7 +106,7 @@ export default function DashboardLayout({
           {/* Back to App */}
           <div className="px-3 py-4 border-t border-white/5">
             <Link
-              href="/"
+              href="/home"
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[var(--color-textDim)] hover:bg-white/5 hover:text-[var(--color-textMain)] transition-colors"
             >
               <ArrowLeft className="h-5 w-5" />
@@ -167,7 +172,7 @@ export default function DashboardLayout({
 
         <div className="absolute bottom-0 left-0 right-0 px-3 py-4 border-t border-white/5">
           <Link
-            href="/"
+            href="/home"
             className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-[var(--color-textDim)] hover:bg-white/5 hover:text-[var(--color-textMain)] transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />

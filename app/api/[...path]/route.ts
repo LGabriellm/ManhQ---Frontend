@@ -30,12 +30,19 @@ const ALLOWED_PREFIXES = [
   "analytics/",
   "collections",
   "editor/",
-  "webhooks/",
   "v1/comments/",
   "v1/account/",
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;
+
+function matchesAllowedPrefix(targetPath: string, prefix: string): boolean {
+  if (prefix.endsWith("/")) {
+    return targetPath.startsWith(prefix);
+  }
+
+  return targetPath === prefix || targetPath.startsWith(`${prefix}/`);
+}
 
 function isPathAllowed(targetPath: string): boolean {
   // Bloqueia path traversal
@@ -43,8 +50,8 @@ function isPathAllowed(targetPath: string): boolean {
   // Bloqueia caracteres suspeitos (line-breaks, null bytes)
   if (/[\x00-\x1f]/.test(targetPath)) return false;
 
-  return ALLOWED_PREFIXES.some(
-    (prefix) => targetPath === prefix || targetPath.startsWith(prefix),
+  return ALLOWED_PREFIXES.some((prefix) =>
+    matchesAllowedPrefix(targetPath, prefix),
   );
 }
 

@@ -6,7 +6,6 @@ import {
   BookOpen,
   History,
   Heart,
-  Loader2,
   Clock,
   CheckCircle2,
   Play,
@@ -235,17 +234,34 @@ export default function LibraryPage() {
     data: favorites,
     isLoading: isLoadingFavorites,
     error: errorFavorites,
+    refetch: refetchFavorites,
   } = useApiFavorites();
   const {
     data: continueReading,
     isLoading: isLoadingReading,
     error: errorReading,
+    refetch: refetchReading,
   } = useContinueReading({ limit: 30 });
   const {
     data: historyData,
     isLoading: isLoadingHistory,
     error: errorHistory,
+    refetch: refetchHistory,
   } = useProgressHistory({ limit: 50 });
+
+  const handleRetry = async () => {
+    if (activeTab === "favorites") {
+      await refetchFavorites();
+      return;
+    }
+
+    if (activeTab === "reading") {
+      await refetchReading();
+      return;
+    }
+
+    await refetchHistory();
+  };
 
   // Filtrar favoritos com busca
   const filteredFavorites = useMemo(() => {
@@ -531,7 +547,9 @@ export default function LibraryPage() {
               Verifique sua conexão e tente novamente
             </p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                void handleRetry();
+              }}
               className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm"
             >
               Tentar novamente
@@ -647,7 +665,7 @@ export default function LibraryPage() {
                     title="Nada sendo lido"
                     description="Comece a ler um mangá e ele aparecerá aqui para continuar de onde parou"
                     actionLabel="Descobrir séries"
-                    actionHref="/"
+                    actionHref="/search"
                   />
                 )}
               </motion.div>
@@ -687,7 +705,7 @@ export default function LibraryPage() {
                     title="Histórico vazio"
                     description="Seu histórico de leitura aparecerá aqui conforme você lê"
                     actionLabel="Começar a ler"
-                    actionHref="/"
+                    actionHref="/search"
                   />
                 )}
               </motion.div>

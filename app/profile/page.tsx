@@ -74,7 +74,12 @@ function ProfileSkeleton() {
 
 export default function ProfilePage() {
   const { user, logout } = useAuth();
-  const { data: stats, isLoading, error } = useUserStats();
+  const {
+    data: stats,
+    isLoading,
+    error,
+    refetch: refetchUserStats,
+  } = useUserStats();
   const router = useRouter();
   const [showAllMilestones, setShowAllMilestones] = useState(false);
 
@@ -238,7 +243,9 @@ export default function ProfilePage() {
             Verifique sua conexão e tente novamente
           </p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              void refetchUserStats();
+            }}
             className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm"
           >
             Tentar novamente

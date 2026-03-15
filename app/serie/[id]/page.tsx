@@ -29,6 +29,10 @@ export default function MangaDetailsPage() {
   const params = useParams();
   const seriesId = params.id as string;
 
+  const handleBack = () => {
+    router.push("/library");
+  };
+
   const { data: series, isLoading, error } = useSeriesById(seriesId);
   const { isFavorite, toggleFavorite, isUpdating } = useFavorites(seriesId);
   const { progressMap: chapterProgressMap, continueItem } =
@@ -75,7 +79,7 @@ export default function MangaDetailsPage() {
           </p>
           <motion.button
             whileTap={{ scale: 0.95 }}
-            onClick={() => router.push("/")}
+            onClick={handleBack}
             className="flex items-center gap-2 px-6 py-3 bg-surface hover:bg-surface/80 rounded-xl transition-all mx-auto group"
           >
             <ArrowLeft className="w-5 h-5 text-primary group-hover:-translate-x-0.5 transition-transform duration-200" />
@@ -106,7 +110,7 @@ export default function MangaDetailsPage() {
         <div className="flex items-center justify-between p-4">
           <motion.button
             whileTap={{ scale: 0.95 }}
-            onClick={() => router.push("/")}
+            onClick={handleBack}
             className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-surface active:bg-surface/80 transition-all group"
           >
             <ArrowLeft className="w-5 h-5 text-textMain group-hover:text-primary transition-colors group-hover:-translate-x-0.5 transform duration-200" />

@@ -9,7 +9,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { UserAvatar } from "@/components/community/UserAvatar";
 
 const navItems = [
-  { href: "/", icon: Home, label: "Início" },
+  { href: "/home", icon: Home, label: "Início" },
   { href: "/search", icon: Search, label: "Buscar" },
   { href: "/library", icon: Library, label: "Biblioteca" },
   { href: "/profile", icon: User, label: "Perfil" },
@@ -35,8 +35,7 @@ export function BottomNav() {
         <div className="mx-auto flex max-w-lg items-center justify-around px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           {navItems.map((item) => {
             const isActive =
-              pathname === item.href ||
-              (item.href !== "/" && pathname?.startsWith(item.href));
+              pathname === item.href || pathname?.startsWith(`${item.href}/`);
             const Icon = item.icon;
 
             return (

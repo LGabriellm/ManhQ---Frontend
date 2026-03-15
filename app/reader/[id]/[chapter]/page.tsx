@@ -47,16 +47,17 @@ export default function ReaderPage() {
   const [readingMode, setReadingMode] = useState<"vertical" | "horizontal">(
     "vertical",
   );
-  const [activeChapterId, setActiveChapterId] = useState(chapterId);
   const containerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const restoredForChapter = useRef<string | null>(null);
 
-  // Resetar estado ao trocar de capítulo (derivação síncrona — padrão React)
-  if (activeChapterId !== chapterId) {
-    setActiveChapterId(chapterId);
-    setCurrentPage(1);
-  }
+  // Resetar estado ao trocar de capítulo
+  useEffect(() => {
+    restoredForChapter.current = null;
+    queueMicrotask(() => {
+      setCurrentPage(urlPage || 1);
+    });
+  }, [chapterId, urlPage]);
 
   const totalPages = chapterData?.pageCount || 1;
 
@@ -149,7 +150,7 @@ export default function ReaderPage() {
           </p>
           <motion.button
             whileTap={{ scale: 0.95 }}
-            onClick={() => router.back()}
+            onClick={() => router.push(`/serie/${seriesId}`)}
             className="flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl transition-all mx-auto shadow-lg shadow-primary/20 group"
           >
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform duration-200" />

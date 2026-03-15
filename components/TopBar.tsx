@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 interface TopBarProps {
   title?: string;
   showBack?: boolean;
+  backHref?: string;
   rightAction?: React.ReactNode;
   transparent?: boolean;
 }
@@ -14,6 +15,7 @@ interface TopBarProps {
 export function TopBar({
   title,
   showBack,
+  backHref = "/library",
   rightAction,
   transparent,
 }: TopBarProps) {
@@ -31,7 +33,7 @@ export function TopBar({
       <div className="flex items-center gap-3 flex-1 min-w-0">
         {showBack && (
           <button
-            onClick={() => router.back()}
+            onClick={() => router.push(backHref)}
             className="p-2 -ml-2 rounded-xl hover:bg-white/5 active:bg-white/8 transition-colors"
             aria-label="Voltar"
           >

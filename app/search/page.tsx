@@ -25,7 +25,12 @@ const trendingSearches = [
 export default function SearchPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const deferredQuery = useDeferredValue(searchQuery);
-  const { data: allSeries, isLoading, error } = useSeries();
+  const {
+    data: allSeries,
+    isLoading,
+    error,
+    refetch: refetchSeries,
+  } = useSeries();
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
@@ -115,7 +120,9 @@ export default function SearchPage() {
                 Verifique sua conexão e tente novamente
               </p>
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  void refetchSeries();
+                }}
                 className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm"
               >
                 Tentar novamente

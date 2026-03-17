@@ -14,7 +14,7 @@ services:
       - API_URL=${API_URL:-https://api.manhq.com.br}
     restart: unless-stopped
     networks:
-      - traefik-proxy
+      - manhq-network
     labels:
       # Traefik Configuration (Hostinger Docker Manager compatible)
       - "traefik.enable=true"
@@ -22,6 +22,7 @@ services:
       - "traefik.http.routers.manhq-frontend.entrypoints=websecure"
       - "traefik.http.routers.manhq-frontend.tls.certresolver=letsencrypt"
       - "traefik.http.services.manhq-frontend.loadbalancer.server.port=3001"
+
     healthcheck:
       test:
         [
@@ -36,6 +37,7 @@ services:
       retries: 3
 
 networks:
-  traefik-proxy:
+  manhq-network:
     external: true
-    name: traefik-proxy
+    driver: bridge
+    name: manhq-network

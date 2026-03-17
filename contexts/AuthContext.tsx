@@ -1,14 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import {
-  getStoredToken,
-  getStoredUser,
-  setStoredToken,
-  setStoredUser,
-  clearStoredToken,
-  clearStoredUser,
-} from "@/services/api";
+import { getStoredUser, setStoredUser, clearStoredUser } from "@/services/api";
 import { authService } from "@/services/auth.service";
 import type { User, LoginRequest, RegisterRequest } from "@/types/api";
 
@@ -29,7 +22,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [token] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const isAuthenticated = !!user;
@@ -41,12 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const storedToken = getStoredToken();
         const storedUser = getStoredUser();
-
-        if (storedToken) {
-          setToken(storedToken);
-        }
 
         if (storedUser) {
           setUser(storedUser);
@@ -57,9 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(freshUser);
           setStoredUser(freshUser);
         } catch {
-          clearStoredToken();
           clearStoredUser();
-          setToken(null);
           setUser(null);
         }
       } catch (error) {
@@ -75,13 +61,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (credentials: LoginRequest) => {
     const response = await authService.login(credentials);
     setUser(response.user);
-    if (response.token) {
-      setToken(response.token);
-      setStoredToken(response.token);
-    } else {
-      setToken(null);
-      clearStoredToken();
-    }
     setStoredUser(response.user);
   };
 
@@ -98,9 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Erro ao fazer logout:", error);
     } finally {
       // Limpar estado local independentemente do resultado
-      clearStoredToken();
       clearStoredUser();
-      setToken(null);
       setUser(null);
     }
   };

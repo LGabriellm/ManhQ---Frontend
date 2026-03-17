@@ -85,6 +85,11 @@ async function handler(
   headers.delete("host");
   headers.delete("connection");
   headers.delete("cookie");
+  headers.delete("forwarded");
+  headers.delete("x-forwarded-for");
+  headers.delete("x-forwarded-host");
+  headers.delete("x-forwarded-proto");
+  headers.delete("x-real-ip");
 
   const forwardedCookie = buildForwardedCookieHeader(req);
   if (forwardedCookie) {

@@ -13,20 +13,6 @@ export const api: AxiosInstance = axios.create({
   },
 });
 
-// Interceptor para adicionar token JWT
-api.interceptors.request.use(
-  (config) => {
-    const token = getStoredToken();
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
-);
-
 // Interceptor para tratar erros
 api.interceptors.response.use(
   (response) => response,
@@ -50,9 +36,23 @@ api.interceptors.response.use(
       requestUrl.includes("/activate") ||
       requestUrl.includes("/forgot-password") ||
       requestUrl.includes("/reset-password");
+    const isMeRoute = requestUrl.includes("/me");
+
+    const currentPath =
+      typeof window !== "undefined" ? window.location.pathname : "";
+    const isPublicPath =
+      currentPath === "/" ||
+      currentPath.startsWith("/auth/") ||
+      currentPath.startsWith("/termos-de-servico") ||
+      currentPath.startsWith("/politica-de-privacidade");
 
     // Se receber 401 e NÃO for uma rota de autenticação, limpar token e redirecionar
-    if (error.response.status === 401 && !isAuthRoute) {
+    if (
+      error.response.status === 401 &&
+      !isAuthRoute &&
+      !isMeRoute &&
+      !isPublicPath
+    ) {
       clearStoredToken();
       clearStoredUser();
       if (typeof window !== "undefined") {
@@ -80,18 +80,16 @@ api.interceptors.response.use(
 
 // Funções auxiliares para gerenciar token
 export function getStoredToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("token");
+  return null;
 }
 
-export function setStoredToken(token: string): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem("token", token);
+export function setStoredToken(_token: string): void {
+  void _token;
+  // No-op: autenticação baseada em cookie de sessão (httpOnly)
 }
 
 export function clearStoredToken(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem("token");
+  // No-op: autenticação baseada em cookie de sessão (httpOnly)
 }
 
 // Funções auxiliares para gerenciar usuário

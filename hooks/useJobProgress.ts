@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useState } from "react";
-import { getStoredToken } from "@/services/api";
 
 export type JobProgressEvent =
   | {
@@ -46,7 +45,10 @@ export function useJobProgressStream({
   const [lastEvent, setLastEvent] = useState<JobProgressEvent | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const onEventRef = useRef(onEvent);
-  onEventRef.current = onEvent;
+
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
 
   const disconnect = useCallback(() => {
     if (eventSourceRef.current) {
@@ -58,15 +60,15 @@ export function useJobProgressStream({
 
   useEffect(() => {
     if (!enabled) {
-      disconnect();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
       return;
     }
 
-    const token = getStoredToken();
-    if (!token) return;
-
     // Proxy via Next.js Route Handler (mesmo domínio, sem CORS)
-    const url = `/api/jobs/progress/stream?token=${encodeURIComponent(token)}`;
+    const url = `/api/jobs/progress/stream`;
     const es = new EventSource(url);
     eventSourceRef.current = es;
 
@@ -92,7 +94,7 @@ export function useJobProgressStream({
       eventSourceRef.current = null;
       setConnected(false);
     };
-  }, [enabled, disconnect]);
+  }, [enabled]);
 
   return { connected, lastEvent, disconnect };
 }

@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { authService } from "@/services/auth.service";
-import { setStoredToken, setStoredUser } from "@/services/api";
+import { setStoredUser } from "@/services/api";
 import type { ApiError } from "@/types/api";
 
 type PageState = "loading" | "form" | "success" | "invalid";
@@ -132,9 +132,6 @@ export default function ActivatePage() {
 
     try {
       const result = await authService.activateAccount({ token, password });
-      if (result.token) {
-        setStoredToken(result.token);
-      }
       setStoredUser(result.user);
       setState("success");
       setTimeout(() => {

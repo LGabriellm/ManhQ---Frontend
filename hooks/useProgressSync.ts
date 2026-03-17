@@ -165,21 +165,16 @@ export function useProgressSync(
       const page = pendingPage.current;
       const chapter = chapterIdRef.current;
       if (page > 0 && page !== lastSentPage.current) {
-        const token =
-          typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
-        if (token) {
-          // fetch keepalive garante envio mesmo durante navegação
-          fetch(`/api/read/${chapter}/progress`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ page }),
-            keepalive: true,
-          }).catch(() => {});
-        }
+        // fetch keepalive garante envio mesmo durante navegação
+        fetch(`/api/read/${chapter}/progress`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({ page }),
+          keepalive: true,
+        }).catch(() => {});
       }
 
       // Flush final de stats com keepalive
@@ -188,24 +183,19 @@ export function useProgressSync(
       );
       const pages = pagesReadInSession.current;
       if (pages > 0 || elapsedSec > 2) {
-        const token =
-          typeof window !== "undefined" ? localStorage.getItem("token") : null;
-
-        if (token) {
-          fetch(`/api/stats/record`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              pages,
-              timeSpent: elapsedSec,
-              chapterCompleted: false,
-            }),
-            keepalive: true,
-          }).catch(() => {});
-        }
+        fetch(`/api/stats/record`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            pages,
+            timeSpent: elapsedSec,
+            chapterCompleted: false,
+          }),
+          keepalive: true,
+        }).catch(() => {});
       }
 
       // Invalidar queries para que os dados estejam frescos ao voltar

@@ -25,6 +25,9 @@ import type {
   ActivationTokensParams,
   CreateManualSubscriptionRequest,
   CancelSubscriptionRequest,
+  GoogleDriveFoldersParams,
+  GoogleDrivePreviewParams,
+  GoogleDriveImportRequest,
 } from "@/types/api";
 
 // ===== Query Keys =====
@@ -67,6 +70,8 @@ const adminKeys = {
     [...adminKeys.all, "subscriptions", params] as const,
   activationTokens: (params?: ActivationTokensParams) =>
     [...adminKeys.all, "activation-tokens", params] as const,
+  googleDriveFolders: (params: Omit<GoogleDriveFoldersParams, "accessToken">) =>
+    [...adminKeys.all, "google-drive", "folders", params] as const,
 };
 
 // ===== Dashboard =====
@@ -259,6 +264,51 @@ export function useUploadToSeries() {
   return useMutation({
     mutationFn: ({ seriesId, files }: { seriesId: string; files: File[] }) =>
       adminService.uploadToSeries(seriesId, files),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
+      qc.invalidateQueries({ queryKey: adminKeys.all });
+    },
+  });
+}
+
+// ===== Google Drive Integration =====
+export function useGoogleDriveFolders(
+  params: GoogleDriveFoldersParams,
+  enabled = true,
+) {
+  const { parentId, sharedOnly, pageToken, pageSize } = params;
+
+  return useQuery({
+    queryKey: adminKeys.googleDriveFolders({
+      parentId,
+      sharedOnly,
+      pageToken,
+      pageSize,
+    }),
+    queryFn: () => adminService.getGoogleDriveFolders(params),
+    enabled,
+    staleTime: 1000 * 15,
+  });
+}
+
+export function useGoogleDrivePreview() {
+  return useMutation({
+    mutationFn: (params: GoogleDrivePreviewParams) =>
+      adminService.previewGoogleDriveFolder(params),
+  });
+}
+
+export function useGoogleDriveImport() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      data,
+      idempotencyKey,
+    }: {
+      data: GoogleDriveImportRequest;
+      idempotencyKey?: string;
+    }) => adminService.importGoogleDriveFolder(data, idempotencyKey),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminKeys.jobs() });
       qc.invalidateQueries({ queryKey: adminKeys.all });

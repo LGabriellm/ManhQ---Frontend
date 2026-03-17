@@ -32,34 +32,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const isAuthenticated = !!user && !!token;
+  const isAuthenticated = !!user;
   const isAdmin = isAuthenticated && user?.role === "ADMIN";
   const isEditor =
     isAuthenticated && (user?.role === "EDITOR" || user?.role === "ADMIN");
 
-  // Carregar usuário do localStorage na inicialização
+  // Carregar sessão na inicialização
   useEffect(() => {
     const loadUser = async () => {
       try {
         const storedToken = getStoredToken();
         const storedUser = getStoredUser();
 
-        if (storedToken && storedUser) {
+        if (storedToken) {
           setToken(storedToken);
-          setUser(storedUser);
+        }
 
-          // Validar token com o backend
-          try {
-            const freshUser = await authService.me();
-            setUser(freshUser);
-            setStoredUser(freshUser);
-          } catch {
-            // Token inválido, limpar tudo
-            clearStoredToken();
-            clearStoredUser();
-            setToken(null);
-            setUser(null);
-          }
+        if (storedUser) {
+          setUser(storedUser);
+        }
+
+        try {
+          const freshUser = await authService.me();
+          setUser(freshUser);
+          setStoredUser(freshUser);
+        } catch {
+          clearStoredToken();
+          clearStoredUser();
+          setToken(null);
+          setUser(null);
         }
       } catch (error) {
         console.error("Erro ao carregar usuário:", error);
@@ -73,9 +74,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (credentials: LoginRequest) => {
     const response = await authService.login(credentials);
-    setToken(response.token);
     setUser(response.user);
-    setStoredToken(response.token);
+    if (response.token) {
+      setToken(response.token);
+      setStoredToken(response.token);
+    } else {
+      setToken(null);
+      clearStoredToken();
+    }
     setStoredUser(response.user);
   };
 

@@ -53,6 +53,7 @@ api.interceptors.response.use(
     // Se receber 401 e NÃO for uma rota de autenticação, limpar token e redirecionar
     if (error.response.status === 401 && !isAuthRoute) {
       clearStoredToken();
+      clearStoredUser();
       if (typeof window !== "undefined") {
         window.location.href = "/auth/login";
       }

@@ -6,6 +6,7 @@ import { statsService } from "@/services/stats.service";
 import { userListsService } from "@/services/userLists.service";
 import { progressService } from "@/services/progress.service";
 import { authService } from "@/services/auth.service";
+import { searchService } from "@/services/search.service";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ContinueReadingParams, ProgressHistoryParams } from "@/types/api";
 
@@ -24,6 +25,29 @@ export function useSeriesById(id: string | undefined) {
     queryFn: () => seriesService.getById(id!),
     enabled: !!id,
     staleTime: 1000 * 60 * 5,
+  });
+}
+
+// ===== BUSCA =====
+export function useSeriesSearch(query: string, page = 1, limit = 24) {
+  const normalizedQuery = query.trim();
+
+  return useQuery({
+    queryKey: ["search", normalizedQuery, page, limit],
+    queryFn: () => searchService.searchSeries(normalizedQuery, page, limit),
+    enabled: normalizedQuery.length >= 2,
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useSearchSuggestions(query: string, limit = 6) {
+  const normalizedQuery = query.trim();
+
+  return useQuery({
+    queryKey: ["search", "suggestions", normalizedQuery, limit],
+    queryFn: () => searchService.getSuggestions(normalizedQuery, limit),
+    enabled: normalizedQuery.length >= 2,
+    staleTime: 1000 * 60,
   });
 }
 

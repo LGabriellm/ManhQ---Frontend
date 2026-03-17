@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useDeferredValue } from "react";
+import { useState, useDeferredValue } from "react";
 import {
   Search as SearchIcon,
   X,
@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { MangaCard } from "@/components/MangaCard";
 import { motion } from "framer-motion";
-import { useSeries } from "@/hooks/useApi";
+import { useSeriesSearch, useSearchSuggestions } from "@/hooks/useApi";
 
 // Buscas sugeridas
 const trendingSearches = [
@@ -26,32 +26,24 @@ export default function SearchPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const deferredQuery = useDeferredValue(searchQuery);
   const {
-    data: allSeries,
+    data: searchResult,
     isLoading,
     error,
-    refetch: refetchSeries,
-  } = useSeries();
+    refetch: refetchSearch,
+  } = useSeriesSearch(deferredQuery, 1, 24);
+  const { data: suggestionData } = useSearchSuggestions(deferredQuery, 6);
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
   };
 
-  // Filtrar séries baseado na busca (usa deferredQuery para evitar lag na digitação)
-  const filteredSeries = useMemo(() => {
-    if (!allSeries || deferredQuery.trim().length === 0) return [];
-
-    const query = deferredQuery.toLowerCase().trim();
-    return allSeries.filter((series) => {
-      const matchTitle = series.title.toLowerCase().includes(query);
-      const matchAuthor = series.author?.toLowerCase().includes(query);
-      const matchGenres = series.genres?.some((genre) =>
-        genre.toLowerCase().includes(query),
-      );
-      return matchTitle || matchAuthor || matchGenres;
-    });
-  }, [allSeries, deferredQuery]);
-
   const isSearching = searchQuery.trim().length > 0;
+  const normalizedQuery = deferredQuery.trim();
+  const isQueryReady = normalizedQuery.length >= 2;
+  const filteredSeries = searchResult?.items ?? [];
+  const dynamicSuggestions = suggestionData?.filter(Boolean) ?? [];
+  const suggestions =
+    dynamicSuggestions.length > 0 ? dynamicSuggestions : trendingSearches;
 
   return (
     <main className="min-h-screen pt-4 pb-20">
@@ -87,7 +79,7 @@ export default function SearchPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {trendingSearches.map((search) => (
+            {suggestions.map((search) => (
               <motion.button
                 key={search}
                 whileTap={{ scale: 0.95 }}
@@ -106,7 +98,11 @@ export default function SearchPage() {
             Resultados para &quot;{searchQuery}&quot;
           </h2>
 
-          {isLoading ? (
+          {!isQueryReady ? (
+            <div className="text-center py-12">
+              <p className="text-textDim">Digite ao menos 2 caracteres</p>
+            </div>
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 text-primary animate-spin" />
             </div>
@@ -121,7 +117,7 @@ export default function SearchPage() {
               </p>
               <button
                 onClick={() => {
-                  void refetchSeries();
+                  void refetchSearch();
                 }}
                 className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm"
               >

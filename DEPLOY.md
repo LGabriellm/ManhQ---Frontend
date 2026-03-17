@@ -152,11 +152,108 @@ Configure o **Build Command** como `npm run build` e o **Start Command** como `n
 
 ---
 
+## Opção 5: Docker Compose + Traefik (VPS com Orquestração)
+
+Ideal para ambientes com múltiplos serviços (frontend + backend) rodando no mesmo servidor com SSL automático.
+
+### 1. Pré-requisitos
+
+- Docker e Docker Compose instalados
+- Traefik já configurado e rodando (na rede `manhq_backend_manhq-net`)
+- Domínio apontado para o IP do servidor
+
+### 2. Variáveis de Ambiente
+
+Crie um arquivo `.env` na raiz do projeto:
+
+```bash
+# Frontend
+NEXT_PUBLIC_API_URL=https://api.seudominio.com
+API_URL=https://api.seudominio.com
+
+# Traefik
+TRAEFIK_HOST=app.seudominio.com  # ou seudominio.com
+```
+
+### 3. Build e Deploy
+
+```bash
+# Build da imagem
+docker-compose build
+
+# Iniciar o container
+docker-compose up -d
+
+# Verificar logs
+docker-compose logs -f frontend
+```
+
+### 4. Configuração Automática do Traefik
+
+O `docker-compose.yml` já contém as labels necessárias para o Traefik:
+
+- **Roteamento**: Usa a variável `TRAEFIK_HOST` para definir o domínio
+- **SSL/TLS**: Certificado automático via Let's Encrypt
+- **Redirect HTTP→HTTPS**: Redireciona todas as requisições HTTP para HTTPS
+- **Health Check**: Traefik monitora a saúde do container
+
+### 5. Estrutura de Redes
+
+O container conecta-se à rede existente `manhq_backend_manhq-net`:
+
+```yaml
+networks:
+  manhq-net:
+    external: true
+    name: manhq_backend_manhq-net
+```
+
+Dessa forma, o frontend pode se comunicar com a API através dessa rede docker.
+
+### 6. Atualizar e Redeployar
+
+```bash
+# Pull das mudanças
+git pull
+
+# Rebuild e restart
+docker-compose up -d --build
+
+# Limpar containers antigos
+docker system prune -f
+```
+
+### 7. Troubleshooting
+
+**Container não inicia?**
+
+```bash
+docker-compose logs frontend
+```
+
+**Traefik não detecta o container?**
+
+```bash
+# Verifique se a rede existe
+docker network ls | grep manhq
+
+# Verifique as labels do container
+docker inspect manhq-frontend | grep -A 20 Labels
+```
+
+**SSL não funciona?**
+
+- Certifique-se de que `TRAEFIK_HOST` aponta para um domínio real
+- Verifique se o Traefik tem acesso ao Let's Encrypt (firewall port 80/443)
+
+---
+
 ## Resumo
 
 | Plataforma              | Custo      | Dificuldade  | Recomendado        |
 | ----------------------- | ---------- | ------------ | ------------------ |
 | Vercel                  | Grátis     | ⭐ Fácil     | ✅ Melhor opção    |
+| Docker + Traefik        | Variável   | ⭐⭐ Médio   | ✅ Multi-serviços  |
 | Hostinger VPS           | ~R$ 25/mês | ⭐⭐⭐ Médio | ✅ Se já tem VPS   |
 | Cloudflare Pages        | Grátis     | ⭐⭐ Médio   | ✅ Boa alternativa |
 | Railway                 | Grátis\*   | ⭐ Fácil     | ✅ Boa alternativa |

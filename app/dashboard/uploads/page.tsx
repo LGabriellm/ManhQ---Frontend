@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   useUpload,
   useUploadBulk,
   useUploadFolder,
+  useGoogleDriveFolders,
+  useGoogleDrivePreview,
+  useGoogleDriveImport,
   useAdminJobs,
   useClearCompletedJobs,
   useScanLibrary,
@@ -41,6 +44,10 @@ import {
   File,
   FolderUp,
   Search,
+  Cloud,
+  KeyRound,
+  ArrowRight,
+  Import,
 } from "lucide-react";
 
 // ===== Helpers =====
@@ -68,6 +75,33 @@ function formatFileSize(bytes?: number): string {
 function getJobDisplayName(job: AdminJob): string {
   return job.name?.replace(/^upload-/, "") || job.id;
 }
+
+const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+
+type GoogleOAuthTokenResponse = {
+  access_token?: string;
+  error?: string;
+  error_description?: string;
+};
+
+type GoogleTokenClient = {
+  callback: (response: GoogleOAuthTokenResponse) => void;
+  requestAccessToken: (options?: { prompt?: string }) => void;
+};
+
+type GoogleOAuthWindow = Window & {
+  google?: {
+    accounts?: {
+      oauth2?: {
+        initTokenClient: (config: {
+          client_id: string;
+          scope: string;
+          callback: (response: GoogleOAuthTokenResponse) => void;
+        }) => GoogleTokenClient;
+      };
+    };
+  };
+};
 
 const ACCEPTED_EXTENSIONS = [".cbz", ".cbr", ".zip", ".pdf", ".epub"];
 
@@ -614,6 +648,541 @@ function UploadZone() {
   );
 }
 
+// ===== Google Drive Import Panel =====
+function GoogleDriveImportPanel() {
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const [authMode, setAuthMode] = useState<"oauth" | "service-account">(
+    "oauth",
+  );
+  const [accessToken, setAccessToken] = useState("");
+  const [isConnected, setIsConnected] = useState(false);
+  const [isGoogleSdkReady, setIsGoogleSdkReady] = useState(false);
+  const [isOAuthLoading, setIsOAuthLoading] = useState(false);
+  const [sharedOnly, setSharedOnly] = useState(true);
+  const [parentId, setParentId] = useState<string | undefined>(undefined);
+  const [folderTrail, setFolderTrail] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [selectedFolder, setSelectedFolder] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [previewMaxFiles, setPreviewMaxFiles] = useState(100);
+  const [importResult, setImportResult] = useState<{
+    accepted: number;
+    rejected: number;
+    selected: number;
+    jobs: string[];
+  } | null>(null);
+  const tokenClientRef = useRef<GoogleTokenClient | null>(null);
+
+  const {
+    data: foldersData,
+    isLoading: isFoldersLoading,
+    error: foldersError,
+    refetch: refetchFolders,
+  } = useGoogleDriveFolders(
+    {
+      accessToken: authMode === "oauth" ? accessToken : undefined,
+      parentId,
+      sharedOnly,
+      pageSize: 100,
+    },
+    isConnected,
+  );
+
+  const previewMutation = useGoogleDrivePreview();
+  const importMutation = useGoogleDriveImport();
+
+  useEffect(() => {
+    if (!googleClientId) return;
+
+    const initTokenClient = () => {
+      const google = (window as GoogleOAuthWindow).google;
+      if (!google?.accounts?.oauth2) return;
+
+      tokenClientRef.current = google.accounts.oauth2.initTokenClient({
+        client_id: googleClientId,
+        scope: GOOGLE_DRIVE_SCOPE,
+        callback: () => {},
+      });
+
+      setIsGoogleSdkReady(true);
+    };
+
+    if ((window as GoogleOAuthWindow).google?.accounts?.oauth2) {
+      initTokenClient();
+      return;
+    }
+
+    const existingScript = document.getElementById("google-identity-services");
+    if (existingScript) {
+      existingScript.addEventListener("load", initTokenClient);
+      return () => existingScript.removeEventListener("load", initTokenClient);
+    }
+
+    const script = document.createElement("script");
+    script.id = "google-identity-services";
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = initTokenClient;
+    document.head.appendChild(script);
+
+    return () => {
+      script.onload = null;
+    };
+  }, [googleClientId]);
+
+  const connectWithToken = (token: string) => {
+    if (!token.trim()) {
+      toast.error("Token Google inválido");
+      return;
+    }
+
+    setAccessToken(token);
+    setIsConnected(true);
+    setParentId(undefined);
+    setFolderTrail([]);
+    setSelectedFolder(null);
+    setImportResult(null);
+    toast.success("Google Drive conectado");
+  };
+
+  const connect = async () => {
+    if (authMode === "service-account") {
+      setIsConnected(true);
+      setParentId(undefined);
+      setFolderTrail([]);
+      setSelectedFolder(null);
+      setImportResult(null);
+
+      const result = await refetchFolders();
+      if (result.error) {
+        setIsConnected(false);
+        toast.error("Falha ao conectar via Service Account");
+        return;
+      }
+
+      toast.success("Service Account conectada");
+      return;
+    }
+
+    connectWithToken(accessToken);
+  };
+
+  const connectWithGoogleOAuth = async () => {
+    if (!googleClientId) {
+      toast.error("Defina NEXT_PUBLIC_GOOGLE_CLIENT_ID no ambiente");
+      return;
+    }
+
+    if (!tokenClientRef.current || !isGoogleSdkReady) {
+      toast.error("SDK do Google ainda não carregado");
+      return;
+    }
+
+    setIsOAuthLoading(true);
+
+    tokenClientRef.current.callback = (response: GoogleOAuthTokenResponse) => {
+      setIsOAuthLoading(false);
+
+      if (response.error) {
+        toast.error(response.error_description || "Falha no OAuth do Google");
+        return;
+      }
+
+      const token = response.access_token;
+      if (!token) {
+        toast.error("Não foi possível obter access token");
+        return;
+      }
+
+      connectWithToken(token);
+    };
+
+    tokenClientRef.current.requestAccessToken({ prompt: "consent" });
+  };
+
+  const disconnect = () => {
+    setIsConnected(false);
+    setParentId(undefined);
+    setFolderTrail([]);
+    setSelectedFolder(null);
+    setImportResult(null);
+  };
+
+  const openFolder = (id: string, name: string) => {
+    setFolderTrail((prev) => [...prev, { id, name }]);
+    setParentId(id);
+  };
+
+  const goBack = () => {
+    setFolderTrail((prev) => {
+      const next = prev.slice(0, -1);
+      const last = next[next.length - 1];
+      setParentId(last?.id);
+      return next;
+    });
+  };
+
+  const runPreview = async () => {
+    if (!selectedFolder) {
+      toast.error("Selecione uma pasta");
+      return;
+    }
+
+    try {
+      await previewMutation.mutateAsync({
+        accessToken: authMode === "oauth" ? accessToken : undefined,
+        folderId: selectedFolder.id,
+        recursive: true,
+        maxFiles: previewMaxFiles,
+      });
+    } catch {
+      toast.error("Erro ao gerar preview");
+    }
+  };
+
+  const runImport = async (maxFiles: number) => {
+    if (!selectedFolder) {
+      toast.error("Selecione uma pasta");
+      return;
+    }
+
+    try {
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random()}`;
+
+      const result = await importMutation.mutateAsync({
+        data: {
+          folderId: selectedFolder.id,
+          accessToken: authMode === "oauth" ? accessToken : undefined,
+          recursive: true,
+          maxFiles,
+          dryRun: false,
+        },
+        idempotencyKey,
+      });
+
+      setImportResult({
+        selected: result.totals.selected,
+        accepted: result.totals.accepted,
+        rejected: result.totals.rejected,
+        jobs: result.accepted.map((item) => item.jobId),
+      });
+
+      toast.success(
+        `Importação enviada: ${result.totals.accepted} aceitos, ${result.totals.rejected} rejeitados`,
+      );
+    } catch {
+      toast.error("Erro ao importar pasta do Drive");
+    }
+  };
+
+  return (
+    <div className="bg-[var(--color-surface)] rounded-xl border border-white/5 overflow-hidden">
+      <div className="px-5 py-4 border-b border-white/5 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-[var(--color-textMain)] flex items-center gap-2">
+            <Cloud className="h-4 w-4 text-[var(--color-primary)]" />
+            Google Drive
+          </h2>
+          <p className="text-xs text-[var(--color-textDim)] mt-1">
+            Selecione pastas do Drive, rode preview e importe em lotes.
+          </p>
+        </div>
+        <span
+          className={`text-[10px] px-2 py-1 rounded-full font-semibold ${
+            isConnected
+              ? "bg-green-500/15 text-green-400"
+              : "bg-white/5 text-[var(--color-textDim)]"
+          }`}
+        >
+          {isConnected ? "Conectado" : "Desconectado"}
+        </span>
+      </div>
+
+      <div className="p-5 space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              setAuthMode("oauth");
+              setIsConnected(false);
+              setSelectedFolder(null);
+              setParentId(undefined);
+              setFolderTrail([]);
+            }}
+            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+              authMode === "oauth"
+                ? "bg-primary/15 text-primary"
+                : "bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+            }`}
+          >
+            OAuth por usuário
+          </button>
+          <button
+            onClick={() => {
+              setAuthMode("service-account");
+              setIsConnected(false);
+              setSelectedFolder(null);
+              setParentId(undefined);
+              setFolderTrail([]);
+            }}
+            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+              authMode === "service-account"
+                ? "bg-primary/15 text-primary"
+                : "bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+            }`}
+          >
+            Service Account
+          </button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2">
+          {authMode === "oauth" && (
+            <>
+              <button
+                onClick={() => {
+                  void connectWithGoogleOAuth();
+                }}
+                disabled={isOAuthLoading || !googleClientId}
+                className="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isOAuthLoading
+                  ? "Conectando..."
+                  : "Conectar com Google (OAuth)"}
+              </button>
+              <div className="relative flex-1">
+                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-textDim)]" />
+                <input
+                  type="password"
+                  value={accessToken}
+                  onChange={(e) => setAccessToken(e.target.value)}
+                  placeholder="Cole o Google access_token"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
+                />
+              </div>
+            </>
+          )}
+
+          {authMode === "service-account" && (
+            <div className="flex-1 px-3 py-2.5 rounded-lg bg-[var(--color-background)] border border-white/10 text-xs text-[var(--color-textDim)] flex items-center">
+              O backend usa Service Account para autenticar no Google Drive.
+            </div>
+          )}
+
+          {!isConnected ? (
+            <button
+              onClick={() => {
+                void connect();
+              }}
+              className="px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary)]/90"
+            >
+              {authMode === "oauth"
+                ? "Conectar Google Drive"
+                : "Conectar Service Account"}
+            </button>
+          ) : (
+            <button
+              onClick={disconnect}
+              className="px-4 py-2.5 rounded-lg bg-white/5 text-[var(--color-textDim)] text-sm font-medium hover:text-[var(--color-textMain)]"
+            >
+              Desconectar
+            </button>
+          )}
+        </div>
+
+        {authMode === "oauth" && !googleClientId && (
+          <p className="text-[11px] text-yellow-400">
+            Configure `NEXT_PUBLIC_GOOGLE_CLIENT_ID` para usar o OAuth
+            automático.
+          </p>
+        )}
+
+        {isConnected && (
+          <>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => {
+                  setSharedOnly((v) => !v);
+                  setParentId(undefined);
+                  setFolderTrail([]);
+                  setSelectedFolder(null);
+                }}
+                className="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+              >
+                {sharedOnly ? "Modo: Compartilhados" : "Modo: Todas as pastas"}
+              </button>
+              <button
+                onClick={goBack}
+                disabled={folderTrail.length === 0}
+                className="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] disabled:opacity-40"
+              >
+                Voltar nível
+              </button>
+              <button
+                onClick={() => {
+                  void refetchFolders();
+                }}
+                className="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+              >
+                Atualizar pastas
+              </button>
+            </div>
+
+            {folderTrail.length > 0 && (
+              <p className="text-xs text-[var(--color-textDim)] truncate">
+                Caminho: {folderTrail.map((f) => f.name).join(" / ")}
+              </p>
+            )}
+
+            <div className="rounded-lg border border-white/8 bg-[var(--color-background)] max-h-64 overflow-y-auto divide-y divide-white/5">
+              {foldersError && (
+                <div className="px-3 py-2 text-xs text-red-400 border-b border-white/5">
+                  Falha ao listar pastas do Drive. Verifique o token e tente
+                  atualizar.
+                </div>
+              )}
+              {isFoldersLoading ? (
+                <div className="py-10 flex items-center justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-[var(--color-primary)]" />
+                </div>
+              ) : foldersData?.folders?.length ? (
+                foldersData.folders.map((folder) => {
+                  const isSelected = selectedFolder?.id === folder.id;
+
+                  return (
+                    <div
+                      key={folder.id}
+                      className={`flex items-center gap-2 px-3 py-2.5 ${
+                        isSelected ? "bg-[var(--color-primary)]/10" : ""
+                      }`}
+                    >
+                      <button
+                        onClick={() =>
+                          setSelectedFolder({
+                            id: folder.id,
+                            name: folder.name,
+                          })
+                        }
+                        className="flex-1 min-w-0 text-left"
+                      >
+                        <p className="text-sm text-[var(--color-textMain)] truncate">
+                          {folder.name}
+                        </p>
+                        <p className="text-[10px] text-[var(--color-textDim)] truncate">
+                          {folder.id}
+                        </p>
+                      </button>
+                      <button
+                        onClick={() => openFolder(folder.id, folder.name)}
+                        className="p-1.5 rounded hover:bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+                        title="Abrir subpastas"
+                      >
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-8 text-center text-xs text-[var(--color-textDim)]">
+                  Nenhuma pasta encontrada neste nível.
+                </div>
+              )}
+            </div>
+
+            {selectedFolder && (
+              <div className="rounded-lg border border-white/8 bg-[var(--color-background)] p-4 space-y-3">
+                <p className="text-sm text-[var(--color-textMain)] font-medium">
+                  Pasta selecionada: {selectedFolder.name}
+                </p>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs text-[var(--color-textDim)]">
+                    Max preview:
+                  </label>
+                  <input
+                    type="number"
+                    min={20}
+                    max={500}
+                    value={previewMaxFiles}
+                    onChange={(e) =>
+                      setPreviewMaxFiles(Number(e.target.value || 100))
+                    }
+                    className="w-20 px-2 py-1.5 rounded bg-[var(--color-surface)] border border-white/10 text-xs text-[var(--color-textMain)]"
+                  />
+                  <button
+                    onClick={() => {
+                      void runPreview();
+                    }}
+                    disabled={previewMutation.isPending}
+                    className="px-3 py-2 rounded-lg bg-white/5 text-[var(--color-textDim)] text-xs font-medium hover:text-[var(--color-textMain)] disabled:opacity-50"
+                  >
+                    {previewMutation.isPending ? "Preview..." : "Preview"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      void runImport(50);
+                    }}
+                    disabled={importMutation.isPending}
+                    className="px-3 py-2 rounded-lg bg-[var(--color-primary)]/15 text-[var(--color-primary)] text-xs font-semibold hover:bg-[var(--color-primary)]/20 disabled:opacity-50"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <Import className="h-3 w-3" />
+                      Importar 50
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      void runImport(100);
+                    }}
+                    disabled={importMutation.isPending}
+                    className="px-3 py-2 rounded-lg bg-[var(--color-primary)] text-white text-xs font-semibold hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+                  >
+                    Importar 100
+                  </button>
+                </div>
+
+                {previewMutation.data && (
+                  <div className="text-xs text-[var(--color-textDim)] space-y-1">
+                    <p>
+                      Suportados: {previewMutation.data.supportedCount} ·
+                      Ignorados: {previewMutation.data.unsupportedCount}
+                    </p>
+                    {previewMutation.data.supportedFiles.length > 0 && (
+                      <p className="truncate">
+                        Exemplo: {previewMutation.data.supportedFiles[0]?.name}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {importResult && (
+                  <div className="text-xs text-[var(--color-textDim)] space-y-1">
+                    <p>
+                      Selecionados: {importResult.selected} · Aceitos:{" "}
+                      {importResult.accepted} · Rejeitados:{" "}
+                      {importResult.rejected}
+                    </p>
+                    {importResult.jobs.length > 0 && (
+                      <p className="truncate">
+                        Jobs: {importResult.jobs.slice(0, 4).join(", ")}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ===== Job Row =====
 function JobRow({
   job,
@@ -862,6 +1431,9 @@ export default function UploadsPage() {
 
       {/* Upload Zone */}
       <UploadZone />
+
+      {/* Google Drive Import */}
+      <GoogleDriveImportPanel />
 
       {/* Actions Bar */}
       <div className="flex flex-wrap gap-2">

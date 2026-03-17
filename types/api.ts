@@ -22,7 +22,7 @@ export interface RegisterRequest {
 export interface AuthResponse {
   message: string;
   user: User;
-  token: string;
+  token?: string;
 }
 
 export interface RegisterResponse {
@@ -47,7 +47,7 @@ export interface ActivateAccountResponse {
   success: boolean;
   message: string;
   user: User;
-  token: string;
+  token?: string;
 }
 
 // ===== Recuperação de Senha =====
@@ -918,6 +918,75 @@ export interface UploadSerieMultiResponse {
 export type UploadSerieResponse =
   | UploadSerieSingleResponse
   | UploadSerieMultiResponse;
+
+// ===== Google Drive Integration =====
+export interface GoogleDriveFolderItem {
+  id: string;
+  name: string;
+  mimeType?: string;
+  shared?: boolean;
+  modifiedTime?: string;
+}
+
+export interface GoogleDriveFoldersResponse {
+  folders: GoogleDriveFolderItem[];
+  nextPageToken?: string;
+}
+
+export interface GoogleDriveFoldersParams {
+  accessToken?: string;
+  parentId?: string;
+  sharedOnly?: boolean;
+  pageToken?: string;
+  pageSize?: number;
+}
+
+export interface GoogleDrivePreviewFile {
+  id: string;
+  name: string;
+  mimeType?: string;
+  size?: number;
+  modifiedTime?: string;
+}
+
+export interface GoogleDrivePreviewResponse {
+  supportedFiles: GoogleDrivePreviewFile[];
+  supportedCount: number;
+  unsupportedCount: number;
+}
+
+export interface GoogleDrivePreviewParams {
+  accessToken?: string;
+  folderId: string;
+  recursive?: boolean;
+  maxFiles?: number;
+}
+
+export interface GoogleDriveImportRequest {
+  folderId: string;
+  accessToken?: string;
+  recursive?: boolean;
+  maxFiles?: number;
+  dryRun?: boolean;
+}
+
+export interface GoogleDriveImportResponse {
+  accepted: Array<{
+    fileId: string;
+    filename: string;
+    jobId: string;
+  }>;
+  rejected: Array<{
+    fileId?: string;
+    filename: string;
+    reason: string;
+  }>;
+  totals: {
+    selected: number;
+    accepted: number;
+    rejected: number;
+  };
+}
 
 // ===== Analytics / Stats Recording =====
 export interface RecordStatsRequest {

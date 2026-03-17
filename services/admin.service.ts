@@ -76,6 +76,12 @@ import type {
   CreateManualSubscriptionResponse,
   CancelSubscriptionRequest,
   CheckExpiredResponse,
+  GoogleDriveFoldersParams,
+  GoogleDriveFoldersResponse,
+  GoogleDrivePreviewParams,
+  GoogleDrivePreviewResponse,
+  GoogleDriveImportRequest,
+  GoogleDriveImportResponse,
 } from "@/types/api";
 
 // Helpers para flatten jobs da API
@@ -289,6 +295,59 @@ export const adminService = {
       `/upload/series/${seriesId}`,
       formData,
       { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return response.data;
+  },
+
+  // ===== Integrations - Google Drive =====
+  async getGoogleDriveFolders(
+    params: GoogleDriveFoldersParams,
+  ): Promise<GoogleDriveFoldersResponse> {
+    const { accessToken, ...query } = params;
+    const response = await api.get<GoogleDriveFoldersResponse>(
+      "/integrations/google-drive/folders",
+      {
+        params: query,
+        headers: accessToken
+          ? {
+              "x-google-access-token": accessToken,
+            }
+          : undefined,
+      },
+    );
+    return response.data;
+  },
+
+  async previewGoogleDriveFolder(
+    params: GoogleDrivePreviewParams,
+  ): Promise<GoogleDrivePreviewResponse> {
+    const { accessToken, ...query } = params;
+    const response = await api.get<GoogleDrivePreviewResponse>(
+      "/integrations/google-drive/preview",
+      {
+        params: query,
+        headers: accessToken
+          ? {
+              "x-google-access-token": accessToken,
+            }
+          : undefined,
+      },
+    );
+    return response.data;
+  },
+
+  async importGoogleDriveFolder(
+    data: GoogleDriveImportRequest,
+    idempotencyKey?: string,
+  ): Promise<GoogleDriveImportResponse> {
+    const response = await api.post<GoogleDriveImportResponse>(
+      "/integrations/google-drive/import",
+      data,
+      {
+        headers: idempotencyKey
+          ? { "Idempotency-Key": idempotencyKey }
+          : undefined,
+      },
     );
     return response.data;
   },

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.API_URL || "https://api.manhq.com.br";
+const FORWARDED_COOKIE_NAMES = ["manhq_session"];
 
 // Prefixos de path permitidos — rejeita qualquer rota fora desta lista
 const ALLOWED_PREFIXES = [
@@ -30,6 +31,7 @@ const ALLOWED_PREFIXES = [
   "analytics/",
   "collections",
   "editor/",
+  "integrations/google-drive/",
   "v1/comments/",
   "v1/account/",
 ];
@@ -55,6 +57,15 @@ function isPathAllowed(targetPath: string): boolean {
   );
 }
 
+function buildForwardedCookieHeader(req: NextRequest): string | null {
+  const cookies = req.cookies
+    .getAll()
+    .filter((cookie) => FORWARDED_COOKIE_NAMES.includes(cookie.name));
+
+  if (cookies.length === 0) return null;
+  return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+}
+
 async function handler(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -74,6 +85,11 @@ async function handler(
   headers.delete("host");
   headers.delete("connection");
   headers.delete("cookie");
+
+  const forwardedCookie = buildForwardedCookieHeader(req);
+  if (forwardedCookie) {
+    headers.set("cookie", forwardedCookie);
+  }
 
   const init: RequestInit = {
     method: req.method,

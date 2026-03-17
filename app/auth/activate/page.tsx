@@ -132,7 +132,9 @@ export default function ActivatePage() {
 
     try {
       const result = await authService.activateAccount({ token, password });
-      setStoredToken(result.token);
+      if (result.token) {
+        setStoredToken(result.token);
+      }
       setStoredUser(result.user);
       setState("success");
       setTimeout(() => {

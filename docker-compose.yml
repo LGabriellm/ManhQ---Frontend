@@ -38,6 +38,5 @@ services:
 
 networks:
   manhq-network:
-    external: true
     driver: bridge
     name: manhq-network

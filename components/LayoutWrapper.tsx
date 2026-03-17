@@ -11,6 +11,8 @@ const PUBLIC_ROUTES = [
   "/auth/activate",
   "/auth/forgot-password",
   "/auth/reset-password",
+  "/termos-de-servico",
+  "/politica-de-privacidade",
 ];
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {

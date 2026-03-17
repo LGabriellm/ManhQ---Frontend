@@ -70,6 +70,8 @@ const adminKeys = {
     [...adminKeys.all, "subscriptions", params] as const,
   activationTokens: (params?: ActivationTokensParams) =>
     [...adminKeys.all, "activation-tokens", params] as const,
+  googleDriveStatus: () =>
+    [...adminKeys.all, "google-drive", "status"] as const,
   googleDriveFolders: (params: Omit<GoogleDriveFoldersParams, "accessToken">) =>
     [...adminKeys.all, "google-drive", "folders", params] as const,
 };
@@ -272,6 +274,45 @@ export function useUploadToSeries() {
 }
 
 // ===== Google Drive Integration =====
+export function useGoogleDriveStatus(enabled = true) {
+  return useQuery({
+    queryKey: adminKeys.googleDriveStatus(),
+    queryFn: () => adminService.getGoogleDriveStatus(),
+    enabled,
+    staleTime: 1000 * 15,
+  });
+}
+
+export function useGoogleDriveAuthUrl() {
+  return useMutation({
+    mutationFn: () => adminService.getGoogleDriveAuthUrl(),
+  });
+}
+
+export function useGoogleDriveCallback() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (code: string) => adminService.handleGoogleDriveCallback(code),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.googleDriveStatus() });
+      qc.invalidateQueries({ queryKey: adminKeys.all });
+    },
+  });
+}
+
+export function useGoogleDriveDisconnect() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => adminService.disconnectGoogleDrive(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.googleDriveStatus() });
+      qc.invalidateQueries({ queryKey: adminKeys.all });
+    },
+  });
+}
+
 export function useGoogleDriveFolders(
   params: GoogleDriveFoldersParams,
   enabled = true,

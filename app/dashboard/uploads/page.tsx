@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   useUpload,
   useUploadBulk,
@@ -8,6 +8,9 @@ import {
   useGoogleDriveFolders,
   useGoogleDrivePreview,
   useGoogleDriveImport,
+  useGoogleDriveStatus,
+  useGoogleDriveAuthUrl,
+  useGoogleDriveDisconnect,
   useAdminJobs,
   useClearCompletedJobs,
   useScanLibrary,
@@ -45,7 +48,6 @@ import {
   FolderUp,
   Search,
   Cloud,
-  KeyRound,
   ArrowRight,
   Import,
 } from "lucide-react";
@@ -75,33 +77,6 @@ function formatFileSize(bytes?: number): string {
 function getJobDisplayName(job: AdminJob): string {
   return job.name?.replace(/^upload-/, "") || job.id;
 }
-
-const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
-
-type GoogleOAuthTokenResponse = {
-  access_token?: string;
-  error?: string;
-  error_description?: string;
-};
-
-type GoogleTokenClient = {
-  callback: (response: GoogleOAuthTokenResponse) => void;
-  requestAccessToken: (options?: { prompt?: string }) => void;
-};
-
-type GoogleOAuthWindow = Window & {
-  google?: {
-    accounts?: {
-      oauth2?: {
-        initTokenClient: (config: {
-          client_id: string;
-          scope: string;
-          callback: (response: GoogleOAuthTokenResponse) => void;
-        }) => GoogleTokenClient;
-      };
-    };
-  };
-};
 
 const ACCEPTED_EXTENSIONS = [".cbz", ".cbr", ".zip", ".pdf", ".epub"];
 
@@ -650,14 +625,6 @@ function UploadZone() {
 
 // ===== Google Drive Import Panel =====
 function GoogleDriveImportPanel() {
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-  const [authMode, setAuthMode] = useState<"oauth" | "service-account">(
-    "oauth",
-  );
-  const [accessToken, setAccessToken] = useState("");
-  const [isConnected, setIsConnected] = useState(false);
-  const [isGoogleSdkReady, setIsGoogleSdkReady] = useState(false);
-  const [isOAuthLoading, setIsOAuthLoading] = useState(false);
   const [sharedOnly, setSharedOnly] = useState(true);
   const [parentId, setParentId] = useState<string | undefined>(undefined);
   const [folderTrail, setFolderTrail] = useState<
@@ -674,7 +641,18 @@ function GoogleDriveImportPanel() {
     selected: number;
     jobs: string[];
   } | null>(null);
-  const tokenClientRef = useRef<GoogleTokenClient | null>(null);
+
+  const {
+    data: statusData,
+    isLoading: isStatusLoading,
+    error: statusError,
+    refetch: refetchStatus,
+  } = useGoogleDriveStatus();
+  const authUrlMutation = useGoogleDriveAuthUrl();
+  const disconnectMutation = useGoogleDriveDisconnect();
+
+  const isConnected = !!statusData?.connected;
+  const account = statusData?.account;
 
   const {
     data: foldersData,
@@ -683,7 +661,6 @@ function GoogleDriveImportPanel() {
     refetch: refetchFolders,
   } = useGoogleDriveFolders(
     {
-      accessToken: authMode === "oauth" ? accessToken : undefined,
       parentId,
       sharedOnly,
       pageSize: 100,
@@ -694,122 +671,48 @@ function GoogleDriveImportPanel() {
   const previewMutation = useGoogleDrivePreview();
   const importMutation = useGoogleDriveImport();
 
-  useEffect(() => {
-    if (!googleClientId) return;
+  const connect = async () => {
+    try {
+      const { url } = await authUrlMutation.mutateAsync();
+      if (!url) {
+        toast.error("Não foi possível iniciar autenticação com Google");
+        return;
+      }
 
-    const initTokenClient = () => {
-      const google = (window as GoogleOAuthWindow).google;
-      if (!google?.accounts?.oauth2) return;
+      let oauthUrl: URL;
+      try {
+        oauthUrl = new URL(url);
+      } catch {
+        toast.error("URL de autenticação inválida retornada pelo backend");
+        return;
+      }
 
-      tokenClientRef.current = google.accounts.oauth2.initTokenClient({
-        client_id: googleClientId,
-        scope: GOOGLE_DRIVE_SCOPE,
-        callback: () => {},
-      });
+      const clientId = oauthUrl.searchParams.get("client_id");
+      if (!clientId || clientId.includes("undefined") || clientId === "null") {
+        toast.error(
+          "OAuth Google mal configurado no backend (client_id inválido)",
+        );
+        return;
+      }
 
-      setIsGoogleSdkReady(true);
-    };
-
-    if ((window as GoogleOAuthWindow).google?.accounts?.oauth2) {
-      initTokenClient();
-      return;
+      window.location.href = url;
+    } catch {
+      toast.error("Falha ao obter URL de autenticação do Google Drive");
     }
-
-    const existingScript = document.getElementById("google-identity-services");
-    if (existingScript) {
-      existingScript.addEventListener("load", initTokenClient);
-      return () => existingScript.removeEventListener("load", initTokenClient);
-    }
-
-    const script = document.createElement("script");
-    script.id = "google-identity-services";
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.defer = true;
-    script.onload = initTokenClient;
-    document.head.appendChild(script);
-
-    return () => {
-      script.onload = null;
-    };
-  }, [googleClientId]);
-
-  const connectWithToken = (token: string) => {
-    if (!token.trim()) {
-      toast.error("Token Google inválido");
-      return;
-    }
-
-    setAccessToken(token);
-    setIsConnected(true);
-    setParentId(undefined);
-    setFolderTrail([]);
-    setSelectedFolder(null);
-    setImportResult(null);
-    toast.success("Google Drive conectado");
   };
 
-  const connect = async () => {
-    if (authMode === "service-account") {
-      setIsConnected(true);
+  const disconnect = async () => {
+    try {
+      await disconnectMutation.mutateAsync();
       setParentId(undefined);
       setFolderTrail([]);
       setSelectedFolder(null);
       setImportResult(null);
-
-      const result = await refetchFolders();
-      if (result.error) {
-        setIsConnected(false);
-        toast.error("Falha ao conectar via Service Account");
-        return;
-      }
-
-      toast.success("Service Account conectada");
-      return;
+      await refetchStatus();
+      toast.success("Conta Google desconectada");
+    } catch {
+      toast.error("Erro ao desconectar Google Drive");
     }
-
-    connectWithToken(accessToken);
-  };
-
-  const connectWithGoogleOAuth = async () => {
-    if (!googleClientId) {
-      toast.error("Defina NEXT_PUBLIC_GOOGLE_CLIENT_ID no ambiente");
-      return;
-    }
-
-    if (!tokenClientRef.current || !isGoogleSdkReady) {
-      toast.error("SDK do Google ainda não carregado");
-      return;
-    }
-
-    setIsOAuthLoading(true);
-
-    tokenClientRef.current.callback = (response: GoogleOAuthTokenResponse) => {
-      setIsOAuthLoading(false);
-
-      if (response.error) {
-        toast.error(response.error_description || "Falha no OAuth do Google");
-        return;
-      }
-
-      const token = response.access_token;
-      if (!token) {
-        toast.error("Não foi possível obter access token");
-        return;
-      }
-
-      connectWithToken(token);
-    };
-
-    tokenClientRef.current.requestAccessToken({ prompt: "consent" });
-  };
-
-  const disconnect = () => {
-    setIsConnected(false);
-    setParentId(undefined);
-    setFolderTrail([]);
-    setSelectedFolder(null);
-    setImportResult(null);
   };
 
   const openFolder = (id: string, name: string) => {
@@ -834,7 +737,6 @@ function GoogleDriveImportPanel() {
 
     try {
       await previewMutation.mutateAsync({
-        accessToken: authMode === "oauth" ? accessToken : undefined,
         folderId: selectedFolder.id,
         recursive: true,
         maxFiles: previewMaxFiles,
@@ -859,7 +761,6 @@ function GoogleDriveImportPanel() {
       const result = await importMutation.mutateAsync({
         data: {
           folderId: selectedFolder.id,
-          accessToken: authMode === "oauth" ? accessToken : undefined,
           recursive: true,
           maxFiles,
           dryRun: false,
@@ -891,7 +792,7 @@ function GoogleDriveImportPanel() {
             Google Drive
           </h2>
           <p className="text-xs text-[var(--color-textDim)] mt-1">
-            Selecione pastas do Drive, rode preview e importe em lotes.
+            Conecte sua conta Google, selecione pastas e importe em lotes.
           </p>
         </div>
         <span
@@ -906,100 +807,77 @@ function GoogleDriveImportPanel() {
       </div>
 
       <div className="p-5 space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => {
-              setAuthMode("oauth");
-              setIsConnected(false);
-              setSelectedFolder(null);
-              setParentId(undefined);
-              setFolderTrail([]);
-            }}
-            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-              authMode === "oauth"
-                ? "bg-primary/15 text-primary"
-                : "bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
-            }`}
-          >
-            OAuth por usuário
-          </button>
-          <button
-            onClick={() => {
-              setAuthMode("service-account");
-              setIsConnected(false);
-              setSelectedFolder(null);
-              setParentId(undefined);
-              setFolderTrail([]);
-            }}
-            className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-              authMode === "service-account"
-                ? "bg-primary/15 text-primary"
-                : "bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
-            }`}
-          >
-            Service Account
-          </button>
-        </div>
+        {statusError && (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            Não foi possível verificar o status do Google Drive. Tente
+            novamente.
+          </div>
+        )}
+
+        {isConnected && account && (
+          <div className="rounded-lg border border-white/8 bg-[var(--color-background)] px-3 py-2.5 flex items-center gap-3">
+            {account.picture ? (
+              <img
+                src={account.picture}
+                alt={account.name || account.email || "Google account"}
+                className="h-8 w-8 rounded-full object-cover"
+              />
+            ) : (
+              <div className="h-8 w-8 rounded-full bg-white/10" />
+            )}
+            <div className="min-w-0">
+              <p className="text-sm text-[var(--color-textMain)] truncate">
+                {account.name || "Conta Google"}
+              </p>
+              <p className="text-xs text-[var(--color-textDim)] truncate">
+                {account.email || "Email não informado"}
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-2">
-          {authMode === "oauth" && (
-            <>
-              <button
-                onClick={() => {
-                  void connectWithGoogleOAuth();
-                }}
-                disabled={isOAuthLoading || !googleClientId}
-                className="px-4 py-2.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isOAuthLoading
-                  ? "Conectando..."
-                  : "Conectar com Google (OAuth)"}
-              </button>
-              <div className="relative flex-1">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-textDim)]" />
-                <input
-                  type="password"
-                  value={accessToken}
-                  onChange={(e) => setAccessToken(e.target.value)}
-                  placeholder="Cole o Google access_token"
-                  className="w-full pl-10 pr-3 py-2.5 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
-                />
-              </div>
-            </>
-          )}
-
-          {authMode === "service-account" && (
-            <div className="flex-1 px-3 py-2.5 rounded-lg bg-[var(--color-background)] border border-white/10 text-xs text-[var(--color-textDim)] flex items-center">
-              O backend usa Service Account para autenticar no Google Drive.
-            </div>
-          )}
-
           {!isConnected ? (
             <button
               onClick={() => {
                 void connect();
               }}
-              className="px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary)]/90"
+              disabled={authUrlMutation.isPending || isStatusLoading}
+              className="px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary)]/90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {authMode === "oauth"
-                ? "Conectar Google Drive"
-                : "Conectar Service Account"}
+              {authUrlMutation.isPending
+                ? "Conectando..."
+                : "Conectar Google Drive"}
             </button>
           ) : (
             <button
-              onClick={disconnect}
-              className="px-4 py-2.5 rounded-lg bg-white/5 text-[var(--color-textDim)] text-sm font-medium hover:text-[var(--color-textMain)]"
+              onClick={() => {
+                void disconnect();
+              }}
+              disabled={disconnectMutation.isPending}
+              className="px-4 py-2.5 rounded-lg bg-white/5 text-[var(--color-textDim)] text-sm font-medium hover:text-[var(--color-textMain)] disabled:opacity-50"
             >
-              Desconectar
+              {disconnectMutation.isPending
+                ? "Desconectando..."
+                : "Desconectar"}
             </button>
           )}
+
+          <button
+            onClick={() => {
+              void refetchStatus();
+            }}
+            className="px-3 py-2 rounded-lg text-xs font-medium bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+          >
+            Atualizar status
+          </button>
         </div>
 
-        {authMode === "oauth" && !googleClientId && (
-          <p className="text-[11px] text-yellow-400">
-            Configure `NEXT_PUBLIC_GOOGLE_CLIENT_ID` para usar o OAuth
-            automático.
-          </p>
+        {!isConnected && !isStatusLoading && (
+          <div className="rounded-lg border border-white/8 bg-[var(--color-background)] px-3 py-2 text-xs text-[var(--color-textDim)]">
+            Conecte o Google Drive para listar pastas, gerar preview e importar
+            arquivos.
+          </div>
         )}
 
         {isConnected && (

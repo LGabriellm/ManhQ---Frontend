@@ -920,6 +920,33 @@ export type UploadSerieResponse =
   | UploadSerieMultiResponse;
 
 // ===== Google Drive Integration =====
+export interface GoogleDriveAccount {
+  email?: string;
+  name?: string;
+  picture?: string;
+}
+
+export interface GoogleDriveAuthUrlResponse {
+  url: string;
+}
+
+export interface GoogleDriveStatusResponse {
+  connected: boolean;
+  account?: GoogleDriveAccount;
+}
+
+export interface GoogleDriveCallbackResponse {
+  success: boolean;
+  connected: boolean;
+  account?: GoogleDriveAccount;
+}
+
+export interface GoogleDriveDisconnectResponse {
+  success?: boolean;
+  connected?: boolean;
+  message?: string;
+}
+
 export interface GoogleDriveFolderItem {
   id: string;
   name: string;

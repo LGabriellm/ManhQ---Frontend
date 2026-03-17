@@ -78,6 +78,10 @@ import type {
   CheckExpiredResponse,
   GoogleDriveFoldersParams,
   GoogleDriveFoldersResponse,
+  GoogleDriveAuthUrlResponse,
+  GoogleDriveStatusResponse,
+  GoogleDriveCallbackResponse,
+  GoogleDriveDisconnectResponse,
   GoogleDrivePreviewParams,
   GoogleDrivePreviewResponse,
   GoogleDriveImportRequest,
@@ -300,6 +304,37 @@ export const adminService = {
   },
 
   // ===== Integrations - Google Drive =====
+  async getGoogleDriveAuthUrl(): Promise<GoogleDriveAuthUrlResponse> {
+    const response = await api.get<GoogleDriveAuthUrlResponse>(
+      "/integrations/google-drive/auth-url",
+    );
+    return response.data;
+  },
+
+  async getGoogleDriveStatus(): Promise<GoogleDriveStatusResponse> {
+    const response = await api.get<GoogleDriveStatusResponse>(
+      "/integrations/google-drive/status",
+    );
+    return response.data;
+  },
+
+  async handleGoogleDriveCallback(
+    code: string,
+  ): Promise<GoogleDriveCallbackResponse> {
+    const response = await api.get<GoogleDriveCallbackResponse>(
+      "/integrations/google-drive/callback",
+      { params: { code } },
+    );
+    return response.data;
+  },
+
+  async disconnectGoogleDrive(): Promise<GoogleDriveDisconnectResponse> {
+    const response = await api.delete<GoogleDriveDisconnectResponse>(
+      "/integrations/google-drive/disconnect",
+    );
+    return response.data;
+  },
+
   async getGoogleDriveFolders(
     params: GoogleDriveFoldersParams,
   ): Promise<GoogleDriveFoldersResponse> {

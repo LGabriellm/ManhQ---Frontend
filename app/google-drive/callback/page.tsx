@@ -69,7 +69,10 @@ export default function GoogleDriveCallbackPage() {
       setIsProcessing(true);
 
       try {
-        console.log("[OAuth Callback] Iniciando com code:", callbackParams.code);
+        console.log(
+          "[OAuth Callback] Iniciando com code:",
+          callbackParams.code,
+        );
 
         const result = await callbackMutation.mutateAsync(callbackParams.code!);
 
@@ -101,11 +104,12 @@ export default function GoogleDriveCallbackPage() {
         const errorMessage = err instanceof Error ? err.message : String(err);
         console.error("[OAuth Callback] Erro:", errorMessage);
 
-        const isTimeout = err instanceof Error && err.message.includes("timeout");
+        const isTimeout =
+          err instanceof Error && err.message.includes("timeout");
         setError(
           isTimeout
             ? "Timeout ao conectar com Google Drive. Tente novamente."
-            : `Falha na autenticação: ${errorMessage}`
+            : `Falha na autenticação: ${errorMessage}`,
         );
         setMessage("Falha na conexão com Google Drive.");
         setIsProcessing(false);
@@ -191,8 +195,12 @@ export default function GoogleDriveCallbackPage() {
           {/* Success State */}
           {isSuccess && (
             <div className="bg-green-500/15 border border-green-500/30 rounded-lg p-4 space-y-2">
-              <p className="text-sm text-green-300">✓ Conta conectada com sucesso!</p>
-              <p className="text-xs text-green-200">Você será redirecionado em breve...</p>
+              <p className="text-sm text-green-300">
+                ✓ Conta conectada com sucesso!
+              </p>
+              <p className="text-xs text-green-200">
+                Você será redirecionado em breve...
+              </p>
               <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mt-3">
                 <div className="h-full bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse" />
               </div>
@@ -217,7 +225,9 @@ export default function GoogleDriveCallbackPage() {
                 </button>
               </>
             )}
-            {isLoading && <p className="text-xs text-gray-400">Por favor aguarde...</p>}
+            {isLoading && (
+              <p className="text-xs text-gray-400">Por favor aguarde...</p>
+            )}
           </div>
 
           {/* Debug Info */}
@@ -226,12 +236,20 @@ export default function GoogleDriveCallbackPage() {
               <p className="text-xs text-gray-500 font-mono">
                 <span className="text-gray-600">Status:</span>{" "}
                 <span className="text-blue-300">
-                  {isLoading ? "loading" : error ? "error" : isSuccess ? "success" : "idle"}
+                  {isLoading
+                    ? "loading"
+                    : error
+                      ? "error"
+                      : isSuccess
+                        ? "success"
+                        : "idle"}
                 </span>
               </p>
               <p className="text-xs text-gray-500 font-mono">
                 <span className="text-gray-600">Mutation:</span>{" "}
-                <span className="text-blue-300">{callbackMutation.isPending ? "pending" : "idle"}</span>
+                <span className="text-blue-300">
+                  {callbackMutation.isPending ? "pending" : "idle"}
+                </span>
               </p>
             </div>
           )}

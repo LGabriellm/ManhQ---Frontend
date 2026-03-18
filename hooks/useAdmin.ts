@@ -350,9 +350,12 @@ export function useGoogleDriveImport() {
       data: GoogleDriveImportRequest;
       idempotencyKey?: string;
     }) => adminService.importGoogleDriveFolder(data, idempotencyKey),
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Invalidate first (mark as stale)
       qc.invalidateQueries({ queryKey: adminKeys.jobs() });
       qc.invalidateQueries({ queryKey: adminKeys.all });
+      // Then refetch immediately to show jobs instantly
+      await qc.refetchQueries({ queryKey: adminKeys.jobs() });
     },
   });
 }

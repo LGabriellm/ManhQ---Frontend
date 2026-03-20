@@ -19,6 +19,9 @@ import {
   useUpdateMedia,
   useDeleteMedia,
   useUploadToSeries,
+  useSeriesDetails,
+  useSetSeriesCoverFromChapter,
+  useSetSeriesCoverFromUpload,
 } from "@/hooks/useAdmin";
 import { AuthCover } from "@/components/AuthCover";
 import type {
@@ -514,6 +517,278 @@ function EnrichModal({
             <p className="text-center text-[var(--color-textDim)] py-8 text-sm">
               Nenhum resultado encontrado
             </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== Change Cover Modal =====
+function ChangeCoverModal({
+  seriesId,
+  seriesTitle,
+  onClose,
+  onSuccess,
+}: {
+  seriesId: string;
+  seriesTitle: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [state, setState] = useState<
+    "SELECT_SOURCE" | "CHAPTER_PICKER" | "UPLOAD_PICKER"
+  >("SELECT_SOURCE");
+  const [selectedMediaId, setSelectedMediaId] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const { data: seriesDetails, isLoading: isLoadingSeries } = useSeriesDetails(
+    seriesId,
+    true,
+  );
+  const setFromChapterMutation = useSetSeriesCoverFromChapter();
+  const setFromUploadMutation = useSetSeriesCoverFromUpload();
+
+  const isSubmitting =
+    setFromChapterMutation.isPending || setFromUploadMutation.isPending;
+
+  const medias = seriesDetails?.medias || [];
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
+  const mapErrorMessage = (err: unknown) => {
+    const status = (err as { statusCode?: number })?.statusCode;
+    if (status === 400)
+      return "Dados inválidos. Verifique os campos e tente novamente.";
+    if (status === 404) return "Série/capítulo não encontrado";
+    if (status === 500)
+      return "Erro interno ao atualizar capa. Tente novamente.";
+    return (err as { message?: string })?.message || "Erro ao atualizar capa";
+  };
+
+  const handleSubmitChapter = async () => {
+    if (!selectedMediaId) {
+      toast.error("Selecione um capítulo");
+      return;
+    }
+
+    try {
+      await setFromChapterMutation.mutateAsync({
+        seriesId,
+        mediaId: selectedMediaId,
+      });
+      toast.success("Capa atualizada pelo capítulo selecionado");
+      onSuccess();
+      onClose();
+    } catch (err: unknown) {
+      toast.error(mapErrorMessage(err));
+    }
+  };
+
+  const handleFileChange = (file: File | null) => {
+    if (!file) {
+      setUploadFile(null);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(null);
+      return;
+    }
+
+    const acceptedExts = ["jpg", "jpeg", "png", "webp", "gif", "bmp"];
+    const extension = file.name.split(".").pop()?.toLowerCase() || "";
+    if (!acceptedExts.includes(extension)) {
+      toast.error("Formato inválido. Use: jpg, jpeg, png, webp, gif ou bmp");
+      return;
+    }
+
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    const nextPreview = URL.createObjectURL(file);
+    setUploadFile(file);
+    setPreviewUrl(nextPreview);
+  };
+
+  const handleSubmitUpload = async () => {
+    if (!uploadFile) {
+      toast.error("Selecione uma imagem antes de confirmar");
+      return;
+    }
+
+    try {
+      await setFromUploadMutation.mutateAsync({
+        seriesId,
+        cover: uploadFile,
+      });
+      toast.success("Capa atualizada via upload");
+      onSuccess();
+      onClose();
+    } catch (err: unknown) {
+      toast.error(mapErrorMessage(err));
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative ui-modal w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="flex items-center justify-between p-5 border-b border-white/5">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--color-textMain)]">
+              Alterar capa
+            </h2>
+            <p className="text-xs text-[var(--color-textDim)] mt-0.5">
+              {seriesTitle}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-5 overflow-y-auto space-y-4">
+          {state === "SELECT_SOURCE" && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => setState("CHAPTER_PICKER")}
+                className="text-left rounded-xl border border-white/10 bg-[var(--color-background)] p-4 hover:border-[var(--color-primary)]/40 transition-colors"
+              >
+                <p className="text-sm font-medium text-[var(--color-textMain)]">
+                  Escolher capa de um capítulo
+                </p>
+                <p className="text-xs text-[var(--color-textDim)] mt-1">
+                  Usa a primeira página do capítulo selecionado
+                </p>
+              </button>
+
+              <button
+                onClick={() => setState("UPLOAD_PICKER")}
+                className="text-left rounded-xl border border-white/10 bg-[var(--color-background)] p-4 hover:border-[var(--color-primary)]/40 transition-colors"
+              >
+                <p className="text-sm font-medium text-[var(--color-textMain)]">
+                  Enviar imagem do computador
+                </p>
+                <p className="text-xs text-[var(--color-textDim)] mt-1">
+                  Upload de uma única imagem personalizada
+                </p>
+              </button>
+            </div>
+          )}
+
+          {state === "CHAPTER_PICKER" && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setState("SELECT_SOURCE")}
+                className="text-xs text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+              >
+                ← Voltar
+              </button>
+
+              <p className="text-xs rounded-lg border border-yellow-500/30 bg-yellow-500/10 text-yellow-300 px-3 py-2">
+                A capa será a primeira página do capítulo selecionado.
+              </p>
+
+              {isLoadingSeries ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-[var(--color-primary)]" />
+                </div>
+              ) : medias.length === 0 ? (
+                <p className="text-sm text-[var(--color-textDim)]">
+                  Nenhum capítulo encontrado para esta série.
+                </p>
+              ) : (
+                <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                  {medias.map((media) => (
+                    <button
+                      key={media.id}
+                      type="button"
+                      onClick={() => setSelectedMediaId(media.id)}
+                      className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
+                        selectedMediaId === media.id
+                          ? "border-[var(--color-primary)] bg-[var(--color-primary)]/10"
+                          : "border-white/10 hover:border-white/20"
+                      }`}
+                    >
+                      <p className="text-sm text-[var(--color-textMain)]">
+                        Cap. {media.number} · {media.title}
+                      </p>
+                      <p className="text-[10px] text-[var(--color-textDim)] mt-0.5 font-mono">
+                        {media.id}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {state === "UPLOAD_PICKER" && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setState("SELECT_SOURCE")}
+                className="text-xs text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+              >
+                ← Voltar
+              </button>
+
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+                className="w-full text-sm text-[var(--color-textDim)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-primary)]/20 file:px-3 file:py-1.5 file:text-[var(--color-primary)] file:cursor-pointer"
+              />
+
+              {previewUrl && (
+                <div className="rounded-lg border border-white/10 bg-[var(--color-background)] p-2">
+                  <p className="text-xs text-[var(--color-textDim)] mb-2">
+                    Preview
+                  </p>
+                  <img
+                    src={previewUrl}
+                    alt="Preview da nova capa"
+                    className="w-40 h-56 rounded-md object-cover"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-5 border-t border-white/5 flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] text-sm"
+          >
+            Cancelar
+          </button>
+
+          {state === "CHAPTER_PICKER" && (
+            <button
+              onClick={() => void handleSubmitChapter()}
+              disabled={isSubmitting || !selectedMediaId}
+              className="px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary)]/90 disabled:opacity-50 inline-flex items-center gap-2"
+            >
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isSubmitting ? "Atualizando capa..." : "Confirmar"}
+            </button>
+          )}
+
+          {state === "UPLOAD_PICKER" && (
+            <button
+              onClick={() => void handleSubmitUpload()}
+              disabled={isSubmitting || !uploadFile}
+              className="px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary)]/90 disabled:opacity-50 inline-flex items-center gap-2"
+            >
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isSubmitting ? "Atualizando capa..." : "Confirmar"}
+            </button>
           )}
         </div>
       </div>
@@ -1482,6 +1757,10 @@ function SeriesDetailView({
   const [enrichSeriesModal, setEnrichSeriesModal] = useState(false);
   const [deleteSeriesModal, setDeleteSeriesModal] = useState(false);
   const [uploadModal, setUploadModal] = useState(false);
+  const [changeCoverModal, setChangeCoverModal] = useState(false);
+  const [currentCoverUrl, setCurrentCoverUrl] = useState(
+    series.coverUrl || series.hasCover ? `/series/${series.id}/cover` : "",
+  );
 
   const bulkDeleteMutation = useBulkDeleteMedias();
   const deleteMediaMutation = useDeleteMedia();
@@ -1572,9 +1851,9 @@ function SeriesDetailView({
         <div className="flex flex-col sm:flex-row gap-5 bg-[var(--color-surface)] rounded-xl border border-white/5 p-5">
           {/* Cover */}
           <div className="flex-shrink-0">
-            {series.coverUrl ? (
+            {currentCoverUrl ? (
               <AuthCover
-                coverUrl={series.coverUrl}
+                coverUrl={currentCoverUrl}
                 alt={series.title}
                 className="w-28 h-40 rounded-lg object-cover"
               />
@@ -1629,6 +1908,13 @@ function SeriesDetailView({
               >
                 <Edit3 className="h-3.5 w-3.5" />
                 Editar Info
+              </button>
+              <button
+                onClick={() => setChangeCoverModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 transition-colors"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Alterar capa
               </button>
               <button
                 onClick={() => setEnrichSeriesModal(true)}
@@ -1742,7 +2028,7 @@ function SeriesDetailView({
                   {medias.map((m) => (
                     <tr
                       key={m.id}
-                      className={`hover:bg-white/[0.02] transition-colors ${!m.fileExists ? "bg-red-500/[0.03]" : ""}`}
+                      className={`hover:bg-white/[0.02] transition-colors ${m.fileExists === false && m.pageCount === 0 ? "bg-red-500/[0.03]" : ""}`}
                     >
                       <td className="px-4 py-3">
                         <input
@@ -1762,7 +2048,7 @@ function SeriesDetailView({
                             <p className="text-[var(--color-textMain)] font-medium truncate max-w-[250px]">
                               {m.title}
                             </p>
-                            {!m.fileExists && (
+                            {m.fileExists === false && m.pageCount === 0 && (
                               <span className="inline-flex items-center gap-1 text-[10px] text-red-400 mt-0.5">
                                 <AlertTriangle className="h-3 w-3" />
                                 Arquivo não encontrado
@@ -1905,6 +2191,16 @@ function SeriesDetailView({
           seriesId={series.id}
           seriesTitle={series.title}
           onClose={() => setUploadModal(false)}
+        />
+      )}
+      {changeCoverModal && (
+        <ChangeCoverModal
+          seriesId={series.id}
+          seriesTitle={series.title}
+          onClose={() => setChangeCoverModal(false)}
+          onSuccess={() => {
+            setCurrentCoverUrl(`/series/${series.id}/cover?t=${Date.now()}`);
+          }}
         />
       )}
     </div>

@@ -1,6 +1,12 @@
 "use client";
 
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
 import { adminService } from "@/services/admin.service";
 import type {
   AdminSeriesParams,
@@ -26,8 +32,10 @@ import type {
   CreateManualSubscriptionRequest,
   CancelSubscriptionRequest,
   GoogleDriveFoldersParams,
-  GoogleDrivePreviewParams,
-  GoogleDriveImportRequest,
+  GoogleDriveNodesParams,
+  GoogleDriveStageRequest,
+  UploadPlanPatch,
+  Series,
 } from "@/types/api";
 
 // ===== Query Keys =====
@@ -36,6 +44,8 @@ const adminKeys = {
   dashboard: () => [...adminKeys.all, "dashboard"] as const,
   series: (params?: AdminSeriesParams) =>
     [...adminKeys.all, "series", params] as const,
+  seriesDetail: (seriesId: string) =>
+    [...adminKeys.all, "series", "detail", seriesId] as const,
   jobs: () => [...adminKeys.all, "jobs"] as const,
   job: (id: string) => [...adminKeys.all, "jobs", id] as const,
   blockedIPs: () => [...adminKeys.all, "blocked-ips"] as const,
@@ -74,7 +84,20 @@ const adminKeys = {
     [...adminKeys.all, "google-drive", "status"] as const,
   googleDriveFolders: (params: Omit<GoogleDriveFoldersParams, "accessToken">) =>
     [...adminKeys.all, "google-drive", "folders", params] as const,
+  googleDriveDraft: (draftId: string) =>
+    [...adminKeys.all, "google-drive", "draft", draftId] as const,
+  localUploadDraft: (draftId: string) =>
+    [...adminKeys.all, "upload", "draft", draftId] as const,
 };
+
+async function syncAdminQueries(qc: QueryClient, queryKeys: QueryKey[]) {
+  await Promise.all(
+    queryKeys.map(async (queryKey) => {
+      await qc.invalidateQueries({ queryKey });
+      await qc.refetchQueries({ queryKey, type: "active" });
+    }),
+  );
+}
 
 // ===== Dashboard =====
 export function useAdminDashboard() {
@@ -87,10 +110,11 @@ export function useAdminDashboard() {
 }
 
 // ===== Series =====
-export function useAdminSeries(params?: AdminSeriesParams) {
+export function useAdminSeries(params?: AdminSeriesParams, enabled = true) {
   return useQuery({
     queryKey: adminKeys.series(params),
     queryFn: () => adminService.getSeries(params),
+    enabled,
     staleTime: 1000 * 60 * 2,
   });
 }
@@ -100,9 +124,7 @@ export function useUpdateSeries() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateSeriesRequest }) =>
       adminService.updateSeries(id, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -111,9 +133,47 @@ export function useDeleteSeries() {
   return useMutation({
     mutationFn: ({ id, deleteFiles }: { id: string; deleteFiles?: boolean }) =>
       adminService.deleteSeries(id, deleteFiles),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
+  });
+}
+
+export function useSeriesDetails(seriesId: string, enabled = true) {
+  return useQuery<Series>({
+    queryKey: adminKeys.seriesDetail(seriesId),
+    queryFn: () => adminService.getSeriesDetails(seriesId),
+    enabled: enabled && !!seriesId,
+    staleTime: 1000 * 60,
+  });
+}
+
+export function useSetSeriesCoverFromChapter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      seriesId,
+      mediaId,
+    }: {
+      seriesId: string;
+      mediaId: string;
+    }) => adminService.setSeriesCoverFromChapter(seriesId, mediaId),
+    onSuccess: (_result, variables) =>
+      syncAdminQueries(qc, [
+        adminKeys.all,
+        adminKeys.seriesDetail(variables.seriesId),
+      ]),
+  });
+}
+
+export function useSetSeriesCoverFromUpload() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ seriesId, cover }: { seriesId: string; cover: File }) =>
+      adminService.setSeriesCoverFromUpload(seriesId, cover),
+    onSuccess: (_result, variables) =>
+      syncAdminQueries(qc, [
+        adminKeys.all,
+        adminKeys.seriesDetail(variables.seriesId),
+      ]),
   });
 }
 
@@ -121,9 +181,7 @@ export function useDeleteMedia() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => adminService.deleteMedia(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -147,9 +205,7 @@ export function useEnrichSeries() {
       seriesId: string;
       data: EnrichSeriesRequest;
     }) => adminService.enrichSeries(seriesId, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -157,9 +213,7 @@ export function useEnrichAll() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => adminService.enrichAll(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -191,9 +245,7 @@ export function useReassignMedia() {
       mediaId: string;
       data: ReassignMediaRequest;
     }) => adminService.reassignMedia(mediaId, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -207,9 +259,7 @@ export function useUpdateMedia() {
       mediaId: string;
       data: UpdateMediaRequest;
     }) => adminService.updateMedia(mediaId, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -217,9 +267,7 @@ export function useMergeSeries() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: MergeSeriesRequest) => adminService.mergeSeries(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -228,9 +276,7 @@ export function useUpload() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (file: File) => adminService.upload(file),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
   });
 }
 
@@ -238,9 +284,7 @@ export function useUploadBulk() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (files: File[]) => adminService.uploadBulk(files),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
   });
 }
 
@@ -254,10 +298,7 @@ export function useUploadFolder() {
       folderName: string;
       files: File[];
     }) => adminService.uploadFolder(folderName, files),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs(), adminKeys.all]),
   });
 }
 
@@ -266,9 +307,117 @@ export function useUploadToSeries() {
   return useMutation({
     mutationFn: ({ seriesId, files }: { seriesId: string; files: File[] }) =>
       adminService.uploadToSeries(seriesId, files),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-      qc.invalidateQueries({ queryKey: adminKeys.all });
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs(), adminKeys.all]),
+  });
+}
+
+export function useLocalUploadStage() {
+  return useMutation({
+    mutationFn: ({
+      files,
+      folderName,
+    }: {
+      files: File[];
+      folderName?: string;
+    }) => adminService.stageLocalUpload(files, folderName),
+  });
+}
+
+export function useLocalUploadDraft(draftId: string, enabled = true) {
+  return useQuery({
+    queryKey: adminKeys.localUploadDraft(draftId),
+    queryFn: () => adminService.getLocalUploadDraft(draftId),
+    enabled: enabled && !!draftId,
+    staleTime: 1000 * 2,
+    refetchInterval: 1200,
+  });
+}
+
+export function useUpdateLocalUploadDraftItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      draftId,
+      itemId,
+      data,
+    }: {
+      draftId: string;
+      itemId: string;
+      data: UploadPlanPatch;
+    }) => adminService.updateLocalUploadDraftItem(draftId, itemId, data),
+    onSuccess: async (_result, variables) => {
+      qc.invalidateQueries({
+        queryKey: adminKeys.localUploadDraft(variables.draftId),
+      });
+      await qc.refetchQueries({
+        queryKey: adminKeys.localUploadDraft(variables.draftId),
+      });
+    },
+  });
+}
+
+export function useCancelLocalUploadDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (draftId: string) =>
+      adminService.cancelLocalUploadDraft(draftId),
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
+  });
+}
+
+export function useConfirmLocalUploadDraft() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      draftId,
+      idempotencyKey,
+    }: {
+      draftId: string;
+      idempotencyKey?: string;
+    }) => adminService.confirmLocalUploadDraft(draftId, idempotencyKey),
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs(), adminKeys.all]),
+  });
+}
+
+export function useLocalUploadStageWithSeries() {
+  return useMutation({
+    mutationFn: ({
+      files,
+      seriesTitle,
+      folderName,
+    }: {
+      files: File[];
+      seriesTitle: string;
+      folderName?: string;
+    }) =>
+      adminService.stageLocalUploadWithSeries(files, seriesTitle, folderName),
+  });
+}
+
+export function useBulkUpdateLocalUploadDraftItems() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      draftId,
+      data,
+    }: {
+      draftId: string;
+      data: {
+        itemIds: string[];
+        updates: {
+          chapterNumber?: number;
+          startChapterNumber?: number;
+          seriesTitle?: string;
+        };
+      };
+    }) => adminService.bulkUpdateLocalUploadDraftItems(draftId, data),
+    onSuccess: async (_result, variables) => {
+      qc.invalidateQueries({
+        queryKey: adminKeys.localUploadDraft(variables.draftId),
+      });
+      await qc.refetchQueries({
+        queryKey: adminKeys.localUploadDraft(variables.draftId),
+      });
     },
   });
 }
@@ -294,10 +443,8 @@ export function useGoogleDriveCallback() {
 
   return useMutation({
     mutationFn: (code: string) => adminService.handleGoogleDriveCallback(code),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.googleDriveStatus() });
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [adminKeys.googleDriveStatus(), adminKeys.all]),
   });
 }
 
@@ -306,10 +453,8 @@ export function useGoogleDriveDisconnect() {
 
   return useMutation({
     mutationFn: () => adminService.disconnectGoogleDrive(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.googleDriveStatus() });
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [adminKeys.googleDriveStatus(), adminKeys.all]),
   });
 }
 
@@ -317,12 +462,11 @@ export function useGoogleDriveFolders(
   params: GoogleDriveFoldersParams,
   enabled = true,
 ) {
-  const { parentId, sharedOnly, pageToken, pageSize } = params;
+  const { parentId, pageToken, pageSize } = params;
 
   return useQuery({
     queryKey: adminKeys.googleDriveFolders({
       parentId,
-      sharedOnly,
       pageToken,
       pageSize,
     }),
@@ -332,31 +476,84 @@ export function useGoogleDriveFolders(
   });
 }
 
-export function useGoogleDrivePreview() {
-  return useMutation({
-    mutationFn: (params: GoogleDrivePreviewParams) =>
-      adminService.previewGoogleDriveFolder(params),
+export function useGoogleDriveNodes(
+  params: GoogleDriveNodesParams,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: [...adminKeys.all, "google-drive", "nodes", params],
+    queryFn: () => adminService.getGoogleDriveNodes(params),
+    enabled: enabled && !!params.parentId,
+    staleTime: 1000 * 15,
   });
 }
 
-export function useGoogleDriveImport() {
-  const qc = useQueryClient();
-
+export function useGoogleDriveStage() {
   return useMutation({
     mutationFn: ({
       data,
       idempotencyKey,
     }: {
-      data: GoogleDriveImportRequest;
+      data: GoogleDriveStageRequest;
       idempotencyKey?: string;
-    }) => adminService.importGoogleDriveFolder(data, idempotencyKey),
-    onSuccess: async () => {
-      // Invalidate first (mark as stale)
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-      // Then refetch immediately to show jobs instantly
-      await qc.refetchQueries({ queryKey: adminKeys.jobs() });
+    }) => adminService.stageGoogleDriveUpload(data, idempotencyKey),
+  });
+}
+
+export function useGoogleDriveDraft(draftId: string, enabled = true) {
+  return useQuery({
+    queryKey: adminKeys.googleDriveDraft(draftId),
+    queryFn: () => adminService.getGoogleDriveDraft(draftId),
+    enabled: enabled && !!draftId,
+    staleTime: 1000 * 10,
+  });
+}
+
+export function useUpdateGoogleDriveDraftItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      draftId,
+      itemId,
+      data,
+    }: {
+      draftId: string;
+      itemId: string;
+      data: UploadPlanPatch;
+    }) => adminService.updateGoogleDriveDraftItem(draftId, itemId, data),
+    onSuccess: async (_result, variables) => {
+      qc.invalidateQueries({
+        queryKey: adminKeys.googleDriveDraft(variables.draftId),
+      });
+      await qc.refetchQueries({
+        queryKey: adminKeys.googleDriveDraft(variables.draftId),
+      });
     },
+  });
+}
+
+export function useCancelGoogleDriveDraft() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (draftId: string) =>
+      adminService.cancelGoogleDriveDraft(draftId),
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
+  });
+}
+
+export function useConfirmGoogleDriveDraft() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      draftId,
+      idempotencyKey,
+    }: {
+      draftId: string;
+      idempotencyKey?: string;
+    }) => adminService.confirmGoogleDriveDraft(draftId, idempotencyKey),
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs(), adminKeys.all]),
   });
 }
 
@@ -384,9 +581,7 @@ export function useClearCompletedJobs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => adminService.clearCompletedJobs(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
   });
 }
 
@@ -394,9 +589,7 @@ export function useRetryJob() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (jobId: string) => adminService.retryJob(jobId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
   });
 }
 
@@ -415,10 +608,8 @@ export function useScanLibrary() {
   return useMutation({
     mutationFn: (incremental?: boolean) =>
       adminService.scanLibrary(incremental),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-      qc.invalidateQueries({ queryKey: adminKeys.scanJobs() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [adminKeys.jobs(), adminKeys.scanJobs()]),
   });
 }
 
@@ -463,9 +654,7 @@ export function useUnblockIP() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (ip: string) => adminService.unblockIP(ip),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.blockedIPs() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.blockedIPs()]),
   });
 }
 
@@ -501,9 +690,7 @@ export function useDeletePages() {
   return useMutation({
     mutationFn: ({ mediaId, pages }: { mediaId: string; pages: number[] }) =>
       adminService.deletePages(mediaId, pages),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -512,9 +699,7 @@ export function useReorderPages() {
   return useMutation({
     mutationFn: ({ mediaId, order }: { mediaId: string; order: number[] }) =>
       adminService.reorderPages(mediaId, order),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -530,9 +715,7 @@ export function useAddPages() {
       files: File[];
       insertAt?: number;
     }) => adminService.addPages(mediaId, files, insertAt),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -548,9 +731,7 @@ export function useReplacePage() {
       page: number;
       file: File;
     }) => adminService.replacePage(mediaId, page, file),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -564,9 +745,7 @@ export function useSplitMedia() {
       mediaId: string;
       data: SplitMediaRequest;
     }) => adminService.splitMedia(mediaId, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -575,9 +754,7 @@ export function useBulkDeleteMedias() {
   return useMutation({
     mutationFn: (data: BulkDeleteMediaRequest) =>
       adminService.bulkDeleteMedias(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -586,9 +763,7 @@ export function useBulkMoveMedias() {
   return useMutation({
     mutationFn: (data: BulkMoveMediaRequest) =>
       adminService.bulkMoveMedias(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -598,9 +773,7 @@ export function useBulkDeleteSeries() {
   return useMutation({
     mutationFn: (data: BulkDeleteSeriesRequest) =>
       adminService.bulkDeleteSeries(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.all });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.all]),
   });
 }
 
@@ -609,9 +782,7 @@ export function useDeleteJob() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (jobId: string) => adminService.deleteJob(jobId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
   });
 }
 
@@ -619,9 +790,7 @@ export function useRetryAllJobs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => adminService.retryAllJobs(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
   });
 }
 
@@ -629,9 +798,7 @@ export function usePauseJobs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => adminService.pauseJobs(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
   });
 }
 
@@ -639,9 +806,7 @@ export function useResumeJobs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => adminService.resumeJobs(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
   });
 }
 
@@ -649,9 +814,7 @@ export function useDrainJobs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => adminService.drainJobs(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.jobs() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
   });
 }
 
@@ -704,10 +867,8 @@ export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: CreateUserRequest) => adminService.createUser(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.users() });
-      qc.invalidateQueries({ queryKey: adminKeys.usersStats() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [adminKeys.users(), adminKeys.usersStats()]),
   });
 }
 
@@ -716,10 +877,8 @@ export function useUpdateUser() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateUserRequest }) =>
       adminService.updateUser(id, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.users() });
-      qc.invalidateQueries({ queryKey: adminKeys.usersStats() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [adminKeys.users(), adminKeys.usersStats()]),
   });
 }
 
@@ -727,10 +886,8 @@ export function useDeleteUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => adminService.deleteUser(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.users() });
-      qc.invalidateQueries({ queryKey: adminKeys.usersStats() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [adminKeys.users(), adminKeys.usersStats()]),
   });
 }
 
@@ -738,9 +895,7 @@ export function useRevokeSessions() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) => adminService.revokeSessions(userId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.users() });
-    },
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.users()]),
   });
 }
 
@@ -766,10 +921,8 @@ export function useApproveContent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => adminService.approveContent(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
-      qc.invalidateQueries({ queryKey: adminKeys.approvalsStats() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [adminKeys.approvals(), adminKeys.approvalsStats()]),
   });
 }
 
@@ -778,10 +931,8 @@ export function useRejectContent() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: RejectRequest }) =>
       adminService.rejectContent(id, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
-      qc.invalidateQueries({ queryKey: adminKeys.approvalsStats() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [adminKeys.approvals(), adminKeys.approvalsStats()]),
   });
 }
 
@@ -789,10 +940,8 @@ export function useBulkApprove() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: BulkApproveRequest) => adminService.bulkApprove(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
-      qc.invalidateQueries({ queryKey: adminKeys.approvalsStats() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [adminKeys.approvals(), adminKeys.approvalsStats()]),
   });
 }
 
@@ -800,10 +949,8 @@ export function useBulkReject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: BulkRejectRequest) => adminService.bulkReject(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.approvals() });
-      qc.invalidateQueries({ queryKey: adminKeys.approvalsStats() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [adminKeys.approvals(), adminKeys.approvalsStats()]),
   });
 }
 
@@ -846,11 +993,12 @@ export function useCreateManualSubscription() {
   return useMutation({
     mutationFn: (data: CreateManualSubscriptionRequest) =>
       adminService.createManualSubscription(data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.subscriptionsStats() });
-      qc.invalidateQueries({ queryKey: adminKeys.subscriptions() });
-      qc.invalidateQueries({ queryKey: adminKeys.activationTokens() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [
+        adminKeys.subscriptionsStats(),
+        adminKeys.subscriptions(),
+        adminKeys.activationTokens(),
+      ]),
   });
 }
 
@@ -864,10 +1012,11 @@ export function useCancelSubscription() {
       userId: string;
       data?: CancelSubscriptionRequest;
     }) => adminService.cancelSubscription(userId, data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.subscriptionsStats() });
-      qc.invalidateQueries({ queryKey: adminKeys.subscriptions() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [
+        adminKeys.subscriptionsStats(),
+        adminKeys.subscriptions(),
+      ]),
   });
 }
 
@@ -875,10 +1024,11 @@ export function useReactivateSubscription() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId: string) => adminService.reactivateSubscription(userId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.subscriptionsStats() });
-      qc.invalidateQueries({ queryKey: adminKeys.subscriptions() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [
+        adminKeys.subscriptionsStats(),
+        adminKeys.subscriptions(),
+      ]),
   });
 }
 
@@ -886,10 +1036,11 @@ export function useCheckExpiredSubscriptions() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => adminService.checkExpiredSubscriptions(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.subscriptionsStats() });
-      qc.invalidateQueries({ queryKey: adminKeys.subscriptions() });
-    },
+    onSuccess: () =>
+      syncAdminQueries(qc, [
+        adminKeys.subscriptionsStats(),
+        adminKeys.subscriptions(),
+      ]),
   });
 }
 

@@ -103,6 +103,14 @@ export interface Series {
   };
 }
 
+export interface SeriesCoverUpdateResponse {
+  success: boolean;
+  seriesId: string;
+  coverUrl: string;
+  source: "chapter" | "upload";
+  mediaId?: string;
+}
+
 // ===== Comunidade =====
 export type CommentType =
   | "DISCUSSION"
@@ -919,6 +927,145 @@ export type UploadSerieResponse =
   | UploadSerieSingleResponse
   | UploadSerieMultiResponse;
 
+export type UploadDecision = "EXISTING_SERIES" | "NEW_SERIES" | "SKIP";
+
+export interface UploadPlanPatch {
+  decision?: UploadDecision;
+  targetSeriesId?: string;
+  newSeriesTitle?: string;
+  chapterNumber?: number;
+  volume?: number | null;
+  year?: number | null;
+  isOneShot?: boolean;
+  tags?: string[];
+  description?: string;
+  status?: string;
+  author?: string;
+  artist?: string;
+}
+
+export interface UploadDraftParsedData {
+  originalTitle: string;
+  normalizedTitle: string;
+  number: number;
+  volume: number | null;
+  year: number | null;
+  isOneShot: boolean;
+}
+
+export interface UploadDraftSuggestionData {
+  existingSeriesMatch: boolean;
+  confidence: "high" | "medium" | "low";
+  matchedSeriesId?: string;
+  matchedSeriesTitle?: string;
+}
+
+export interface UploadDraftItem {
+  id: string;
+  source: "LOCAL" | "GOOGLE_DRIVE";
+  originalName: string;
+  parsed: UploadDraftParsedData;
+  suggestion: UploadDraftSuggestionData;
+  plan: {
+    decision?: UploadDecision;
+    targetSeriesId?: string;
+    newSeriesTitle?: string;
+    chapterNumber?: number;
+    volume?: number | null;
+    year?: number | null;
+    isOneShot?: boolean;
+    tags: string[];
+    description: string;
+    status: string;
+    author: string;
+    artist: string;
+  };
+}
+
+export interface UploadDraftRejectedItem {
+  fileId?: string;
+  filename?: string;
+  reason: string;
+}
+
+export interface LocalUploadStageResponse {
+  success: boolean;
+  stage: "analyzed";
+  draftId: string;
+  expiresAt: number;
+  folderName?: string | null;
+  totalReceived: number;
+  items: UploadDraftItem[];
+  rejected: UploadDraftRejectedItem[];
+  nextStep: string;
+  processing?: {
+    state: "processing" | "completed" | "failed";
+    totalReceived: number;
+    analyzedCount: number;
+    acceptedCount: number;
+    rejectedCount: number;
+    error?: string;
+  };
+}
+
+export interface LocalUploadDraftResponse {
+  success: boolean;
+  draft: {
+    id: string;
+    source: "LOCAL";
+    createdAt: number;
+    expiresAt: number;
+    items: UploadDraftItem[];
+    processing?: {
+      state: "processing" | "completed" | "failed";
+      totalReceived: number;
+      analyzedCount: number;
+      acceptedCount: number;
+      rejectedCount: number;
+      error?: string;
+    };
+  };
+}
+
+export interface UploadDraftItemUpdateResponse {
+  success: boolean;
+  item: {
+    id: string;
+    plan: UploadPlanPatch;
+  };
+}
+
+export interface UploadDraftCancelResponse {
+  success: boolean;
+  canceled: boolean;
+}
+
+export interface UploadDraftConfirmResponse {
+  success: boolean;
+  message?: string;
+  accepted: Array<{
+    itemId: string;
+    fileId?: string;
+    filename: string;
+    jobId: string;
+  }>;
+  rejected: Array<{
+    itemId: string;
+    fileId?: string;
+    filename: string;
+    reason: string;
+  }>;
+  skipped: Array<{
+    itemId: string;
+    filename: string;
+  }>;
+  totals: {
+    accepted: number;
+    rejected: number;
+    skipped: number;
+  };
+}
+
 // ===== Google Drive Integration =====
 export interface GoogleDriveAccount {
   email?: string;
@@ -950,9 +1097,15 @@ export interface GoogleDriveDisconnectResponse {
 export interface GoogleDriveFolderItem {
   id: string;
   name: string;
-  mimeType?: string;
+  mimeType: "application/vnd.google-apps.folder" | string;
+  driveId?: string | null;
+  modifiedTime?: string | null;
   shared?: boolean;
-  modifiedTime?: string;
+  ownedByMe?: boolean | null;
+  owners?: Array<{
+    displayName?: string | null;
+    emailAddress?: string | null;
+  }>;
 }
 
 export interface GoogleDriveFoldersResponse {
@@ -961,57 +1114,89 @@ export interface GoogleDriveFoldersResponse {
 }
 
 export interface GoogleDriveFoldersParams {
-  accessToken?: string;
   parentId?: string;
-  sharedOnly?: boolean;
   pageToken?: string;
   pageSize?: number;
 }
 
-export interface GoogleDrivePreviewFile {
+export interface GoogleDriveNodeFile {
   id: string;
   name: string;
-  mimeType?: string;
-  size?: number;
-  modifiedTime?: string;
+  mimeType: string;
+  size?: string | null;
+  modifiedTime?: string | null;
+  parents?: string[];
+  driveId?: string | null;
+  supported: boolean;
 }
 
-export interface GoogleDrivePreviewResponse {
-  supportedFiles: GoogleDrivePreviewFile[];
-  supportedCount: number;
-  unsupportedCount: number;
+export interface GoogleDriveNodesResponse {
+  success: boolean;
+  folders: Array<{
+    id: string;
+    name: string;
+  }>;
+  files: GoogleDriveNodeFile[];
+  nextPageToken?: string | null;
 }
 
-export interface GoogleDrivePreviewParams {
-  accessToken?: string;
+export interface GoogleDriveNodesParams {
+  parentId: string;
+  pageToken?: string;
+  maxFiles?: number;
+  pageSize?: number;
+}
+
+export interface GoogleDriveStageRequest {
   folderId: string;
+  fileIds?: string[];
   recursive?: boolean;
   maxFiles?: number;
+  forcedSeriesTitle?: string;
 }
 
-export interface GoogleDriveImportRequest {
-  folderId: string;
-  accessToken?: string;
-  recursive?: boolean;
-  maxFiles?: number;
-  dryRun?: boolean;
+export interface GoogleDriveStageResponse {
+  success: boolean;
+  draftId: string;
+  expiresAt: number;
+  items: UploadDraftItem[];
+  rejected: UploadDraftRejectedItem[];
+  nextStep: string;
 }
 
-export interface GoogleDriveImportResponse {
+export interface GoogleDriveDraftResponse {
+  success: boolean;
+  draft: {
+    id: string;
+    source: "GOOGLE_DRIVE";
+    createdAt: number;
+    expiresAt: number;
+    items: UploadDraftItem[];
+  };
+}
+
+export interface GoogleDriveConfirmDraftResponse {
+  success: boolean;
   accepted: Array<{
+    itemId: string;
     fileId: string;
     filename: string;
     jobId: string;
   }>;
   rejected: Array<{
+    itemId: string;
     fileId?: string;
     filename: string;
     reason: string;
   }>;
+  skipped: Array<{
+    itemId: string;
+    filename: string;
+  }>;
   totals: {
-    selected: number;
     accepted: number;
     rejected: number;
+    skipped: number;
   };
 }
 

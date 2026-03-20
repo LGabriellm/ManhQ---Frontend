@@ -78,14 +78,23 @@ import type {
   CheckExpiredResponse,
   GoogleDriveFoldersParams,
   GoogleDriveFoldersResponse,
+  GoogleDriveNodesParams,
+  GoogleDriveNodesResponse,
   GoogleDriveAuthUrlResponse,
   GoogleDriveStatusResponse,
   GoogleDriveCallbackResponse,
   GoogleDriveDisconnectResponse,
-  GoogleDrivePreviewParams,
-  GoogleDrivePreviewResponse,
-  GoogleDriveImportRequest,
-  GoogleDriveImportResponse,
+  GoogleDriveStageRequest,
+  GoogleDriveStageResponse,
+  GoogleDriveDraftResponse,
+  GoogleDriveConfirmDraftResponse,
+  UploadPlanPatch,
+  UploadDraftItemUpdateResponse,
+  UploadDraftCancelResponse,
+  UploadDraftConfirmResponse,
+  LocalUploadStageResponse,
+  LocalUploadDraftResponse,
+  SeriesCoverUpdateResponse,
 } from "@/types/api";
 
 // Helpers para flatten jobs da API
@@ -103,6 +112,54 @@ function flattenJobs(data: JobsResponse): AdminJob[] {
   if (jobs.completed) all.push(...jobs.completed);
   if (jobs.failed) all.push(...jobs.failed);
   return all;
+}
+
+function normalizeFileExists(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["false", "0", "no", "não", "nao"].includes(normalized)) {
+      return false;
+    }
+    if (["true", "1", "yes", "sim"].includes(normalized)) {
+      return true;
+    }
+  }
+  if (typeof value === "number") return value !== 0;
+  return true;
+}
+
+function normalizeMediaItem<T extends object>(item: T): T {
+  const rawItem = item as {
+    fileExists?: unknown;
+    file_exists?: unknown;
+    exists?: unknown;
+    hasFile?: unknown;
+    pageCount?: unknown;
+  };
+
+  const fileExistsValue =
+    rawItem.fileExists ??
+    rawItem.file_exists ??
+    rawItem.exists ??
+    rawItem.hasFile;
+
+  const pageCount =
+    typeof rawItem.pageCount === "string"
+      ? Number(rawItem.pageCount)
+      : typeof rawItem.pageCount === "number"
+        ? rawItem.pageCount
+        : undefined;
+
+  const normalizedFileExists =
+    Number.isFinite(pageCount) && (pageCount as number) > 0
+      ? true
+      : normalizeFileExists(fileExistsValue);
+
+  return {
+    ...item,
+    fileExists: normalizedFileExists,
+  };
 }
 
 export interface JobsFullResponse {
@@ -124,6 +181,39 @@ export const adminService = {
     const response = await api.get<AdminSeriesListResponse>("/admin/series", {
       params,
     });
+    return response.data;
+  },
+
+  async getSeriesDetails(id: string): Promise<Series> {
+    const response = await api.get<Series>(`/series/${id}`);
+    return response.data;
+  },
+
+  async setSeriesCoverFromChapter(
+    seriesId: string,
+    mediaId: string,
+  ): Promise<SeriesCoverUpdateResponse> {
+    const response = await api.post<SeriesCoverUpdateResponse>(
+      `/series/${seriesId}/cover/from-chapter`,
+      { mediaId },
+    );
+    return response.data;
+  },
+
+  async setSeriesCoverFromUpload(
+    seriesId: string,
+    cover: File,
+  ): Promise<SeriesCoverUpdateResponse> {
+    const formData = new FormData();
+    formData.append("cover", cover);
+
+    const response = await api.post<SeriesCoverUpdateResponse>(
+      `/series/${seriesId}/cover/upload`,
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      },
+    );
     return response.data;
   },
 
@@ -289,6 +379,108 @@ export const adminService = {
     return response.data;
   },
 
+  async stageLocalUpload(
+    files: File[],
+    folderName?: string,
+  ): Promise<LocalUploadStageResponse> {
+    const formData = new FormData();
+    files.forEach((f) => formData.append("files", f));
+    if (folderName?.trim()) {
+      formData.append("folderName", folderName.trim());
+    }
+
+    const response = await api.post<LocalUploadStageResponse>(
+      "/upload/stage",
+      formData,
+    );
+    return response.data;
+  },
+
+  async stageLocalUploadWithSeries(
+    files: File[],
+    seriesTitle: string,
+    folderName?: string,
+  ): Promise<LocalUploadStageResponse> {
+    const formData = new FormData();
+    files.forEach((f) => formData.append("files", f));
+    if (folderName?.trim()) {
+      formData.append("folderName", folderName.trim());
+    }
+    formData.append("seriesTitle", seriesTitle.trim());
+
+    const response = await api.post<LocalUploadStageResponse>(
+      "/upload/workflow/series-stage",
+      formData,
+    );
+    return response.data;
+  },
+
+  async getLocalUploadDraft(
+    draftId: string,
+  ): Promise<LocalUploadDraftResponse> {
+    const response = await api.get<LocalUploadDraftResponse>(
+      `/upload/drafts/${draftId}`,
+    );
+    return response.data;
+  },
+
+  async updateLocalUploadDraftItem(
+    draftId: string,
+    itemId: string,
+    data: UploadPlanPatch,
+  ): Promise<UploadDraftItemUpdateResponse> {
+    const response = await api.patch<UploadDraftItemUpdateResponse>(
+      `/upload/drafts/${draftId}/items/${itemId}`,
+      data,
+    );
+    return response.data;
+  },
+
+  async cancelLocalUploadDraft(
+    draftId: string,
+  ): Promise<UploadDraftCancelResponse> {
+    const response = await api.delete<UploadDraftCancelResponse>(
+      `/upload/drafts/${draftId}`,
+    );
+    return response.data;
+  },
+
+  async confirmLocalUploadDraft(
+    draftId: string,
+    idempotencyKey?: string,
+  ): Promise<UploadDraftConfirmResponse> {
+    const response = await api.post<UploadDraftConfirmResponse>(
+      `/upload/drafts/${draftId}/confirm`,
+      undefined,
+      {
+        headers: idempotencyKey
+          ? {
+              "Idempotency-Key": idempotencyKey,
+            }
+          : undefined,
+      },
+    );
+    return response.data;
+  },
+
+  async bulkUpdateLocalUploadDraftItems(
+    draftId: string,
+    data: {
+      itemIds: string[];
+      updates: {
+        chapterNumber?: number;
+        startChapterNumber?: number;
+        seriesTitle?: string;
+      };
+    },
+  ): Promise<UploadDraftItemUpdateResponse> {
+    const response = await api.patch<UploadDraftItemUpdateResponse>(
+      `/upload/drafts/${draftId}/items/bulk`,
+      data,
+    );
+    return response.data;
+  },
+
   async uploadToSeries(
     seriesId: string,
     files: File[],
@@ -338,49 +530,85 @@ export const adminService = {
   async getGoogleDriveFolders(
     params: GoogleDriveFoldersParams,
   ): Promise<GoogleDriveFoldersResponse> {
-    const { accessToken, ...query } = params;
     const response = await api.get<GoogleDriveFoldersResponse>(
       "/integrations/google-drive/folders",
       {
-        params: query,
-        headers: accessToken
-          ? {
-              "x-google-access-token": accessToken,
-            }
-          : undefined,
+        params,
       },
     );
     return response.data;
   },
 
-  async previewGoogleDriveFolder(
-    params: GoogleDrivePreviewParams,
-  ): Promise<GoogleDrivePreviewResponse> {
-    const { accessToken, ...query } = params;
-    const response = await api.get<GoogleDrivePreviewResponse>(
-      "/integrations/google-drive/preview",
+  async getGoogleDriveNodes(
+    params: GoogleDriveNodesParams,
+  ): Promise<GoogleDriveNodesResponse> {
+    const response = await api.get<GoogleDriveNodesResponse>(
+      "/integrations/google-drive/nodes",
       {
-        params: query,
-        headers: accessToken
-          ? {
-              "x-google-access-token": accessToken,
-            }
-          : undefined,
+        params,
       },
     );
     return response.data;
   },
 
-  async importGoogleDriveFolder(
-    data: GoogleDriveImportRequest,
+  async stageGoogleDriveUpload(
+    data: GoogleDriveStageRequest,
     idempotencyKey?: string,
-  ): Promise<GoogleDriveImportResponse> {
-    const response = await api.post<GoogleDriveImportResponse>(
-      "/integrations/google-drive/import",
+  ): Promise<GoogleDriveStageResponse> {
+    const response = await api.post<GoogleDriveStageResponse>(
+      "/integrations/google-drive/stage",
       data,
       {
         headers: idempotencyKey
           ? { "Idempotency-Key": idempotencyKey }
+          : undefined,
+      },
+    );
+    return response.data;
+  },
+
+  async getGoogleDriveDraft(
+    draftId: string,
+  ): Promise<GoogleDriveDraftResponse> {
+    const response = await api.get<GoogleDriveDraftResponse>(
+      `/integrations/google-drive/drafts/${draftId}`,
+    );
+    return response.data;
+  },
+
+  async updateGoogleDriveDraftItem(
+    draftId: string,
+    itemId: string,
+    data: UploadPlanPatch,
+  ): Promise<UploadDraftItemUpdateResponse> {
+    const response = await api.patch<UploadDraftItemUpdateResponse>(
+      `/integrations/google-drive/drafts/${draftId}/items/${itemId}`,
+      data,
+    );
+    return response.data;
+  },
+
+  async cancelGoogleDriveDraft(
+    draftId: string,
+  ): Promise<UploadDraftCancelResponse> {
+    const response = await api.delete<UploadDraftCancelResponse>(
+      `/integrations/google-drive/drafts/${draftId}`,
+    );
+    return response.data;
+  },
+
+  async confirmGoogleDriveDraft(
+    draftId: string,
+    idempotencyKey?: string,
+  ): Promise<GoogleDriveConfirmDraftResponse> {
+    const response = await api.post<GoogleDriveConfirmDraftResponse>(
+      `/integrations/google-drive/drafts/${draftId}/confirm`,
+      undefined,
+      {
+        headers: idempotencyKey
+          ? {
+              "Idempotency-Key": idempotencyKey,
+            }
           : undefined,
       },
     );
@@ -520,12 +748,19 @@ export const adminService = {
     const response = await api.get<AdminMediaListResponse>("/admin/medias", {
       params,
     });
-    return response.data;
+    const medias = Array.isArray(response.data?.medias)
+      ? response.data.medias.map((media) => normalizeMediaItem(media))
+      : [];
+
+    return {
+      ...response.data,
+      medias,
+    };
   },
 
   async getMediaDetail(id: string): Promise<AdminMediaDetail> {
     const response = await api.get<AdminMediaDetail>(`/admin/medias/${id}`);
-    return response.data;
+    return normalizeMediaItem(response.data);
   },
 
   async getMediaPages(id: string): Promise<AdminMediaPagesResponse> {

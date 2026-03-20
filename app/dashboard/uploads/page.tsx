@@ -1,10 +1,15 @@
 "use client";
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
-  useUpload,
-  useUploadBulk,
-  useUploadFolder,
+  useLocalUploadStage,
+  useLocalUploadStageWithSeries,
+  useLocalUploadDraft,
+  useUpdateLocalUploadDraftItem,
+  useBulkUpdateLocalUploadDraftItems,
+  useConfirmLocalUploadDraft,
+  useCancelLocalUploadDraft,
+  useAdminSeries,
   useAdminJobs,
   useClearCompletedJobs,
   useScanLibrary,
@@ -15,8 +20,14 @@ import {
   useResumeJobs,
   useJobLogs,
 } from "@/hooks/useAdmin";
-import type { AdminJob } from "@/types/api";
+import type {
+  AdminJob,
+  UploadDecision,
+  UploadDraftItem,
+  UploadPlanPatch,
+} from "@/types/api";
 import { GoogleDrivePanel } from "@/components/GoogleDrivePanel";
+import { BulkEditModal } from "@/components/admin/BulkEditModal";
 import toast from "react-hot-toast";
 import {
   Upload,
@@ -74,6 +85,17 @@ const ACCEPTED_EXTENSIONS = [".cbz", ".cbr", ".zip", ".pdf", ".epub"];
 
 function isAcceptedFile(name: string): boolean {
   return ACCEPTED_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
+}
+
+function useDebouncedValue<T>(value: T, delay = 300): T {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
 }
 
 // ===== Job Status Badge =====
@@ -207,20 +229,358 @@ interface PendingFile {
   folder?: string;
 }
 
+function LocalDraftItemEditor({
+  item,
+  onSave,
+  isSaving,
+}: {
+  item: UploadDraftItem;
+  onSave: (itemId: string, patch: UploadPlanPatch) => Promise<void>;
+  isSaving: boolean;
+}) {
+  const [decision, setDecision] = useState<UploadDecision>(
+    item.plan.decision || "NEW_SERIES",
+  );
+  const [targetSeriesId, setTargetSeriesId] = useState(
+    item.plan.targetSeriesId || item.suggestion.matchedSeriesId || "",
+  );
+  const [newSeriesTitle, setNewSeriesTitle] = useState(
+    item.plan.newSeriesTitle || item.parsed.normalizedTitle || "",
+  );
+  const [chapterNumber, setChapterNumber] = useState<number | "">(
+    item.plan.chapterNumber ?? item.parsed.number ?? "",
+  );
+  const [volume, setVolume] = useState<number | "">(item.plan.volume ?? "");
+  const [year, setYear] = useState<number | "">(item.plan.year ?? "");
+  const [isOneShot, setIsOneShot] = useState(Boolean(item.plan.isOneShot));
+  const [tagsInput, setTagsInput] = useState((item.plan.tags || []).join(", "));
+  const [description, setDescription] = useState(item.plan.description || "");
+  const [status, setStatus] = useState(item.plan.status || "");
+  const [author, setAuthor] = useState(item.plan.author || "");
+  const [artist, setArtist] = useState(item.plan.artist || "");
+  const [seriesQuery, setSeriesQuery] = useState(
+    item.suggestion.matchedSeriesTitle || "",
+  );
+  const [seriesSearchEnabled, setSeriesSearchEnabled] = useState(false);
+
+  const debouncedSeriesQuery = useDebouncedValue(seriesQuery, 300);
+  const shouldSearchSeries =
+    seriesSearchEnabled &&
+    decision === "EXISTING_SERIES" &&
+    debouncedSeriesQuery.length >= 2;
+  const { data: seriesSearchData, isLoading: isSeriesSearching } =
+    useAdminSeries(
+      {
+        search: shouldSearchSeries ? debouncedSeriesQuery : undefined,
+        page: 1,
+        limit: 8,
+      },
+      shouldSearchSeries,
+    );
+
+  const seriesOptions = shouldSearchSeries
+    ? (seriesSearchData?.series ?? [])
+    : [];
+
+  const applySuggestedSeries = async () => {
+    if (!item.suggestion.matchedSeriesId) {
+      toast.error("Sem série sugerida para este item");
+      return;
+    }
+
+    setDecision("EXISTING_SERIES");
+    setTargetSeriesId(item.suggestion.matchedSeriesId);
+    setSeriesQuery(item.suggestion.matchedSeriesTitle || "");
+
+    await onSave(item.id, {
+      decision: "EXISTING_SERIES",
+      targetSeriesId: item.suggestion.matchedSeriesId,
+      chapterNumber: chapterNumber === "" ? undefined : Number(chapterNumber),
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-[var(--color-surface)] p-3 space-y-2">
+      <p className="text-sm font-medium text-[var(--color-textMain)] truncate">
+        {item.originalName}
+      </p>
+      <p className="text-xs text-[var(--color-textDim)]">
+        Sugestão:{" "}
+        {item.suggestion.matchedSeriesTitle || item.parsed.normalizedTitle}
+      </p>
+
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        <label className="text-[11px] text-[var(--color-textDim)]">
+          decision
+          <select
+            value={decision}
+            onChange={(event) =>
+              setDecision(event.target.value as UploadDecision)
+            }
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+          >
+            <option value="EXISTING_SERIES">EXISTING_SERIES</option>
+            <option value="NEW_SERIES">NEW_SERIES</option>
+            <option value="SKIP">SKIP</option>
+          </select>
+        </label>
+
+        {decision === "EXISTING_SERIES" ? (
+          <div className="space-y-1">
+            <label className="text-[11px] text-[var(--color-textDim)]">
+              Série existente (buscar por nome)
+            </label>
+            <input
+              value={seriesQuery}
+              onFocus={() => setSeriesSearchEnabled(true)}
+              onChange={(event) => {
+                setSeriesSearchEnabled(true);
+                setSeriesQuery(event.target.value);
+              }}
+              placeholder="Digite nome da série..."
+              className="w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+            />
+
+            {seriesSearchEnabled && debouncedSeriesQuery.length >= 2 && (
+              <div className="rounded-lg border border-white/10 bg-[var(--color-background)] max-h-32 overflow-y-auto">
+                {isSeriesSearching ? (
+                  <p className="px-2 py-1.5 text-[11px] text-[var(--color-textDim)]">
+                    Buscando séries...
+                  </p>
+                ) : seriesOptions.length > 0 ? (
+                  seriesOptions.map((serie) => (
+                    <button
+                      key={serie.id}
+                      type="button"
+                      onClick={() => {
+                        setTargetSeriesId(serie.id);
+                        setSeriesQuery(serie.title);
+                        setSeriesSearchEnabled(false);
+                      }}
+                      className="w-full text-left px-2 py-1.5 hover:bg-white/5 transition-colors"
+                    >
+                      <p className="text-xs text-[var(--color-textMain)] truncate">
+                        {serie.title}
+                      </p>
+                      <p className="text-[10px] text-[var(--color-textDim)] font-mono truncate">
+                        {serie.id}
+                      </p>
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-2 py-1.5 text-[11px] text-[var(--color-textDim)]">
+                    Nenhuma série encontrada
+                  </p>
+                )}
+              </div>
+            )}
+
+            {targetSeriesId && (
+              <p className="text-[10px] text-[var(--color-primary)] font-mono truncate">
+                Selecionada: {targetSeriesId}
+              </p>
+            )}
+          </div>
+        ) : (
+          <label className="text-[11px] text-[var(--color-textDim)]">
+            newSeriesTitle
+            <input
+              value={newSeriesTitle}
+              onChange={(event) => setNewSeriesTitle(event.target.value)}
+              className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+            />
+          </label>
+        )}
+
+        <label className="text-[11px] text-[var(--color-textDim)]">
+          chapterNumber
+          <input
+            type="number"
+            value={chapterNumber}
+            onChange={(event) =>
+              setChapterNumber(
+                event.target.value === "" ? "" : Number(event.target.value),
+              )
+            }
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+          />
+        </label>
+
+        <label className="text-[11px] text-[var(--color-textDim)]">
+          volume
+          <input
+            type="number"
+            value={volume}
+            onChange={(event) =>
+              setVolume(
+                event.target.value === "" ? "" : Number(event.target.value),
+              )
+            }
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+          />
+        </label>
+
+        <label className="text-[11px] text-[var(--color-textDim)]">
+          year
+          <input
+            type="number"
+            value={year}
+            onChange={(event) =>
+              setYear(
+                event.target.value === "" ? "" : Number(event.target.value),
+              )
+            }
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+          />
+        </label>
+
+        <label className="text-[11px] text-[var(--color-textDim)]">
+          status
+          <input
+            value={status}
+            onChange={(event) => setStatus(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+          />
+        </label>
+
+        <label className="text-[11px] text-[var(--color-textDim)]">
+          author
+          <input
+            value={author}
+            onChange={(event) => setAuthor(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+          />
+        </label>
+
+        <label className="text-[11px] text-[var(--color-textDim)]">
+          artist
+          <input
+            value={artist}
+            onChange={(event) => setArtist(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+          />
+        </label>
+
+        <label className="text-[11px] text-[var(--color-textDim)] md:col-span-2">
+          tags (vírgula)
+          <input
+            value={tagsInput}
+            onChange={(event) => setTagsInput(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+          />
+        </label>
+
+        <label className="text-[11px] text-[var(--color-textDim)] md:col-span-2">
+          description
+          <textarea
+            value={description}
+            rows={2}
+            onChange={(event) => setDescription(event.target.value)}
+            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
+          />
+        </label>
+
+        <label className="inline-flex items-center gap-2 text-[11px] text-[var(--color-textDim)] md:col-span-2">
+          <input
+            type="checkbox"
+            checked={isOneShot}
+            onChange={(event) => setIsOneShot(event.target.checked)}
+          />
+          isOneShot
+        </label>
+      </div>
+
+      <button
+        onClick={() => void applySuggestedSeries()}
+        disabled={isSaving || !item.suggestion.matchedSeriesId}
+        className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1 text-[11px] text-[var(--color-textMain)] hover:bg-white/15 disabled:opacity-50"
+      >
+        Usar sugestão automaticamente
+      </button>
+
+      <button
+        onClick={() =>
+          void onSave(item.id, {
+            decision,
+            targetSeriesId:
+              decision === "EXISTING_SERIES"
+                ? targetSeriesId || undefined
+                : undefined,
+            newSeriesTitle:
+              decision === "NEW_SERIES"
+                ? newSeriesTitle || undefined
+                : undefined,
+            chapterNumber:
+              chapterNumber === "" ? undefined : Number(chapterNumber),
+            volume: volume === "" ? null : Number(volume),
+            year: year === "" ? null : Number(year),
+            isOneShot,
+            tags: tagsInput
+              .split(",")
+              .map((tag) => tag.trim())
+              .filter(Boolean),
+            description: description || undefined,
+            status: status || undefined,
+            author: author || undefined,
+            artist: artist || undefined,
+          })
+        }
+        disabled={isSaving}
+        className="mt-1 inline-flex items-center gap-1 rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
+      >
+        {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+        Salvar item
+      </button>
+    </div>
+  );
+}
+
 // ===== Upload Zone (Redesigned) =====
 function UploadZone() {
   const [isDragging, setIsDragging] = useState(false);
   const [mode, setMode] = useState<UploadMode>("files");
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [seriesTitle, setSeriesTitle] = useState("");
   const [folderName, setFolderName] = useState("");
-  const [isUploading, setIsUploading] = useState(false);
+  const [activeDraftId, setActiveDraftId] = useState("");
+  const [processingState, setProcessingState] = useState<
+    "idle" | "processing" | "completed" | "failed"
+  >("idle");
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [localConfirmResult, setLocalConfirmResult] = useState<{
+    accepted: number;
+    rejected: number;
+    skipped: number;
+    jobs: string[];
+  } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  const uploadMutation = useUpload();
-  const uploadBulkMutation = useUploadBulk();
-  const uploadFolderMutation = useUploadFolder();
+  const stageMutation = useLocalUploadStageWithSeries();
+  const updateDraftItemMutation = useUpdateLocalUploadDraftItem();
+  const bulkUpdateMutation = useBulkUpdateLocalUploadDraftItems();
+  const confirmDraftMutation = useConfirmLocalUploadDraft();
+  const cancelDraftMutation = useCancelLocalUploadDraft();
+
+  const { data: draftData, isLoading: isDraftLoading } = useLocalUploadDraft(
+    activeDraftId,
+    !!activeDraftId,
+  );
+
+  // Monitor processing state from draft
+  useEffect(() => {
+    if (!draftData?.draft.processing) return;
+
+    const state = draftData.draft.processing.state;
+    if (state === "processing") {
+      setProcessingState("processing");
+    } else if (state === "completed") {
+      setProcessingState("completed");
+    } else if (state === "failed") {
+      setProcessingState("failed");
+    }
+  }, [draftData]);
 
   // Process dropped/selected files
   const addFiles = useCallback(
@@ -241,15 +601,16 @@ function UploadZone() {
       setPendingFiles((prev) => [...prev, ...newItems]);
 
       // Auto-detect folder name if uploading a folder
-      if (detectedFolder && !folderName) {
-        setFolderName(detectedFolder);
+      if (detectedFolder && !seriesTitle) {
+        setSeriesTitle(detectedFolder);
         setMode("folder");
+        setFolderName(detectedFolder);
       }
     },
-    [folderName],
+    [seriesTitle],
   );
 
-  // Handle drag & drop — supports folders via webkitGetAsEntry
+  // Handle drag & drop
   const handleDrop = useCallback(
     async (e: React.DragEvent) => {
       e.preventDefault();
@@ -257,7 +618,6 @@ function UploadZone() {
 
       const items = e.dataTransfer.items;
       if (!items) {
-        // Fallback for simple file drops
         const files = Array.from(e.dataTransfer.files);
         addFiles(files);
         return;
@@ -266,7 +626,6 @@ function UploadZone() {
       const allFiles: File[] = [];
       let detectedFolder: string | undefined;
 
-      // Process entries recursively to support folders
       const processEntry = async (
         entry: FileSystemEntry,
         path = "",
@@ -308,7 +667,6 @@ function UploadZone() {
         }
         addFiles(allFiles, detectedFolder);
       } else {
-        // Fallback
         addFiles(Array.from(e.dataTransfer.files));
       }
     },
@@ -325,14 +683,12 @@ function UploadZone() {
     setIsDragging(false);
   }, []);
 
-  // Handle folder input
   const handleFolderSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files || files.length === 0) return;
 
       const fileArray = Array.from(files);
-      // Extract folder name from webkitRelativePath
       const firstPath = fileArray[0]?.webkitRelativePath || "";
       const detectedFolder = firstPath.split("/")[0] || "";
 
@@ -349,76 +705,256 @@ function UploadZone() {
   const clearAll = () => {
     setPendingFiles([]);
     setFolderName("");
+    setSeriesTitle("");
+    setActiveDraftId("");
+    setProcessingState("idle");
+    setLocalConfirmResult(null);
   };
 
-  // Upload handler
-  const handleUpload = async () => {
+  const startStage = async () => {
     if (pendingFiles.length === 0) return;
-    setIsUploading(true);
+    if (!seriesTitle.trim()) {
+      toast.error("Digite o nome da série");
+      return;
+    }
 
     try {
+      setProcessingState("processing");
       const files = pendingFiles.map((p) => p.file);
 
-      if (mode === "folder" && folderName.trim()) {
-        // Upload as folder — use POST /upload/folder
-        const result = await uploadFolderMutation.mutateAsync({
-          folderName: folderName.trim(),
-          files,
-        });
-        const n = result.accepted?.length || 0;
-        const r = result.rejected?.length || 0;
-        toast.success(
-          `${n} arquivo(s) da pasta "${result.seriesTitle}" enviado(s)${r > 0 ? ` · ${r} rejeitado(s)` : ""}`,
-        );
-        if (result.rejected?.length > 0) {
-          result.rejected.forEach((rej) => {
-            toast.error(`${rej.filename}: ${rej.reason}`, { duration: 5000 });
-          });
-        }
-      } else if (files.length === 1) {
-        // Single file — use POST /upload
-        const result = await uploadMutation.mutateAsync(files[0]);
-        toast.success(
-          result.message || `Upload de "${files[0].name}" iniciado`,
-        );
-      } else {
-        // Multiple files — use POST /upload/bulk
-        const result = await uploadBulkMutation.mutateAsync(files);
-        const n = result.accepted?.length || 0;
-        const r = result.rejected?.length || 0;
-        toast.success(
-          `${n} upload(s) iniciado(s)${r > 0 ? ` · ${r} rejeitado(s)` : ""}`,
-        );
-        if (result.rejected?.length > 0) {
-          result.rejected.forEach((rej) => {
-            toast.error(`${rej.filename}: ${rej.reason}`, { duration: 5000 });
-          });
-        }
-      }
+      const stageResponse = await stageMutation.mutateAsync({
+        files,
+        seriesTitle: seriesTitle.trim(),
+        folderName: mode === "folder" ? folderName.trim() : undefined,
+      });
 
-      clearAll();
+      setActiveDraftId(stageResponse.draftId);
+      setLocalConfirmResult(null);
+
+      toast.success(
+        `Análise iniciada: ${stageResponse.processing?.totalReceived || stageResponse.items.length} arquivo(s)`,
+      );
+    } catch (err) {
+      setProcessingState("failed");
+      const errorMsg =
+        (err as { message?: string })?.message || "Erro ao iniciar stage";
+      toast.error(errorMsg);
+    }
+  };
+
+  const saveLocalItemPatch = async (
+    itemId: string,
+    originalName: string,
+    patch: UploadPlanPatch,
+  ) => {
+    try {
+      await updateDraftItemMutation.mutateAsync({
+        draftId: activeDraftId,
+        itemId,
+        data: patch,
+      });
+      toast.success(`Item atualizado: ${originalName}`);
     } catch {
-      toast.error("Erro ao enviar arquivo(s)");
-    } finally {
-      setIsUploading(false);
+      toast.error("Erro ao atualizar item do draft");
+    }
+  };
+
+  const applyDecisionToAll = async (decision: UploadDecision) => {
+    const items = draftData?.draft.items || [];
+    if (items.length === 0) {
+      return;
+    }
+
+    try {
+      await Promise.all(
+        items.map((item) =>
+          updateDraftItemMutation.mutateAsync({
+            draftId: activeDraftId,
+            itemId: item.id,
+            data: {
+              decision,
+              chapterNumber: item.plan.chapterNumber ?? item.parsed.number,
+              newSeriesTitle:
+                decision === "NEW_SERIES"
+                  ? item.plan.newSeriesTitle || item.parsed.normalizedTitle
+                  : undefined,
+              targetSeriesId:
+                decision === "EXISTING_SERIES"
+                  ? item.plan.targetSeriesId || item.suggestion.matchedSeriesId
+                  : undefined,
+            },
+          }),
+        ),
+      );
+      toast.success(`Decisão ${decision} aplicada em ${items.length} item(ns)`);
+    } catch {
+      toast.error("Falha ao aplicar decisão em lote");
+    }
+  };
+
+  const applySuggestionsToAll = async () => {
+    const items = (draftData?.draft.items || []).filter(
+      (item) => item.suggestion.matchedSeriesId,
+    );
+    if (items.length === 0) {
+      toast.error("Nenhum item com sugestão de série existente");
+      return;
+    }
+
+    try {
+      await Promise.all(
+        items.map((item) =>
+          updateDraftItemMutation.mutateAsync({
+            draftId: activeDraftId,
+            itemId: item.id,
+            data: {
+              decision: "EXISTING_SERIES",
+              targetSeriesId: item.suggestion.matchedSeriesId,
+              chapterNumber: item.plan.chapterNumber ?? item.parsed.number,
+            },
+          }),
+        ),
+      );
+      toast.success(`Sugestões aplicadas em ${items.length} item(ns)`);
+    } catch {
+      toast.error("Falha ao aplicar sugestões em lote");
+    }
+  };
+
+  const confirmLocalDraft = async () => {
+    if (!activeDraftId) {
+      return;
+    }
+
+    // Validar que processing está completo
+    if (processingState !== "completed") {
+      if (processingState === "processing") {
+        toast.error("Aguarde a conclusão da análise antes de confirmar");
+      } else if (processingState === "failed") {
+        toast.error("A análise falhou. Revise os erros e tente novamente.");
+      }
+      return;
+    }
+
+    try {
+      const result = await confirmDraftMutation.mutateAsync({
+        draftId: activeDraftId,
+      });
+
+      setLocalConfirmResult({
+        accepted: result.totals.accepted,
+        rejected: result.totals.rejected,
+        skipped: result.totals.skipped,
+        jobs: result.accepted.map((item) => item.jobId),
+      });
+
+      setPendingFiles([]);
+      setFolderName("");
+      setSeriesTitle("");
+      setActiveDraftId("");
+      setProcessingState("idle");
+
+      toast.success("Draft confirmado e jobs enviados");
+    } catch (err) {
+      const errorMsg =
+        (err as unknown as { message?: string } | null)?.message ||
+        "Erro ao confirmar draft";
+      if ((err as unknown as { status?: number } | null)?.status === 409) {
+        toast.error("Processamento ainda em andamento. Aguarde.");
+      } else {
+        toast.error(errorMsg);
+      }
+    }
+  };
+
+  const cancelLocalDraft = async () => {
+    if (!activeDraftId) {
+      return;
+    }
+
+    try {
+      await cancelDraftMutation.mutateAsync(activeDraftId);
+      setActiveDraftId("");
+      setProcessingState("idle");
+      setLocalConfirmResult(null);
+      toast.success("Draft local cancelado");
+    } catch {
+      toast.error("Erro ao cancelar draft local");
+    }
+  };
+
+  const applyBulkEdit = async (updates: Record<string, any>) => {
+    if (!activeDraftId) {
+      return;
+    }
+
+    try {
+      const itemIds = Object.keys(updates);
+
+      // Apply updates to each item individually
+      await Promise.all(
+        itemIds.map((itemId) =>
+          updateDraftItemMutation.mutateAsync({
+            draftId: activeDraftId,
+            itemId,
+            data: updates[itemId] as UploadPlanPatch,
+          }),
+        ),
+      );
+
+      toast.success(`${itemIds.length} item(ns) atualizados`);
+    } catch {
+      toast.error("Erro ao aplicar edição em lote");
     }
   };
 
   const isPending =
-    isUploading ||
-    uploadMutation.isPending ||
-    uploadBulkMutation.isPending ||
-    uploadFolderMutation.isPending;
+    stageMutation.isPending ||
+    updateDraftItemMutation.isPending ||
+    bulkUpdateMutation.isPending ||
+    confirmDraftMutation.isPending ||
+    cancelDraftMutation.isPending;
 
   const totalSize = pendingFiles.reduce((sum, p) => sum + p.file.size, 0);
 
+  // Progress during processing
+  const processingProgress =
+    draftData?.draft.processing?.totalReceived &&
+    draftData?.draft.processing?.analyzedCount
+      ? (draftData.draft.processing.analyzedCount /
+          draftData.draft.processing.totalReceived) *
+        100
+      : 0;
+
+  // Handle drag & drop — supports folders via webkitGetAsEntry
+
   return (
     <div className="bg-[var(--color-surface)] rounded-xl border border-white/5 overflow-hidden">
+      {/* Series Title Input - Obrigatório */}
+      <div className="px-5 pt-4">
+        <label className="block text-sm text-[var(--color-textDim)] mb-1.5 font-medium">
+          Nome da Série *
+        </label>
+        <input
+          type="text"
+          value={seriesTitle}
+          onChange={(e) => setSeriesTitle(e.target.value)}
+          placeholder="Ex: Chainsaw Man, Asa Noturna"
+          disabled={!!activeDraftId}
+          className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-50"
+        />
+        <p className="text-[10px] text-[var(--color-textDim)] mt-1">
+          O nome da série será preservado durante todo o fluxo e honrado no
+          processamento final.
+        </p>
+      </div>
+
       {/* Mode Tabs */}
-      <div className="flex border-b border-white/5">
+      <div className="flex border-t border-b border-white/5 mt-4">
         <button
           onClick={() => setMode("files")}
-          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${
+          disabled={!!activeDraftId}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors disabled:opacity-50 ${
             mode === "files"
               ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)] bg-[var(--color-primary)]/5"
               : "text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
@@ -429,34 +965,31 @@ function UploadZone() {
         </button>
         <button
           onClick={() => setMode("folder")}
-          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors ${
+          disabled={!!activeDraftId}
+          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors disabled:opacity-50 ${
             mode === "folder"
               ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)] bg-[var(--color-primary)]/5"
               : "text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
           }`}
         >
           <FolderOpen className="h-4 w-4" />
-          Pasta (Série)
+          Pasta
         </button>
       </div>
 
       {/* Folder Name Input (only in folder mode) */}
-      {mode === "folder" && (
+      {mode === "folder" && !activeDraftId && (
         <div className="px-5 pt-4">
           <label className="block text-xs text-[var(--color-textDim)] mb-1.5">
-            Nome da pasta / série
+            Sobrenome da pasta (opcional)
           </label>
           <input
             type="text"
             value={folderName}
             onChange={(e) => setFolderName(e.target.value)}
-            placeholder="Ex: Asa Noturna"
+            placeholder="Auto-detectado a partir dos arquivos"
             className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
           />
-          <p className="text-[10px] text-[var(--color-textDim)] mt-1">
-            Todos os arquivos serão associados a esta série. O sistema normaliza
-            o título automaticamente.
-          </p>
         </div>
       )}
 
@@ -587,19 +1120,19 @@ function UploadZone() {
           {/* Upload Button */}
           <div className="px-5 py-4 border-t border-white/5">
             <button
-              onClick={handleUpload}
+              onClick={startStage}
               disabled={isPending || (mode === "folder" && !folderName.trim())}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary)]/90 transition-colors disabled:opacity-50"
             >
               {isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Enviando...
+                  Processando...
                 </>
               ) : (
                 <>
                   <Upload className="h-4 w-4" />
-                  Enviar {pendingFiles.length} arquivo(s)
+                  Analisar {pendingFiles.length} arquivo(s)
                   {mode === "folder" && folderName && (
                     <span className="opacity-70">
                       → &quot;{folderName}&quot;
@@ -611,6 +1144,174 @@ function UploadZone() {
           </div>
         </div>
       )}
+
+      {activeDraftId && (
+        <div className="border-t border-white/5 bg-[var(--color-background)] p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-[var(--color-textMain)]">
+                {processingState === "processing"
+                  ? "Analisando arquivos..."
+                  : "Revisão do draft local"}
+              </p>
+              <p className="text-xs text-[var(--color-textDim)] font-mono mt-0.5">
+                draftId: {activeDraftId}
+              </p>
+            </div>
+            <button
+              onClick={cancelLocalDraft}
+              className="inline-flex items-center gap-1 rounded-lg bg-red-500/20 px-2.5 py-1.5 text-xs text-red-300 hover:bg-red-500/30"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Cancelar
+            </button>
+          </div>
+
+          {/* Processing Progress Bar */}
+          {processingState === "processing" && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[var(--color-textDim)]">
+                  Analisando {draftData?.draft.processing?.analyzedCount || 0}/
+                  {draftData?.draft.processing?.totalReceived || 0}
+                </span>
+                <span className="text-xs text-[var(--color-textDim)]">
+                  {Math.round(processingProgress)}%
+                </span>
+              </div>
+              <ProgressBar progress={processingProgress} />
+              {draftData?.draft.processing && (
+                <p className="text-[10px] text-[var(--color-textDim)]">
+                  Aceitos: {draftData.draft.processing.acceptedCount} ·
+                  Rejeitados: {draftData.draft.processing.rejectedCount}
+                </p>
+              )}
+            </div>
+          )}
+
+          {processingState === "failed" && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
+              <p>Failed to process draft</p>
+              {draftData?.draft.processing?.error && (
+                <p className="text-[10px] mt-1 opacity-80">
+                  {draftData.draft.processing.error}
+                </p>
+              )}
+            </div>
+          )}
+
+          {processingState === "completed" && draftData?.draft.items?.length ? (
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              <div className="rounded-lg border border-white/10 bg-[var(--color-surface)] p-2 flex flex-wrap gap-2">
+                <button
+                  onClick={() => setBulkEditOpen(true)}
+                  className="px-2 py-1 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-[11px] hover:bg-[var(--color-primary)]/30"
+                >
+                  ⚙️ Edição em Lote
+                </button>
+                <button
+                  onClick={() => void applySuggestionsToAll()}
+                  className="px-2 py-1 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-[11px] hover:bg-[var(--color-primary)]/30"
+                >
+                  Usar sugestões
+                </button>
+                <button
+                  onClick={() => void applyDecisionToAll("NEW_SERIES")}
+                  className="px-2 py-1 rounded bg-white/10 text-[var(--color-textMain)] text-[11px] hover:bg-white/15"
+                >
+                  Todos: NEW_SERIES
+                </button>
+                <button
+                  onClick={() => void applyDecisionToAll("SKIP")}
+                  className="px-2 py-1 rounded bg-white/10 text-[var(--color-textMain)] text-[11px] hover:bg-white/15"
+                >
+                  Todos: SKIP
+                </button>
+              </div>
+
+              {draftData.draft.items.map((item) => (
+                <LocalDraftItemEditor
+                  key={item.id}
+                  item={item}
+                  isSaving={
+                    updateDraftItemMutation.isPending ||
+                    bulkUpdateMutation.isPending
+                  }
+                  onSave={(itemId, patch) =>
+                    saveLocalItemPatch(itemId, item.originalName, {
+                      ...patch,
+                      chapterNumber:
+                        patch.chapterNumber ??
+                        item.plan.chapterNumber ??
+                        item.parsed.number,
+                      newSeriesTitle:
+                        patch.decision === "NEW_SERIES"
+                          ? patch.newSeriesTitle || item.parsed.normalizedTitle
+                          : patch.newSeriesTitle,
+                      targetSeriesId:
+                        patch.decision === "EXISTING_SERIES"
+                          ? patch.targetSeriesId ||
+                            item.suggestion.matchedSeriesId
+                          : patch.targetSeriesId,
+                    })
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            processingState === "completed" && (
+              <p className="text-xs text-[var(--color-textDim)]">
+                Nenhum item aceito na análise.
+              </p>
+            )
+          )}
+
+          {processingState === "completed" && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={confirmLocalDraft}
+                disabled={
+                  confirmDraftMutation.isPending ||
+                  !draftData?.draft.items?.length
+                }
+                className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
+              >
+                {confirmDraftMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                Confirmar & Criar Jobs
+              </button>
+            </div>
+          )}
+
+          {localConfirmResult && (
+            <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-xs text-green-200 space-y-1">
+              <p>
+                ✅ {localConfirmResult.accepted} aceitos ·{" "}
+                {localConfirmResult.rejected} rejeitados ·{" "}
+                {localConfirmResult.skipped} ignorados
+              </p>
+              {localConfirmResult.jobs.length > 0 && (
+                <p className="text-[10px] text-green-300/80">
+                  Jobs: {localConfirmResult.jobs.slice(0, 4).join(", ")}
+                  {localConfirmResult.jobs.length > 4 ? " ..." : ""}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bulk Edit Modal */}
+      <BulkEditModal
+        isOpen={bulkEditOpen}
+        items={draftData?.draft.items || []}
+        onClose={() => setBulkEditOpen(false)}
+        onApply={applyBulkEdit}
+        isPending={bulkUpdateMutation.isPending}
+      />
     </div>
   );
 }
@@ -755,7 +1456,7 @@ type JobFilter = "all" | "active" | "completed" | "failed";
 
 // ===== Main Page =====
 export default function UploadsPage() {
-  const { data, isLoading, refetch, isRefetching } = useAdminJobs();
+  const { data, isLoading, error, refetch, isRefetching } = useAdminJobs();
   const clearMutation = useClearCompletedJobs();
   const scanMutation = useScanLibrary();
   const retryMutation = useRetryJob();
@@ -1073,6 +1774,15 @@ export default function UploadsPage() {
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-[var(--color-primary)]" />
+          </div>
+        ) : error ? (
+          <div className="px-4 py-10 text-center">
+            <p className="text-sm text-red-400 font-medium">
+              Falha ao carregar jobs
+            </p>
+            <p className="text-xs text-[var(--color-textDim)] mt-1">
+              Verifique conexão/sessão e tente atualizar.
+            </p>
           </div>
         ) : filteredJobs.length === 0 ? (
           <div className="flex flex-col items-center py-12 text-[var(--color-textDim)]">

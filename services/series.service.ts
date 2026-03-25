@@ -16,7 +16,27 @@ export const seriesService = {
 
   // Gerar URL da capa
   async getCoverUrl(series: Series): Promise<string> {
-    const response = await api.get(series.coverUrl!, {
+    const rawCoverUrl = series.coverUrl || `/public/series/${series.id}/cover`;
+    let normalizedCoverPath = rawCoverUrl;
+    if (rawCoverUrl.startsWith("http://") || rawCoverUrl.startsWith("https://")) {
+      try {
+        const parsed = new URL(rawCoverUrl);
+        normalizedCoverPath = `${parsed.pathname}${parsed.search}`;
+      } catch {
+        normalizedCoverPath = rawCoverUrl;
+      }
+    }
+    if (normalizedCoverPath.startsWith("/series/")) {
+      normalizedCoverPath = normalizedCoverPath.replace(
+        "/series/",
+        "/public/series/",
+      );
+    }
+    const requestPath = normalizedCoverPath.startsWith("/api/")
+      ? normalizedCoverPath.slice(4)
+      : normalizedCoverPath;
+
+    const response = await api.get(requestPath, {
       responseType: "blob",
     });
     return URL.createObjectURL(response.data);

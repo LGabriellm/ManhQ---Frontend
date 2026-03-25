@@ -771,8 +771,7 @@ export const adminService = {
   },
 
   getMediaThumbnailUrl(mediaId: string, page: number, width = 200): string {
-    const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-    return `${base}/admin/medias/${mediaId}/pages/${page}/thumbnail?width=${width}`;
+    return `/api/admin/medias/${mediaId}/pages/${page}/thumbnail?width=${width}`;
   },
 
   async deletePages(

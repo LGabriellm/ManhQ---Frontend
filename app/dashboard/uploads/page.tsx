@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
 import {
-  useLocalUploadStage,
   useLocalUploadStageWithSeries,
   useLocalUploadDraft,
   useUpdateLocalUploadDraftItem,
@@ -28,6 +33,11 @@ import type {
 } from "@/types/api";
 import { GoogleDrivePanel } from "@/components/GoogleDrivePanel";
 import { BulkEditModal } from "@/components/admin/BulkEditModal";
+import {
+  resolveUploadDraftProcessingState,
+  validateUploadDraftConfirmation,
+  type UploadDraftProcessingState,
+} from "@/lib/uploadDraftFlow";
 import toast from "react-hot-toast";
 import {
   Upload,
@@ -543,9 +553,8 @@ function UploadZone() {
   const [seriesTitle, setSeriesTitle] = useState("");
   const [folderName, setFolderName] = useState("");
   const [activeDraftId, setActiveDraftId] = useState("");
-  const [processingState, setProcessingState] = useState<
-    "idle" | "processing" | "completed" | "failed"
-  >("idle");
+  const [localProcessingState, setLocalProcessingState] =
+    useState<UploadDraftProcessingState>("idle");
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [localConfirmResult, setLocalConfirmResult] = useState<{
     accepted: number;
@@ -563,24 +572,13 @@ function UploadZone() {
   const confirmDraftMutation = useConfirmLocalUploadDraft();
   const cancelDraftMutation = useCancelLocalUploadDraft();
 
-  const { data: draftData, isLoading: isDraftLoading } = useLocalUploadDraft(
-    activeDraftId,
-    !!activeDraftId,
-  );
-
-  // Monitor processing state from draft
-  useEffect(() => {
-    if (!draftData?.draft.processing) return;
-
-    const state = draftData.draft.processing.state;
-    if (state === "processing") {
-      setProcessingState("processing");
-    } else if (state === "completed") {
-      setProcessingState("completed");
-    } else if (state === "failed") {
-      setProcessingState("failed");
-    }
-  }, [draftData]);
+  const { data: draftData } = useLocalUploadDraft(activeDraftId, !!activeDraftId);
+  const processingState = useMemo(() => {
+    return resolveUploadDraftProcessingState(
+      localProcessingState,
+      draftData?.draft.processing?.state,
+    );
+  }, [draftData?.draft.processing?.state, localProcessingState]);
 
   // Process dropped/selected files
   const addFiles = useCallback(
@@ -707,7 +705,7 @@ function UploadZone() {
     setFolderName("");
     setSeriesTitle("");
     setActiveDraftId("");
-    setProcessingState("idle");
+    setLocalProcessingState("idle");
     setLocalConfirmResult(null);
   };
 
@@ -719,7 +717,7 @@ function UploadZone() {
     }
 
     try {
-      setProcessingState("processing");
+      setLocalProcessingState("processing");
       const files = pendingFiles.map((p) => p.file);
 
       const stageResponse = await stageMutation.mutateAsync({
@@ -735,7 +733,7 @@ function UploadZone() {
         `Análise iniciada: ${stageResponse.processing?.totalReceived || stageResponse.items.length} arquivo(s)`,
       );
     } catch (err) {
-      setProcessingState("failed");
+      setLocalProcessingState("failed");
       const errorMsg =
         (err as { message?: string })?.message || "Erro ao iniciar stage";
       toast.error(errorMsg);
@@ -826,13 +824,12 @@ function UploadZone() {
       return;
     }
 
-    // Validar que processing está completo
-    if (processingState !== "completed") {
-      if (processingState === "processing") {
-        toast.error("Aguarde a conclusão da análise antes de confirmar");
-      } else if (processingState === "failed") {
-        toast.error("A análise falhou. Revise os erros e tente novamente.");
-      }
+    const confirmationCheck = validateUploadDraftConfirmation(processingState);
+    if (!confirmationCheck.canConfirm) {
+      toast.error(
+        confirmationCheck.errorMessage ||
+          "Não foi possível confirmar o draft neste momento.",
+      );
       return;
     }
 
@@ -852,7 +849,7 @@ function UploadZone() {
       setFolderName("");
       setSeriesTitle("");
       setActiveDraftId("");
-      setProcessingState("idle");
+      setLocalProcessingState("idle");
 
       toast.success("Draft confirmado e jobs enviados");
     } catch (err) {
@@ -875,7 +872,7 @@ function UploadZone() {
     try {
       await cancelDraftMutation.mutateAsync(activeDraftId);
       setActiveDraftId("");
-      setProcessingState("idle");
+      setLocalProcessingState("idle");
       setLocalConfirmResult(null);
       toast.success("Draft local cancelado");
     } catch {
@@ -883,7 +880,7 @@ function UploadZone() {
     }
   };
 
-  const applyBulkEdit = async (updates: Record<string, any>) => {
+  const applyBulkEdit = async (updates: Record<string, UploadPlanPatch>) => {
     if (!activeDraftId) {
       return;
     }

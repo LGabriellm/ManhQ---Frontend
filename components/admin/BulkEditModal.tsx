@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { X, ChevronDown } from "lucide-react";
-import type { UploadDraftItem } from "@/types/api";
+import type { UploadDraftItem, UploadPlanPatch } from "@/types/api";
 
 interface BulkEditModalProps {
   isOpen: boolean;
   items: UploadDraftItem[];
   onClose: () => void;
-  onApply: (updates: Record<string, any>) => Promise<void>;
+  onApply: (updates: Record<string, UploadPlanPatch>) => Promise<void>;
   isPending: boolean;
 }
 
@@ -48,7 +48,7 @@ export function BulkEditModal({
   };
 
   const handleApply = async () => {
-    const updates: Record<string, any> = {};
+    const updates: Record<string, UploadPlanPatch> = {};
 
     Array.from(selectedIndices).forEach((index) => {
       const item = items[index];

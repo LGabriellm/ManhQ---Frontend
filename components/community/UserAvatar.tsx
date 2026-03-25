@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
-import api from "@/services/api";
+import { mediaService } from "@/services/media.service";
 
 function initials(name?: string) {
   const parts = (name || "Leitor").trim().split(/\s+/).slice(0, 2);
@@ -59,10 +59,9 @@ export function UserAvatar({
         setLoading(true);
         setFailed(false);
         const bust = cacheBust ? `?t=${cacheBust}` : "";
-        const response = await api.get(`/v1/account/avatar/${userId}${bust}`, {
-          responseType: "blob",
-        });
-        const blobUrl = URL.createObjectURL(response.data);
+        const blobUrl = await mediaService.getBlobUrl(
+          `/v1/account/avatar/${userId}${bust}`,
+        );
         // Revogar blob anterior
         if (blobRef.current) URL.revokeObjectURL(blobRef.current);
         blobRef.current = blobUrl;
@@ -87,6 +86,7 @@ export function UserAvatar({
 
   if (src && !failed) {
     return (
+      // eslint-disable-next-line @next/next/no-img-element -- source can be blob URL from authenticated fetch
       <img
         src={src}
         alt={name || "Avatar"}

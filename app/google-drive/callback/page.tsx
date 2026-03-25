@@ -4,6 +4,13 @@ import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useGoogleDriveCallback } from "@/hooks/useAdmin";
+import {
+  getGoogleDriveCallbackErrorState,
+  getGoogleDriveCallbackSuccessState,
+  getInitialGoogleDriveCallbackUiState,
+  mapGoogleDriveCallbackError,
+  parseGoogleDriveCallbackParams,
+} from "@/lib/googleDriveCallbackFlow";
 
 const CALLBACK_TIMEOUT = 30000;
 const REDIRECT_DELAY = 1500;
@@ -14,48 +21,14 @@ export default function GoogleDriveCallbackPage() {
   const callbackMutation = useGoogleDriveCallback();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const [message, setMessage] = useState("Conectando sua conta Google...");
-  const [error, setError] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-
   const callbackParams = useMemo(() => {
-    const oErr = searchParams.get("error");
-    const oDesc = searchParams.get("error_description");
-    const authCode = searchParams.get("code");
-
-    if (oErr) {
-      const details = oDesc ? decodeURIComponent(oDesc) : oErr;
-      console.error("[OAuth Error]", oErr, details);
-      return {
-        type: "error",
-        code: null,
-        errorMessage: `OAuth Google falhou: ${details}`,
-      } as const;
-    }
-
-    if (!authCode) {
-      console.warn("[OAuth Callback] Código não encontrado");
-      return {
-        type: "missing-code",
-        code: null,
-        errorMessage: "Código de autorização não encontrado.",
-      } as const;
-    }
-
-    return {
-      type: "valid",
-      code: authCode,
-      errorMessage: null,
-    } as const;
+    return parseGoogleDriveCallbackParams(
+      new URLSearchParams(searchParams.toString()),
+    );
   }, [searchParams]);
-
-  useEffect(() => {
-    if (callbackParams.type !== "valid" && callbackParams.errorMessage) {
-      setError(callbackParams.errorMessage);
-      setMessage("Falha na conexão com Google Drive.");
-      setIsProcessing(false);
-    }
-  }, [callbackParams]);
+  const [uiState, setUiState] = useState(() =>
+    getInitialGoogleDriveCallbackUiState(callbackParams),
+  );
 
   useEffect(() => {
     if (callbackParams.type !== "valid" || !callbackParams.code) {
@@ -66,24 +39,15 @@ export default function GoogleDriveCallbackPage() {
     let callbackTimeoutId: NodeJS.Timeout | null = null;
 
     const performCallback = async () => {
-      setIsProcessing(true);
+      setUiState(getInitialGoogleDriveCallbackUiState(callbackParams));
 
       try {
-        console.log(
-          "[OAuth Callback] Iniciando com code:",
-          callbackParams.code,
-        );
-
         const result = await callbackMutation.mutateAsync(callbackParams.code!);
-
-        console.log("[OAuth Callback] Resposta:", result);
 
         if (!isMounted) return;
 
         if (result.success && result.connected) {
-          console.log("[OAuth Callback] Sucesso!");
-          if (!isMounted) return;
-          setMessage("Google Drive conectado com sucesso!");
+          setUiState(getGoogleDriveCallbackSuccessState());
 
           timeoutRef.current = setTimeout(() => {
             if (isMounted) {
@@ -94,25 +58,15 @@ export default function GoogleDriveCallbackPage() {
         }
 
         if (!isMounted) return;
-        console.warn("[OAuth Callback] Resposta inválida:", result);
-        setError("Não foi possível confirmar a conexão com Google Drive.");
-        setMessage("Falha na conexão com Google Drive.");
-        setIsProcessing(false);
+        setUiState(
+          getGoogleDriveCallbackErrorState(
+            "Não foi possível confirmar a conexão com Google Drive.",
+          ),
+        );
       } catch (err) {
         if (!isMounted) return;
 
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error("[OAuth Callback] Erro:", errorMessage);
-
-        const isTimeout =
-          err instanceof Error && err.message.includes("timeout");
-        setError(
-          isTimeout
-            ? "Timeout ao conectar com Google Drive. Tente novamente."
-            : `Falha na autenticação: ${errorMessage}`,
-        );
-        setMessage("Falha na conexão com Google Drive.");
-        setIsProcessing(false);
+        setUiState(getGoogleDriveCallbackErrorState(mapGoogleDriveCallbackError(err)));
       }
     };
 
@@ -120,10 +74,11 @@ export default function GoogleDriveCallbackPage() {
 
     callbackTimeoutId = setTimeout(() => {
       if (isMounted) {
-        console.error("[OAuth Callback] Timeout geral");
-        setError("Timeout ao conectar com Google Drive. Tente novamente.");
-        setMessage("Falha na conexão com Google Drive.");
-        setIsProcessing(false);
+        setUiState(
+          getGoogleDriveCallbackErrorState(
+            "Timeout ao conectar com Google Drive. Tente novamente.",
+          ),
+        );
       }
     }, CALLBACK_TIMEOUT);
 
@@ -134,8 +89,10 @@ export default function GoogleDriveCallbackPage() {
     };
   }, [callbackParams, callbackMutation, router]);
 
-  const isLoading = isProcessing && !error;
-  const isSuccess = !error && !isProcessing && isProcessing !== undefined;
+  const isLoading = uiState.phase === "processing";
+  const isSuccess = uiState.phase === "success";
+  const error = uiState.error;
+  const message = uiState.message;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">

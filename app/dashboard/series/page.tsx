@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import Image from "next/image";
 import {
   useAdminSeries,
   useUpdateSeries,
@@ -24,6 +25,7 @@ import {
   useSetSeriesCoverFromUpload,
 } from "@/hooks/useAdmin";
 import { AuthCover } from "@/components/AuthCover";
+import { mediaService } from "@/services/media.service";
 import type {
   AdminSeriesItem,
   AdminMediaItem,
@@ -67,6 +69,26 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function MediaSortIndicator({
+  field,
+  activeSort,
+  order,
+}: {
+  field: AdminMediaListParams["sort"];
+  activeSort: AdminMediaListParams["sort"];
+  order: "asc" | "desc";
+}) {
+  if (activeSort !== field) {
+    return null;
+  }
+
+  return (
+    <ChevronDown
+      className={`h-3 w-3 inline ml-0.5 transition-transform ${order === "asc" ? "rotate-180" : ""}`}
+    />
+  );
+}
+
 // ===== Auth Thumbnail Component =====
 function AuthThumbnail({
   mediaId,
@@ -107,12 +129,9 @@ function AuthThumbnail({
 
     (async () => {
       try {
-        const { default: api } = await import("@/services/api");
-        const resp = await api.get(
+        blobUrl = await mediaService.getBlobUrl(
           `/admin/medias/${mediaId}/pages/${page}/thumbnail?width=${width}`,
-          { responseType: "blob" },
         );
-        blobUrl = URL.createObjectURL(resp.data);
         if (mounted) {
           setSrc(blobUrl);
           setLoading(false);
@@ -147,6 +166,7 @@ function AuthThumbnail({
         </div>
       )}
       {src && (
+        // eslint-disable-next-line @next/next/no-img-element -- source is a blob URL loaded from authenticated endpoint
         <img src={src} alt={alt} className="w-full h-full object-cover" />
       )}
     </div>
@@ -441,77 +461,84 @@ function EnrichModal({
             </div>
           )}
 
-          {results?.results.map((result: MetadataResult) => (
-            <button
-              key={`${result.source}-${result.externalId}`}
-              onClick={() => handleEnrich(result)}
-              disabled={enrichMutation.isPending}
-              className="w-full flex items-start gap-3 p-3 rounded-lg bg-[var(--color-background)] hover:bg-white/5 border border-white/5 text-left transition-colors disabled:opacity-50"
-            >
-              {result.coverUrlMedium || result.coverUrlLarge ? (
-                <img
-                  src={result.coverUrlMedium || result.coverUrlLarge}
-                  alt={result.title}
-                  className="w-12 h-16 rounded-md object-cover flex-shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-16 rounded-md bg-white/5 flex items-center justify-center flex-shrink-0">
-                  <BookOpen className="h-4 w-4 text-[var(--color-textDim)]" />
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-medium text-[var(--color-textMain)] line-clamp-1">
-                    {result.title}
-                  </p>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/10 text-[var(--color-textDim)] uppercase flex-shrink-0">
-                    {result.source}
-                  </span>
-                  {result.matchConfidence != null && (
-                    <span
-                      className={`text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
-                        result.matchConfidence >= 80
-                          ? "bg-green-500/10 text-green-400"
-                          : result.matchConfidence >= 50
-                            ? "bg-yellow-500/10 text-yellow-400"
-                            : "bg-red-500/10 text-red-400"
-                      }`}
-                    >
-                      {result.matchConfidence}%
-                    </span>
-                  )}
-                </div>
-                {result.titlePortuguese &&
-                  result.titlePortuguese !== result.title && (
-                    <p className="text-xs text-[var(--color-primary)] mt-0.5 line-clamp-1">
-                      {result.titlePortuguese}
-                    </p>
-                  )}
-                {result.author && (
-                  <p className="text-xs text-[var(--color-textDim)] mt-0.5">
-                    {result.author}
-                  </p>
-                )}
-                {result.description && (
-                  <p className="text-xs text-[var(--color-textDim)] mt-1 line-clamp-2">
-                    {result.description.replace(/<[^>]*>/g, "")}
-                  </p>
-                )}
-                {result.genres && result.genres.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1.5">
-                    {result.genres.slice(0, 4).map((g) => (
-                      <span
-                        key={g}
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-[var(--color-textDim)]"
-                      >
-                        {g}
-                      </span>
-                    ))}
+          {results?.results.map((result: MetadataResult) => {
+            const coverImageUrl = result.coverUrlMedium || result.coverUrlLarge;
+
+            return (
+              <button
+                key={`${result.source}-${result.externalId}`}
+                onClick={() => handleEnrich(result)}
+                disabled={enrichMutation.isPending}
+                className="w-full flex items-start gap-3 p-3 rounded-lg bg-[var(--color-background)] hover:bg-white/5 border border-white/5 text-left transition-colors disabled:opacity-50"
+              >
+                {coverImageUrl ? (
+                  <Image
+                    src={coverImageUrl}
+                    alt={result.title}
+                    width={48}
+                    height={64}
+                    unoptimized
+                    className="w-12 h-16 rounded-md object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-16 rounded-md bg-white/5 flex items-center justify-center flex-shrink-0">
+                    <BookOpen className="h-4 w-4 text-[var(--color-textDim)]" />
                   </div>
                 )}
-              </div>
-            </button>
-          ))}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-[var(--color-textMain)] line-clamp-1">
+                      {result.title}
+                    </p>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/10 text-[var(--color-textDim)] uppercase flex-shrink-0">
+                      {result.source}
+                    </span>
+                    {result.matchConfidence != null && (
+                      <span
+                        className={`text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0 ${
+                          result.matchConfidence >= 80
+                            ? "bg-green-500/10 text-green-400"
+                            : result.matchConfidence >= 50
+                              ? "bg-yellow-500/10 text-yellow-400"
+                              : "bg-red-500/10 text-red-400"
+                        }`}
+                      >
+                        {result.matchConfidence}%
+                      </span>
+                    )}
+                  </div>
+                  {result.titlePortuguese &&
+                    result.titlePortuguese !== result.title && (
+                      <p className="text-xs text-[var(--color-primary)] mt-0.5 line-clamp-1">
+                        {result.titlePortuguese}
+                      </p>
+                    )}
+                  {result.author && (
+                    <p className="text-xs text-[var(--color-textDim)] mt-0.5">
+                      {result.author}
+                    </p>
+                  )}
+                  {result.description && (
+                    <p className="text-xs text-[var(--color-textDim)] mt-1 line-clamp-2">
+                      {result.description.replace(/<[^>]*>/g, "")}
+                    </p>
+                  )}
+                  {result.genres && result.genres.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {result.genres.slice(0, 4).map((g) => (
+                        <span
+                          key={g}
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-[var(--color-textDim)]"
+                        >
+                          {g}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
 
           {results && results.results.length === 0 && !isLoading && (
             <p className="text-center text-[var(--color-textDim)] py-8 text-sm">
@@ -750,9 +777,12 @@ function ChangeCoverModal({
                   <p className="text-xs text-[var(--color-textDim)] mb-2">
                     Preview
                   </p>
-                  <img
+                  <Image
                     src={previewUrl}
                     alt="Preview da nova capa"
+                    width={160}
+                    height={224}
+                    unoptimized
                     className="w-40 h-56 rounded-md object-cover"
                   />
                 </div>
@@ -1829,13 +1859,6 @@ function SeriesDetailView({
     setMediaPage(1);
   };
 
-  const SortIndicator = ({ field }: { field: AdminMediaListParams["sort"] }) =>
-    mediaSort === field ? (
-      <ChevronDown
-        className={`h-3 w-3 inline ml-0.5 transition-transform ${mediaOrder === "asc" ? "rotate-180" : ""}`}
-      />
-    ) : null;
-
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Back + Series Header */}
@@ -1996,13 +2019,23 @@ function SeriesDetailView({
                       className="text-left px-4 py-3 text-[var(--color-textDim)] font-medium cursor-pointer hover:text-[var(--color-textMain)]"
                       onClick={() => toggleMediaSort("number")}
                     >
-                      # <SortIndicator field="number" />
+                      #{" "}
+                      <MediaSortIndicator
+                        field="number"
+                        activeSort={mediaSort}
+                        order={mediaOrder}
+                      />
                     </th>
                     <th
                       className="text-left px-4 py-3 text-[var(--color-textDim)] font-medium cursor-pointer hover:text-[var(--color-textMain)]"
                       onClick={() => toggleMediaSort("title")}
                     >
-                      Título <SortIndicator field="title" />
+                      Título{" "}
+                      <MediaSortIndicator
+                        field="title"
+                        activeSort={mediaSort}
+                        order={mediaOrder}
+                      />
                     </th>
                     <th className="text-left px-4 py-3 text-[var(--color-textDim)] font-medium hidden sm:table-cell">
                       Formato
@@ -2011,13 +2044,23 @@ function SeriesDetailView({
                       className="text-left px-4 py-3 text-[var(--color-textDim)] font-medium hidden md:table-cell cursor-pointer hover:text-[var(--color-textMain)]"
                       onClick={() => toggleMediaSort("pageCount")}
                     >
-                      Páginas <SortIndicator field="pageCount" />
+                      Páginas{" "}
+                      <MediaSortIndicator
+                        field="pageCount"
+                        activeSort={mediaSort}
+                        order={mediaOrder}
+                      />
                     </th>
                     <th
                       className="text-left px-4 py-3 text-[var(--color-textDim)] font-medium hidden lg:table-cell cursor-pointer hover:text-[var(--color-textMain)]"
                       onClick={() => toggleMediaSort("size")}
                     >
-                      Tamanho <SortIndicator field="size" />
+                      Tamanho{" "}
+                      <MediaSortIndicator
+                        field="size"
+                        activeSort={mediaSort}
+                        order={mediaOrder}
+                      />
                     </th>
                     <th className="text-right px-4 py-3 text-[var(--color-textDim)] font-medium">
                       Ações

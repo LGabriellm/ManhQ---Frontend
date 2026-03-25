@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
-import api from "@/services/api";
+import { mediaService } from "@/services/media.service";
 
 interface AuthCoverProps {
   coverUrl: string;
@@ -61,10 +61,7 @@ export function AuthCover({
       try {
         setIsLoading(true);
         setError(false);
-        const response = await api.get(coverUrl, {
-          responseType: "blob",
-        });
-        blobUrl = URL.createObjectURL(response.data);
+        blobUrl = await mediaService.getBlobUrl(coverUrl);
         if (isMounted) {
           setImageSrc(blobUrl);
           setIsLoading(false);
@@ -123,6 +120,7 @@ export function AuthCover({
       )}
 
       {imageSrc && (
+        // eslint-disable-next-line @next/next/no-img-element -- blob URL for authenticated media cannot use optimization pipeline safely
         <img
           src={imageSrc}
           alt={alt}

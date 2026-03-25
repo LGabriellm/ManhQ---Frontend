@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Image from "next/image";
 import { useMemo } from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { useCarouselCovers } from "@/hooks/useCarouselCovers";
@@ -41,9 +42,12 @@ function Card({
               : "h-80 w-56 border-white/10 shadow-2xl group-hover:border-primary/30 group-hover:shadow-[0_20px_60px_rgba(229,9,20,0.3)]"
           }`}
         >
-          <img
+          <Image
             src={item.image}
             alt={item.title}
+            fill
+            unoptimized
+            sizes={backgroundMode ? "176px" : "224px"}
             loading="lazy"
             className={`h-full w-full object-cover transition-transform duration-500 ${
               backgroundMode ? "opacity-65" : "group-hover:scale-110"

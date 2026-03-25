@@ -25,7 +25,6 @@ import {
   Edit2,
   Trash2,
   ShieldCheck,
-  ShieldAlert,
   LogOut,
   ChevronLeft,
   ChevronRight,

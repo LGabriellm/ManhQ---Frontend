@@ -1,4 +1,5 @@
 import api from "./api";
+import { postKeepalive } from "./keepalive.service";
 import type {
   ChapterInfo,
   ReadProgress,
@@ -22,8 +23,7 @@ export const readerService = {
 
   // Gerar URL da página (para referência)
   getPageUrl(chapterId: string, pageNumber: number): string {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-    return `${baseUrl}/read/${chapterId}/page/${pageNumber}`;
+    return `/api/read/${chapterId}/page/${pageNumber}`;
   },
 
   // Atualizar progresso de leitura
@@ -36,5 +36,12 @@ export const readerService = {
       progress: ReadProgress;
     }>(`/read/${chapterId}/progress`, data);
     return response.data.progress;
+  },
+
+  async updateProgressKeepalive(
+    chapterId: string,
+    data: ReadProgressRequest,
+  ): Promise<void> {
+    await postKeepalive(`/read/${chapterId}/progress`, data);
   },
 };

@@ -1,4 +1,5 @@
 import api from "./api";
+import { postKeepalive } from "./keepalive.service";
 import type {
   UserStatsResponse,
   UserReadingStats,
@@ -89,5 +90,9 @@ export const statsService = {
   async record(data: RecordStatsRequest): Promise<DailyStats> {
     const response = await api.post<DailyStats>("/stats/record", data);
     return response.data;
+  },
+
+  async recordKeepalive(data: RecordStatsRequest): Promise<void> {
+    await postKeepalive("/stats/record", data);
   },
 };

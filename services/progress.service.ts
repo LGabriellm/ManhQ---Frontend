@@ -10,44 +10,78 @@ import type {
   ProgressStats,
 } from "@/types/api";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapContinueReadingItem(raw: any): ContinueReadingItem {
+type UnknownRecord = Record<string, unknown>;
+
+function toRecord(value: unknown): UnknownRecord {
+  if (typeof value === "object" && value !== null) {
+    return value as UnknownRecord;
+  }
+  return {};
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return fallback;
+}
+
+function asBoolean(value: unknown, fallback = false): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function mapContinueReadingItem(raw: unknown): ContinueReadingItem {
+  const item = toRecord(raw);
+
   return {
-    progressId: raw.progressId ?? null,
-    mediaId: raw.mediaId || "",
-    mediaTitle: raw.mediaTitle || "",
-    mediaNumber: raw.mediaNumber || 0,
-    seriesId: raw.seriesId || "",
-    seriesTitle: raw.seriesTitle || "",
-    coverUrl: raw.coverUrl || "",
-    page: raw.page || 0,
-    pageCount: raw.pageCount || 0,
-    percent: raw.percent || 0,
-    finished: raw.finished || false,
-    lastReadAt: raw.lastReadAt || "",
-    startedAt: raw.startedAt ?? null,
-    type: raw.type || "in-progress",
+    progressId: asString(item.progressId) || null,
+    mediaId: asString(item.mediaId),
+    mediaTitle: asString(item.mediaTitle),
+    mediaNumber: asNumber(item.mediaNumber),
+    seriesId: asString(item.seriesId),
+    seriesTitle: asString(item.seriesTitle),
+    coverUrl: asString(item.coverUrl),
+    page: asNumber(item.page),
+    pageCount: asNumber(item.pageCount),
+    percent: asNumber(item.percent),
+    finished: asBoolean(item.finished),
+    lastReadAt: asString(item.lastReadAt),
+    startedAt: asString(item.startedAt) || null,
+    type: item.type === "next-chapter" ? "next-chapter" : "in-progress",
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapHistoryItem(raw: any): ProgressHistoryItem {
+function mapHistoryItem(raw: unknown): ProgressHistoryItem {
+  const item = toRecord(raw);
+
   return {
-    progressId: raw.progressId || raw.id || "",
-    mediaId: raw.mediaId || "",
-    mediaTitle: raw.mediaTitle || "",
-    mediaNumber: raw.mediaNumber || 0,
-    seriesId: raw.seriesId || "",
-    seriesTitle: raw.seriesTitle || "",
-    coverUrl: raw.coverUrl || "",
-    page: raw.page || 0,
-    pageCount: raw.pageCount || 0,
-    percent: raw.percent || 0,
-    finished: raw.finished || false,
-    startedAt: raw.startedAt || "",
-    lastReadAt: raw.lastReadAt || "",
-    completedAt: raw.completedAt ?? null,
-    readCount: raw.readCount || 0,
+    progressId: asString(item.progressId) || asString(item.id),
+    mediaId: asString(item.mediaId),
+    mediaTitle: asString(item.mediaTitle),
+    mediaNumber: asNumber(item.mediaNumber),
+    seriesId: asString(item.seriesId),
+    seriesTitle: asString(item.seriesTitle),
+    coverUrl: asString(item.coverUrl),
+    page: asNumber(item.page),
+    pageCount: asNumber(item.pageCount),
+    percent: asNumber(item.percent),
+    finished: asBoolean(item.finished),
+    startedAt: asString(item.startedAt),
+    lastReadAt: asString(item.lastReadAt),
+    completedAt: asString(item.completedAt) || null,
+    readCount: asNumber(item.readCount),
   };
 }
 
@@ -68,66 +102,91 @@ export const progressService = {
   },
 
   async getSeriesProgress(seriesId: string): Promise<SeriesProgress> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = await api.get<any>(`/progress/series/${seriesId}`);
-    const raw = response.data;
+    const response = await api.get<unknown>(`/progress/series/${seriesId}`);
+    const raw = toRecord(response.data);
+    const chapters = Array.isArray(raw.chapters)
+      ? (raw.chapters as SeriesProgress["chapters"])
+      : undefined;
+    const chaptersRead = asNumber(raw.chaptersRead, asNumber(raw.readChapters));
+    const progressPercent = asNumber(
+      raw.progressPercent,
+      asNumber(raw.completionPercentage),
+    );
+
     return {
-      seriesId: raw.seriesId,
-      totalChapters: raw.totalChapters || 0,
-      readChapters: raw.chaptersRead ?? raw.readChapters ?? 0,
-      chaptersRead: raw.chaptersRead ?? raw.readChapters ?? 0,
-      chaptersInProgress: raw.chaptersInProgress ?? 0,
-      completionPercentage:
-        raw.progressPercent ?? raw.completionPercentage ?? 0,
-      progressPercent: raw.progressPercent ?? raw.completionPercentage ?? 0,
-      chapters: raw.chapters,
+      seriesId: asString(raw.seriesId),
+      totalChapters: asNumber(raw.totalChapters),
+      readChapters: chaptersRead,
+      chaptersRead,
+      chaptersInProgress: asNumber(raw.chaptersInProgress),
+      completionPercentage: progressPercent,
+      progressPercent,
+      chapters,
     };
   },
 
   async getContinueReading(
     params?: ContinueReadingParams,
   ): Promise<ContinueReadingItem[]> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = await api.get<any[]>("/progress/continue-reading", {
+    const response = await api.get<unknown>("/progress/continue-reading", {
       params,
     });
-    return (response.data || []).map(mapContinueReadingItem);
+    if (!Array.isArray(response.data)) {
+      return [];
+    }
+    return response.data.map(mapContinueReadingItem);
   },
 
   async getHistory(
     params?: ProgressHistoryParams,
   ): Promise<ProgressHistoryResponse> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = await api.get<any>("/progress/history", { params });
+    const response = await api.get<unknown>("/progress/history", { params });
     const raw = response.data;
 
     // Backend pode retornar { items, total, hasMore } ou array direto
-    const items = Array.isArray(raw) ? raw : raw.items || raw.data || [];
+    const payload = toRecord(raw);
+    const collection = Array.isArray(raw)
+      ? raw
+      : Array.isArray(payload.items)
+        ? payload.items
+        : Array.isArray(payload.data)
+          ? payload.data
+          : [];
 
-    const total = Array.isArray(raw) ? raw.length : (raw.total ?? items.length);
-    const hasMore = Array.isArray(raw) ? false : (raw.hasMore ?? false);
+    const total = Array.isArray(raw)
+      ? raw.length
+      : asNumber(payload.total, collection.length);
+    const hasMore = Array.isArray(raw) ? false : asBoolean(payload.hasMore);
 
     return {
-      items: items.map(mapHistoryItem),
+      items: collection.map(mapHistoryItem),
       total,
       hasMore,
     };
   },
 
   async getSeriesList(): Promise<SeriesListItem[]> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const response = await api.get<any[]>("/progress/series-list");
-    return (response.data || []).map((item) => ({
-      seriesId: item.seriesId || item.id || "",
-      title: item.title || "",
-      coverUrl:
-        item.coverUrl ||
-        (item.coverPath ? `/series/${item.seriesId || item.id}/cover` : ""),
-      totalChapters: item.totalChapters || 0,
-      chaptersRead: item.chaptersRead || 0,
-      progressPercent: item.progressPercent || 0,
-      lastReadAt: item.lastReadAt || "",
-    }));
+    const response = await api.get<unknown>("/progress/series-list");
+    if (!Array.isArray(response.data)) {
+      return [];
+    }
+
+    return response.data.map((item) => {
+      const series = toRecord(item);
+      const seriesId = asString(series.seriesId) || asString(series.id);
+
+      return {
+        seriesId,
+        title: asString(series.title),
+        coverUrl:
+          asString(series.coverUrl) ||
+          (asString(series.coverPath) ? `/series/${seriesId}/cover` : ""),
+        totalChapters: asNumber(series.totalChapters),
+        chaptersRead: asNumber(series.chaptersRead),
+        progressPercent: asNumber(series.progressPercent),
+        lastReadAt: asString(series.lastReadAt),
+      };
+    });
   },
 
   // Marca capítulo como lido (100%)

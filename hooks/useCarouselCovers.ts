@@ -1,12 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-
-export interface CarouselCover {
-  id: string;
-  title: string;
-  coverUrl: string;
-}
+import {
+  carouselService,
+  type CarouselCover,
+} from "@/services/carousel.service";
 
 export interface UseCarouselCoversOptions {
   sort?: "recent" | "popular" | "random";
@@ -22,67 +20,6 @@ interface CoversCachePayload {
 }
 
 const STORAGE_KEY = "carousel_covers_cache_v3";
-
-function normalizeCoverUrl(rawUrl: string): string {
-  if (!rawUrl) return rawUrl;
-
-  const normalizedInput = rawUrl.startsWith("/series/")
-    ? rawUrl.replace("/series/", "/public/series/")
-    : rawUrl;
-
-  const backendBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-
-  if (
-    backendBaseUrl &&
-    (normalizedInput.startsWith("http://") ||
-      normalizedInput.startsWith("https://"))
-  ) {
-    try {
-      const backend = new URL(backendBaseUrl);
-      const incoming = new URL(normalizedInput);
-
-      if (incoming.origin === backend.origin) {
-        const rawPath = incoming.pathname.startsWith("/api/")
-          ? incoming.pathname.slice(4)
-          : incoming.pathname;
-        const normalizedPath = rawPath.startsWith("/series/")
-          ? rawPath.replace("/series/", "/public/series/")
-          : rawPath;
-        return `/api${normalizedPath}${incoming.search}`;
-      }
-    } catch {
-      // ignora erro de parse e segue fluxo padrão
-    }
-  }
-
-  if (
-    normalizedInput.startsWith("http://") ||
-    normalizedInput.startsWith("https://") ||
-    normalizedInput.startsWith("data:") ||
-    normalizedInput.startsWith("blob:")
-  ) {
-    return normalizedInput;
-  }
-
-  if (normalizedInput.startsWith("/api/")) {
-    return normalizedInput;
-  }
-
-  if (normalizedInput.startsWith("/")) {
-    return `/api${normalizedInput}`;
-  }
-
-  return `/api/${normalizedInput}`;
-}
-
-function normalizeCovers(covers: CarouselCover[]): CarouselCover[] {
-  return covers.map((cover) => ({
-    ...cover,
-    coverUrl: normalizeCoverUrl(
-      cover.coverUrl || `/public/series/${cover.id}/cover`,
-    ),
-  }));
-}
 
 export function useCarouselCovers(options: UseCarouselCoversOptions = {}) {
   const { sort = "recent", limit = 20, cacheTTLHours = 24 } = options;
@@ -139,7 +76,7 @@ export function useCarouselCovers(options: UseCarouselCoversOptions = {}) {
 
       const cached = readCache();
       if (!forceFresh && isCacheValid(cached)) {
-        setCovers(normalizeCovers(cached?.data ?? []));
+        setCovers(cached?.data ?? []);
         setLoading(false);
         return;
       }
@@ -148,43 +85,25 @@ export function useCarouselCovers(options: UseCarouselCoversOptions = {}) {
       const timeout = setTimeout(() => controller.abort(), 10000);
 
       try {
-        const params = new URLSearchParams({
-          sort,
-          limit: String(limit),
-        });
-
-        const res = await fetch(`/api/carousel/covers?${params.toString()}`, {
-          method: "GET",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
+        const normalizedData = await carouselService.getCovers(
+          {
+            sort,
+            limit,
           },
-        });
+          controller.signal,
+        );
 
-        if (!res.ok) {
-          throw new Error(`Erro ${res.status}`);
-        }
-
-        const data = (await res.json()) as CarouselCover[];
-
-        if (!Array.isArray(data)) {
-          throw new Error("Resposta inválida");
-        }
-
-        const normalizedData = normalizeCovers(data);
         setCovers(normalizedData);
         writeCache(normalizedData);
       } catch (err) {
         const fallback = readCache();
         if (fallback?.data?.length) {
-          setCovers(normalizeCovers(fallback.data));
+          setCovers(fallback.data);
           setError(null);
+        } else if (err instanceof DOMException && err.name === "AbortError") {
+          setError("Tempo de requisição esgotado.");
         } else {
-          if (err instanceof DOMException && err.name === "AbortError") {
-            setError("Tempo de requisição esgotado.");
-          } else {
-            setError("Não foi possível carregar as capas agora.");
-          }
+          setError("Não foi possível carregar as capas agora.");
         }
       } finally {
         clearTimeout(timeout);

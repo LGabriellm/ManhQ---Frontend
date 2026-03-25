@@ -65,6 +65,28 @@ const decisionLabel: Record<UploadDecision, string> = {
   SKIP: "Ignorar",
 };
 
+function readImportHistoryFromStorage(): ImportHistoryItem[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(IMPORT_HISTORY_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw) as ImportHistoryItem[];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.slice(0, MAX_IMPORT_HISTORY_ITEMS);
+  } catch {
+    return [];
+  }
+}
+
 async function retryWithBackoff<T>(
   operation: () => Promise<T>,
   attempts = MAX_RETRY_ATTEMPTS,
@@ -477,7 +499,9 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
     skipped: number;
     jobs: string[];
   } | null>(null);
-  const [importHistory, setImportHistory] = useState<ImportHistoryItem[]>([]);
+  const [importHistory, setImportHistory] = useState<ImportHistoryItem[]>(
+    readImportHistoryFromStorage,
+  );
 
   const {
     data: statusData,
@@ -510,28 +534,6 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
 
   const isConnected = Boolean(statusData?.connected);
   const account = statusData?.account;
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    try {
-      const raw = window.localStorage.getItem(IMPORT_HISTORY_STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-
-      const parsed = JSON.parse(raw) as ImportHistoryItem[];
-      if (!Array.isArray(parsed)) {
-        return;
-      }
-
-      setImportHistory(parsed.slice(0, MAX_IMPORT_HISTORY_ITEMS));
-    } catch {
-      setImportHistory([]);
-    }
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -709,7 +711,10 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
     return folderTrail[folderTrail.length - 1]?.name || "Pasta";
   }, [folderTrail]);
 
-  const draftItems = draftData?.draft.items || [];
+  const draftItems = useMemo(
+    () => draftData?.draft.items ?? [],
+    [draftData?.draft.items],
+  );
 
   const applyDecisionToAllDraftItems = useCallback(
     async (decision: UploadDecision) => {

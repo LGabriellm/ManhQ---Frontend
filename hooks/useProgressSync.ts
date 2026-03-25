@@ -6,13 +6,14 @@ import { statsService } from "@/services/stats.service";
 /**
  * Hook otimizado para sincronizar progresso de leitura.
  *
- * - Salva via API direta (sem React Query mutation) para evitar re-renders
+ * - Salva via services (sem React Query mutation) para evitar re-renders
  * - Debounce de 1s para não disparar a cada pixel de scroll
  * - Deduplica: só envia se a página realmente mudou desde o último envio
  * - Flush imediato no unmount (troca de capítulo, saída do reader)
  * - Marca como lido automaticamente ao chegar na última página
  * - Invalida queries de progresso apenas no unmount (não durante a leitura)
  * - Registra estatísticas de leitura (páginas + tempo) a cada 30s e no unmount
+ * - Fluxo de rede centralizado na camada de services
  */
 export function useProgressSync(
   chapterId: string,
@@ -165,16 +166,7 @@ export function useProgressSync(
       const page = pendingPage.current;
       const chapter = chapterIdRef.current;
       if (page > 0 && page !== lastSentPage.current) {
-        // fetch keepalive garante envio mesmo durante navegação
-        fetch(`/api/read/${chapter}/progress`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({ page }),
-          keepalive: true,
-        }).catch(() => {});
+        readerService.updateProgressKeepalive(chapter, { page }).catch(() => {});
       }
 
       // Flush final de stats com keepalive
@@ -183,19 +175,13 @@ export function useProgressSync(
       );
       const pages = pagesReadInSession.current;
       if (pages > 0 || elapsedSec > 2) {
-        fetch(`/api/stats/record`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({
+        statsService
+          .recordKeepalive({
             pages,
             timeSpent: elapsedSec,
             chapterCompleted: false,
-          }),
-          keepalive: true,
-        }).catch(() => {});
+          })
+          .catch(() => {});
       }
 
       // Invalidar queries para que os dados estejam frescos ao voltar

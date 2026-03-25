@@ -9,7 +9,7 @@ export function cn(...inputs: ClassValue[]) {
 /** Garante que series.coverUrl exista (fallback de coverPath → URL da API) */
 export function normalizeCoverUrl<T extends Partial<Series>>(series: T): T {
   if (!series.coverUrl && (series as Series).coverPath) {
-    (series as Series).coverUrl = `/series/${series.id}/cover`;
+    (series as Series).coverUrl = `/public/series/${series.id}/cover`;
   }
   return series;
 }

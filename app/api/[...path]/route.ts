@@ -18,6 +18,8 @@ const ALLOWED_PREFIXES = [
   "read/",
   "series",
   "discover",
+  "carousel",
+  "public/series/",
   "categories",
   "progress",
   "favorites",

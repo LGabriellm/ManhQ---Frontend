@@ -8,12 +8,17 @@ import React, {
   useRef,
 } from "react";
 import {
+  useLocalUploadStage,
   useLocalUploadStageWithSeries,
   useLocalUploadDraft,
   useUpdateLocalUploadDraftItem,
   useBulkUpdateLocalUploadDraftItems,
   useConfirmLocalUploadDraft,
   useCancelLocalUploadDraft,
+  useUpload,
+  useUploadBulk,
+  useUploadFolder,
+  useUploadToSeries,
   useAdminSeries,
   useAdminJobs,
   useClearCompletedJobs,
@@ -30,14 +35,24 @@ import type {
   UploadDecision,
   UploadDraftItem,
   UploadPlanPatch,
+  UploadResponse,
+  UploadBulkResponse,
+  UploadFolderResponse,
+  UploadSerieResponse,
 } from "@/types/api";
 import { GoogleDrivePanel } from "@/components/GoogleDrivePanel";
 import { BulkEditModal } from "@/components/admin/BulkEditModal";
+import { DetectionEvidencePanel } from "@/components/upload/DetectionEvidencePanel";
 import {
   resolveUploadDraftProcessingState,
   validateUploadDraftConfirmation,
   type UploadDraftProcessingState,
 } from "@/lib/uploadDraftFlow";
+import {
+  countUnresolvedManualReviews,
+  isItemMarkedForManualReview,
+} from "@/lib/uploadReview";
+import { getUploadErrorMessage } from "@/lib/uploadErrors";
 import toast from "react-hot-toast";
 import {
   Upload,
@@ -89,6 +104,51 @@ function formatFileSize(bytes?: number): string {
 
 function getJobDisplayName(job: AdminJob): string {
   return job.name?.replace(/^upload-/, "") || job.id;
+}
+
+function extractJobIdsFromDirectUploadResponse(
+  payload:
+    | UploadResponse
+    | UploadBulkResponse
+    | UploadFolderResponse
+    | UploadSerieResponse,
+): string[] {
+  if ("jobId" in payload && payload.jobId) {
+    return [payload.jobId];
+  }
+  if ("accepted" in payload && Array.isArray(payload.accepted)) {
+    return payload.accepted
+      .map((entry) => ("jobId" in entry ? entry.jobId : undefined))
+      .filter((jobId): jobId is string => Boolean(jobId));
+  }
+  return [];
+}
+
+function normalizeJobProgress(progress: AdminJob["progress"]): number {
+  if (typeof progress === "number" && Number.isFinite(progress)) {
+    return progress;
+  }
+
+  if (progress && typeof progress === "object") {
+    const maybePercent = (progress as { percent?: unknown }).percent;
+    if (typeof maybePercent === "number" && Number.isFinite(maybePercent)) {
+      return maybePercent;
+    }
+
+    const current = (progress as { current?: unknown }).current;
+    const total = (progress as { total?: unknown }).total;
+    if (
+      typeof current === "number" &&
+      Number.isFinite(current) &&
+      typeof total === "number" &&
+      Number.isFinite(total) &&
+      total > 0
+    ) {
+      return (current / total) * 100;
+    }
+  }
+
+  return 0;
 }
 
 const ACCEPTED_EXTENSIONS = [".cbz", ".cbr", ".zip", ".pdf", ".epub"];
@@ -318,6 +378,7 @@ function LocalDraftItemEditor({
         Sugestão:{" "}
         {item.suggestion.matchedSeriesTitle || item.parsed.normalizedTitle}
       </p>
+      <DetectionEvidencePanel item={item} />
 
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
         <label className="text-[11px] text-[var(--color-textDim)]">
@@ -566,6 +627,7 @@ function UploadZone() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
+  const stageAutoMutation = useLocalUploadStage();
   const stageMutation = useLocalUploadStageWithSeries();
   const updateDraftItemMutation = useUpdateLocalUploadDraftItem();
   const bulkUpdateMutation = useBulkUpdateLocalUploadDraftItems();
@@ -579,6 +641,18 @@ function UploadZone() {
       draftData?.draft.processing?.state,
     );
   }, [draftData?.draft.processing?.state, localProcessingState]);
+  const draftItems = useMemo(
+    () => draftData?.draft.items ?? [],
+    [draftData?.draft.items],
+  );
+  const reviewRequiredCount = useMemo(
+    () => draftItems.filter(isItemMarkedForManualReview).length,
+    [draftItems],
+  );
+  const unresolvedReviewCount = useMemo(
+    () => countUnresolvedManualReviews(draftItems),
+    [draftItems],
+  );
 
   // Process dropped/selected files
   const addFiles = useCallback(
@@ -711,20 +785,23 @@ function UploadZone() {
 
   const startStage = async () => {
     if (pendingFiles.length === 0) return;
-    if (!seriesTitle.trim()) {
-      toast.error("Digite o nome da série");
-      return;
-    }
 
     try {
       setLocalProcessingState("processing");
       const files = pendingFiles.map((p) => p.file);
-
-      const stageResponse = await stageMutation.mutateAsync({
-        files,
-        seriesTitle: seriesTitle.trim(),
-        folderName: mode === "folder" ? folderName.trim() : undefined,
-      });
+      const normalizedFolderName =
+        mode === "folder" && folderName.trim() ? folderName.trim() : undefined;
+      const normalizedSeriesTitle = seriesTitle.trim();
+      const stageResponse = normalizedSeriesTitle
+        ? await stageMutation.mutateAsync({
+            files,
+            seriesTitle: normalizedSeriesTitle,
+            folderName: normalizedFolderName,
+          })
+        : await stageAutoMutation.mutateAsync({
+            files,
+            folderName: normalizedFolderName,
+          });
 
       setActiveDraftId(stageResponse.draftId);
       setLocalConfirmResult(null);
@@ -734,9 +811,7 @@ function UploadZone() {
       );
     } catch (err) {
       setLocalProcessingState("failed");
-      const errorMsg =
-        (err as { message?: string })?.message || "Erro ao iniciar stage";
-      toast.error(errorMsg);
+      toast.error(getUploadErrorMessage(err, "Erro ao iniciar stage"));
     }
   };
 
@@ -824,6 +899,13 @@ function UploadZone() {
       return;
     }
 
+    if (unresolvedReviewCount > 0) {
+      toast.error(
+        `Há ${unresolvedReviewCount} item(ns) com revisão manual pendente.`,
+      );
+      return;
+    }
+
     const confirmationCheck = validateUploadDraftConfirmation(processingState);
     if (!confirmationCheck.canConfirm) {
       toast.error(
@@ -853,14 +935,7 @@ function UploadZone() {
 
       toast.success("Draft confirmado e jobs enviados");
     } catch (err) {
-      const errorMsg =
-        (err as unknown as { message?: string } | null)?.message ||
-        "Erro ao confirmar draft";
-      if ((err as unknown as { status?: number } | null)?.status === 409) {
-        toast.error("Processamento ainda em andamento. Aguarde.");
-      } else {
-        toast.error(errorMsg);
-      }
+      toast.error(getUploadErrorMessage(err, "Erro ao confirmar draft"));
     }
   };
 
@@ -906,6 +981,7 @@ function UploadZone() {
   };
 
   const isPending =
+    stageAutoMutation.isPending ||
     stageMutation.isPending ||
     updateDraftItemMutation.isPending ||
     bulkUpdateMutation.isPending ||
@@ -930,7 +1006,7 @@ function UploadZone() {
       {/* Series Title Input - Obrigatório */}
       <div className="px-5 pt-4">
         <label className="block text-sm text-[var(--color-textDim)] mb-1.5 font-medium">
-          Nome da Série *
+          Nome da Série (opcional)
         </label>
         <input
           type="text"
@@ -941,8 +1017,8 @@ function UploadZone() {
           className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-50"
         />
         <p className="text-[10px] text-[var(--color-textDim)] mt-1">
-          O nome da série será preservado durante todo o fluxo e honrado no
-          processamento final.
+          Se preenchido, usa o fluxo series-stage. Em branco, usa detecção
+          automática via draft stage.
         </p>
       </div>
 
@@ -1118,7 +1194,7 @@ function UploadZone() {
           <div className="px-5 py-4 border-t border-white/5">
             <button
               onClick={startStage}
-              disabled={isPending || (mode === "folder" && !folderName.trim())}
+              disabled={isPending}
               className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary)]/90 transition-colors disabled:opacity-50"
             >
               {isPending ? (
@@ -1197,8 +1273,35 @@ function UploadZone() {
             </div>
           )}
 
-          {processingState === "completed" && draftData?.draft.items?.length ? (
+          {draftData?.draft.rejected && draftData.draft.rejected.length > 0 && (
+            <details className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+              <summary className="cursor-pointer font-medium">
+                {draftData.draft.rejected.length} arquivo(s) rejeitado(s)
+              </summary>
+              <div className="mt-2 space-y-1">
+                {draftData.draft.rejected.slice(0, 10).map((item, index) => (
+                  <p key={`${item.filename || item.fileId || "rejected"}-${index}`}>
+                    {(item.filename || item.fileId || "Arquivo")} — {item.reason}
+                  </p>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {processingState === "completed" && draftItems.length ? (
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              <div className="rounded-lg border border-white/10 bg-[var(--color-surface)] p-2 text-[11px] text-[var(--color-textDim)]">
+                Itens com review manual: {reviewRequiredCount} · pendentes:{" "}
+                <span
+                  className={
+                    unresolvedReviewCount > 0
+                      ? "text-yellow-300 font-medium"
+                      : "text-green-300 font-medium"
+                  }
+                >
+                  {unresolvedReviewCount}
+                </span>
+              </div>
               <div className="rounded-lg border border-white/10 bg-[var(--color-surface)] p-2 flex flex-wrap gap-2">
                 <button
                   onClick={() => setBulkEditOpen(true)}
@@ -1226,7 +1329,7 @@ function UploadZone() {
                 </button>
               </div>
 
-              {draftData.draft.items.map((item) => (
+              {draftItems.map((item) => (
                 <LocalDraftItemEditor
                   key={item.id}
                   item={item}
@@ -1269,7 +1372,8 @@ function UploadZone() {
                 onClick={confirmLocalDraft}
                 disabled={
                   confirmDraftMutation.isPending ||
-                  !draftData?.draft.items?.length
+                  !draftItems.length ||
+                  unresolvedReviewCount > 0
                 }
                 className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
               >
@@ -1280,6 +1384,11 @@ function UploadZone() {
                 )}
                 Confirmar & Criar Jobs
               </button>
+              {unresolvedReviewCount > 0 && (
+                <p className="text-xs text-yellow-300">
+                  Resolva os itens com review manual antes de confirmar.
+                </p>
+              )}
             </div>
           )}
 
@@ -1304,7 +1413,7 @@ function UploadZone() {
       {/* Bulk Edit Modal */}
       <BulkEditModal
         isOpen={bulkEditOpen}
-        items={draftData?.draft.items || []}
+        items={draftItems}
         onClose={() => setBulkEditOpen(false)}
         onApply={applyBulkEdit}
         isPending={bulkUpdateMutation.isPending}
@@ -1316,6 +1425,234 @@ function UploadZone() {
 // ===== Google Drive Import Panel =====
 function GoogleDriveImportPanel() {
   return <GoogleDrivePanel />;
+}
+
+type DirectUploadMode = "single" | "bulk" | "folder" | "series";
+
+function DirectUploadPanel() {
+  const [mode, setMode] = useState<DirectUploadMode>("single");
+  const [files, setFiles] = useState<File[]>([]);
+  const [folderName, setFolderName] = useState("");
+  const [seriesId, setSeriesId] = useState("");
+  const [result, setResult] = useState<{
+    message: string;
+    jobs: string[];
+    accepted: number;
+    rejected: number;
+    rejectedItems: Array<{ filename?: string; reason: string }>;
+    pendingApproval: boolean;
+  } | null>(null);
+
+  const singleUploadMutation = useUpload();
+  const bulkUploadMutation = useUploadBulk();
+  const folderUploadMutation = useUploadFolder();
+  const seriesUploadMutation = useUploadToSeries();
+
+  const isPending =
+    singleUploadMutation.isPending ||
+    bulkUploadMutation.isPending ||
+    folderUploadMutation.isPending ||
+    seriesUploadMutation.isPending;
+
+  const handleSubmit = async () => {
+    if (files.length === 0) {
+      toast.error("Selecione ao menos um arquivo");
+      return;
+    }
+    if (mode === "folder" && !folderName.trim()) {
+      toast.error("Informe o nome da pasta");
+      return;
+    }
+    if (mode === "series" && !seriesId.trim()) {
+      toast.error("Informe o ID da série de destino");
+      return;
+    }
+
+    try {
+      if (mode === "single") {
+        const file = files[0];
+        if (!file) {
+          toast.error("Selecione um arquivo");
+          return;
+        }
+        const payload = await singleUploadMutation.mutateAsync(file);
+        setResult({
+          message: payload.message || "Upload enviado",
+          jobs: extractJobIdsFromDirectUploadResponse(payload),
+          accepted: payload.jobId ? 1 : 0,
+          rejected: 0,
+          rejectedItems: [],
+          pendingApproval: Boolean(
+            (payload as { pendingApproval?: boolean }).pendingApproval,
+          ),
+        });
+      } else if (mode === "bulk") {
+        const payload = await bulkUploadMutation.mutateAsync(files);
+        setResult({
+          message: payload.message || "Upload em lote enviado",
+          jobs: extractJobIdsFromDirectUploadResponse(payload),
+          accepted: payload.accepted?.length || 0,
+          rejected: payload.rejected?.length || 0,
+          rejectedItems: payload.rejected || [],
+          pendingApproval: Boolean(
+            (payload as { pendingApproval?: boolean }).pendingApproval,
+          ),
+        });
+      } else if (mode === "folder") {
+        const payload = await folderUploadMutation.mutateAsync({
+          folderName: folderName.trim(),
+          files,
+        });
+        setResult({
+          message: payload.message || "Upload de pasta enviado",
+          jobs: extractJobIdsFromDirectUploadResponse(payload),
+          accepted: payload.accepted?.length || 0,
+          rejected: payload.rejected?.length || 0,
+          rejectedItems: payload.rejected || [],
+          pendingApproval: Boolean(
+            (payload as { pendingApproval?: boolean }).pendingApproval,
+          ),
+        });
+      } else {
+        const payload = await seriesUploadMutation.mutateAsync({
+          seriesId: seriesId.trim(),
+          files,
+        });
+        setResult({
+          message: payload.message || "Upload para série enviado",
+          jobs: extractJobIdsFromDirectUploadResponse(payload),
+          accepted:
+            "accepted" in payload
+              ? payload.accepted.length
+              : "jobId" in payload
+                ? 1
+                : 0,
+          rejected:
+            "rejected" in payload && Array.isArray(payload.rejected)
+              ? payload.rejected.length
+              : 0,
+          rejectedItems:
+            "rejected" in payload && Array.isArray(payload.rejected)
+              ? payload.rejected
+              : [],
+          pendingApproval: Boolean(
+            (payload as { pendingApproval?: boolean }).pendingApproval,
+          ),
+        });
+      }
+
+      toast.success("Upload direto enviado");
+    } catch (error) {
+      toast.error(getUploadErrorMessage(error, "Erro no upload direto"));
+    }
+  };
+
+  return (
+    <div className="bg-[var(--color-surface)] rounded-xl border border-white/5 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-[var(--color-textMain)]">
+          Upload Direto (sem revisão)
+        </h2>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            { key: "single", label: "Single" },
+            { key: "bulk", label: "Bulk" },
+            { key: "folder", label: "Folder" },
+            { key: "series", label: "Série" },
+          ] as const
+        ).map((entry) => (
+          <button
+            key={entry.key}
+            onClick={() => setMode(entry.key)}
+            className={`px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+              mode === entry.key
+                ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
+                : "bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+            }`}
+          >
+            {entry.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        <input
+          type="file"
+          multiple={mode !== "single"}
+          onChange={(event) => setFiles(Array.from(event.target.files || []))}
+          className="w-full text-sm text-[var(--color-textDim)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-primary)]/20 file:px-3 file:py-1.5 file:text-[var(--color-primary)] file:cursor-pointer"
+        />
+
+        {mode === "folder" && (
+          <input
+            type="text"
+            value={folderName}
+            onChange={(event) => setFolderName(event.target.value)}
+            placeholder="Nome da pasta"
+            className="w-full rounded-lg bg-[var(--color-background)] border border-white/10 px-3 py-2 text-sm text-[var(--color-textMain)]"
+          />
+        )}
+
+        {mode === "series" && (
+          <input
+            type="text"
+            value={seriesId}
+            onChange={(event) => setSeriesId(event.target.value)}
+            placeholder="ID da série"
+            className="w-full rounded-lg bg-[var(--color-background)] border border-white/10 px-3 py-2 text-sm text-[var(--color-textMain)]"
+          />
+        )}
+
+        <button
+          onClick={() => void handleSubmit()}
+          disabled={isPending || files.length === 0}
+          className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
+        >
+          {isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Upload className="h-4 w-4" />
+          )}
+          Enviar upload direto
+        </button>
+      </div>
+
+      {result && (
+        <div className="rounded-lg border border-white/10 bg-[var(--color-background)] p-3 text-xs space-y-1">
+          <p className="text-[var(--color-textMain)]">{result.message}</p>
+          <p className="text-[var(--color-textDim)]">
+            Aceitos: {result.accepted} · Rejeitados: {result.rejected}
+          </p>
+          {result.pendingApproval && (
+            <p className="text-yellow-300">Envio pendente de aprovação editorial.</p>
+          )}
+          {result.jobs.length > 0 && (
+            <p className="text-[var(--color-textDim)]">
+              Jobs: {result.jobs.slice(0, 5).join(", ")}
+              {result.jobs.length > 5 ? " ..." : ""}
+            </p>
+          )}
+          {result.rejectedItems.length > 0 && (
+            <details className="mt-1">
+              <summary className="cursor-pointer text-yellow-300">
+                Ver rejeições
+              </summary>
+              <div className="mt-1 space-y-1 text-yellow-200">
+                {result.rejectedItems.map((entry, index) => (
+                  <p key={`${entry.filename || "item"}-${index}`}>
+                    {entry.filename || "Arquivo"} — {entry.reason}
+                  </p>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ===== Job Row =====
@@ -1332,7 +1669,7 @@ function JobRow({
   onDelete: (jobId: string) => void;
   isRetrying: boolean;
 }) {
-  const progress = job.progress ?? 0;
+  const progress = normalizeJobProgress(job.progress);
   const isActive = job.state === "active" || job.state === "waiting";
   const isCompleted = job.state === "completed";
   const isFailed = job.state === "failed";
@@ -1566,6 +1903,9 @@ export default function UploadsPage() {
 
       {/* Upload Zone */}
       <UploadZone />
+
+      {/* Direct Upload Flow */}
+      <DirectUploadPanel />
 
       {/* Google Drive Import */}
       <GoogleDriveImportPanel />

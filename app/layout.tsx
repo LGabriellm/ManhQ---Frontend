@@ -36,6 +36,9 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "ManHQ",
   },
+  other: {
+    "facebook-domain-verification": "5kgekx1ihoq2osx68idi5eunp0hzj8",
+  },
 };
 
 export default function RootLayout({

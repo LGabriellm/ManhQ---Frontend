@@ -35,6 +35,7 @@ import type {
   GoogleDriveNodesParams,
   GoogleDriveStageRequest,
   UploadPlanPatch,
+  UploadDraftBulkUpdateRequest,
   Series,
 } from "@/types/api";
 
@@ -402,14 +403,7 @@ export function useBulkUpdateLocalUploadDraftItems() {
       data,
     }: {
       draftId: string;
-      data: {
-        itemIds: string[];
-        updates: {
-          chapterNumber?: number;
-          startChapterNumber?: number;
-          seriesTitle?: string;
-        };
-      };
+      data: UploadDraftBulkUpdateRequest;
     }) => adminService.bulkUpdateLocalUploadDraftItems(draftId, data),
     onSuccess: async (_result, variables) => {
       qc.invalidateQueries({

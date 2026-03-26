@@ -90,6 +90,8 @@ import type {
   GoogleDriveConfirmDraftResponse,
   UploadPlanPatch,
   UploadDraftItemUpdateResponse,
+  UploadDraftBulkUpdateRequest,
+  UploadDraftBulkUpdateResponse,
   UploadDraftCancelResponse,
   UploadDraftConfirmResponse,
   LocalUploadStageResponse,
@@ -465,16 +467,9 @@ export const adminService = {
 
   async bulkUpdateLocalUploadDraftItems(
     draftId: string,
-    data: {
-      itemIds: string[];
-      updates: {
-        chapterNumber?: number;
-        startChapterNumber?: number;
-        seriesTitle?: string;
-      };
-    },
-  ): Promise<UploadDraftItemUpdateResponse> {
-    const response = await api.patch<UploadDraftItemUpdateResponse>(
+    data: UploadDraftBulkUpdateRequest,
+  ): Promise<UploadDraftBulkUpdateResponse> {
+    const response = await api.patch<UploadDraftBulkUpdateResponse>(
       `/upload/drafts/${draftId}/items/bulk`,
       data,
     );

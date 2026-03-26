@@ -805,13 +805,14 @@ export interface AdminJob {
     originalName?: string;
   };
   state: JobState;
-  progress?: number;
+  progress?: number | Record<string, unknown>;
   priority?: number;
   result?: {
     seriesTitle?: string;
     chapter?: number;
     finalPath?: string;
     duplicate?: boolean;
+    corruptedImages?: number;
     stats?: {
       originalSize?: number;
       optimizedSize?: number;
@@ -820,6 +821,16 @@ export interface AdminJob {
       filesSkipped?: number;
       conversionTime?: number;
       compressionRatio?: number;
+    };
+    ingestion?: {
+      decision?: IngestionDecision;
+      reviewRequired?: boolean;
+      confidenceScore?: number;
+      confidenceLevel?: "high" | "medium" | "low";
+      candidates?: IngestionCandidate[];
+      evidence?: IngestionEvidenceItem[];
+      stages?: IngestionStageItem[];
+      warnings?: string[];
     };
   };
   error?: string;
@@ -875,13 +886,17 @@ export interface UploadResponse {
   message: string;
   jobId: string;
   filename: string;
+  size?: number;
+  hash?: string;
+  pendingApproval?: boolean;
 }
 
 export interface UploadBulkResponse {
   success: boolean;
   message: string;
-  accepted: { filename: string; jobId: string }[];
+  accepted: { filename: string; jobId: string; size?: number; hash?: string }[];
   rejected: { filename: string; reason: string }[];
+  pendingApproval?: boolean;
 }
 
 export interface UploadFolderResponse {
@@ -897,6 +912,7 @@ export interface UploadFolderResponse {
   }[];
   rejected: { filename: string; reason: string }[];
   totalReceived: number;
+  pendingApproval?: boolean;
 }
 
 export interface UploadSerieSingleResponse {
@@ -906,6 +922,7 @@ export interface UploadSerieSingleResponse {
   seriesTitle: string;
   jobId: string;
   filename: string;
+  pendingApproval?: boolean;
 }
 
 export interface UploadSerieMultiResponse {
@@ -921,6 +938,7 @@ export interface UploadSerieMultiResponse {
   }[];
   rejected: { filename: string; reason: string }[];
   totalReceived: number;
+  pendingApproval?: boolean;
 }
 
 export type UploadSerieResponse =
@@ -928,6 +946,39 @@ export type UploadSerieResponse =
   | UploadSerieMultiResponse;
 
 export type UploadDecision = "EXISTING_SERIES" | "NEW_SERIES" | "SKIP";
+export type IngestionDecision = "AUTO_APPROVE" | "MANUAL_REVIEW";
+
+export interface IngestionEvidenceItem {
+  source:
+    | "forced_series_title"
+    | "target_series"
+    | "embedded_metadata"
+    | "folder_name"
+    | "file_name"
+    | "parsed_title";
+  rawValue: string;
+  normalizedTitle?: string;
+  accepted: boolean;
+  weight: number;
+  reason?: string;
+}
+
+export interface IngestionCandidate {
+  normalizedTitle: string;
+  evidenceScore: number;
+  combinedScore: number;
+  evidenceSources: string[];
+  matchedSeriesId?: string;
+  matchedSeriesTitle?: string;
+  matchScore?: number;
+  matchStrategy?: string;
+}
+
+export interface IngestionStageItem {
+  stage: string;
+  status: "completed" | "skipped" | "failed";
+  detail?: string;
+}
 
 export interface UploadPlanPatch {
   decision?: UploadDecision;
@@ -956,16 +1007,37 @@ export interface UploadDraftParsedData {
 export interface UploadDraftSuggestionData {
   existingSeriesMatch: boolean;
   confidence: "high" | "medium" | "low";
+  confidenceScore?: number;
+  decision?: IngestionDecision;
+  reviewRequired?: boolean;
   matchedSeriesId?: string;
   matchedSeriesTitle?: string;
+  candidates?: IngestionCandidate[];
+  evidence?: IngestionEvidenceItem[];
+  stages?: IngestionStageItem[];
+  warnings?: string[];
+}
+
+export interface UploadDraftIngestionData {
+  decision?: IngestionDecision;
+  confidenceLevel?: "high" | "medium" | "low";
+  confidenceScore?: number;
+  reviewRequired?: boolean;
+  candidates?: IngestionCandidate[];
+  evidence?: IngestionEvidenceItem[];
+  stages?: IngestionStageItem[];
+  warnings?: string[];
 }
 
 export interface UploadDraftItem {
   id: string;
   source: "LOCAL" | "GOOGLE_DRIVE";
   originalName: string;
+  extension?: string;
+  sizeBytes?: number;
   parsed: UploadDraftParsedData;
   suggestion: UploadDraftSuggestionData;
+  ingestion?: UploadDraftIngestionData;
   plan: {
     decision?: UploadDecision;
     targetSeriesId?: string;
@@ -990,7 +1062,7 @@ export interface UploadDraftRejectedItem {
 
 export interface LocalUploadStageResponse {
   success: boolean;
-  stage: "analyzed";
+  stage: "processing" | "analyzed";
   draftId: string;
   expiresAt: number;
   folderName?: string | null;
@@ -1004,6 +1076,8 @@ export interface LocalUploadStageResponse {
     analyzedCount: number;
     acceptedCount: number;
     rejectedCount: number;
+    startedAt?: number;
+    finishedAt?: number;
     error?: string;
   };
 }
@@ -1016,12 +1090,15 @@ export interface LocalUploadDraftResponse {
     createdAt: number;
     expiresAt: number;
     items: UploadDraftItem[];
+    rejected?: UploadDraftRejectedItem[];
     processing?: {
       state: "processing" | "completed" | "failed";
       totalReceived: number;
       analyzedCount: number;
       acceptedCount: number;
       rejectedCount: number;
+      startedAt?: number;
+      finishedAt?: number;
       error?: string;
     };
   };
@@ -1033,6 +1110,27 @@ export interface UploadDraftItemUpdateResponse {
     id: string;
     plan: UploadPlanPatch;
   };
+}
+
+export interface UploadDraftBulkItemUpdate {
+  itemId: string;
+  selected?: boolean;
+  chapterNumber?: number;
+  volume?: number | null;
+  year?: number | null;
+  isOneShot?: boolean;
+}
+
+export interface UploadDraftBulkUpdateRequest {
+  seriesTitle?: string;
+  items?: UploadDraftBulkItemUpdate[];
+}
+
+export interface UploadDraftBulkUpdateResponse {
+  success: boolean;
+  selectedCount: number;
+  totalCount: number;
+  items: UploadDraftItem[];
 }
 
 export interface UploadDraftCancelResponse {
@@ -1172,6 +1270,17 @@ export interface GoogleDriveDraftResponse {
     createdAt: number;
     expiresAt: number;
     items: UploadDraftItem[];
+    rejected?: UploadDraftRejectedItem[];
+    processing?: {
+      state: "processing" | "completed" | "failed";
+      totalReceived: number;
+      analyzedCount: number;
+      acceptedCount: number;
+      rejectedCount: number;
+      startedAt?: number;
+      finishedAt?: number;
+      error?: string;
+    };
   };
 }
 

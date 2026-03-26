@@ -14,6 +14,12 @@ import {
   useConfirmGoogleDriveDraft,
 } from "@/hooks/useAdmin";
 import type { UploadDecision, UploadDraftItem } from "@/types/api";
+import { DetectionEvidencePanel } from "@/components/upload/DetectionEvidencePanel";
+import {
+  countUnresolvedManualReviews,
+  isItemMarkedForManualReview,
+} from "@/lib/uploadReview";
+import { getUploadErrorMessage } from "@/lib/uploadErrors";
 import toast from "react-hot-toast";
 import {
   AlertCircle,
@@ -253,6 +259,7 @@ function DraftItemEditor({
           {isOpen ? "Fechar" : "Editar"}
         </button>
       </div>
+      <DetectionEvidencePanel item={item} />
 
       {isOpen && (
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -611,6 +618,20 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
     toast.success("Pasta selecionada por ID");
   }, [manualFolderId, manualFolderName]);
 
+  const draftItems = useMemo(
+    () => draftData?.draft.items ?? [],
+    [draftData?.draft.items],
+  );
+  const driveProcessingState = draftData?.draft.processing?.state ?? "completed";
+  const reviewRequiredCount = useMemo(
+    () => draftItems.filter(isItemMarkedForManualReview).length,
+    [draftItems],
+  );
+  const unresolvedReviewCount = useMemo(
+    () => countUnresolvedManualReviews(draftItems),
+    [draftItems],
+  );
+
   const stageFolder = useCallback(async () => {
     if (!selectedFolder?.id) {
       toast.error("Selecione uma pasta para analisar");
@@ -632,8 +653,8 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
       setActiveDraftId(response.draftId);
       setConfirmResult(null);
       toast.success(`Draft criado com ${response.items.length} item(ns)`);
-    } catch {
-      toast.error("Falha ao analisar pasta (stage)");
+    } catch (error) {
+      toast.error(getUploadErrorMessage(error, "Falha ao analisar pasta (stage)"));
     }
   }, [selectedFolder, stageMutation, stageMaxFiles]);
 
@@ -655,6 +676,16 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
   const confirmDraft = useCallback(async () => {
     if (!activeDraftId || !selectedFolder) {
       toast.error("Nenhum draft ativo");
+      return;
+    }
+    if (driveProcessingState !== "completed") {
+      toast.error("Aguarde a conclusão da análise antes de confirmar o draft.");
+      return;
+    }
+    if (unresolvedReviewCount > 0) {
+      toast.error(
+        `Há ${unresolvedReviewCount} item(ns) com revisão manual pendente.`,
+      );
       return;
     }
 
@@ -694,10 +725,16 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
 
       setActiveDraftId(null);
       toast.success("Draft confirmado e jobs enviados");
-    } catch {
-      toast.error("Falha ao confirmar draft");
+    } catch (error) {
+      toast.error(getUploadErrorMessage(error, "Falha ao confirmar draft"));
     }
-  }, [activeDraftId, selectedFolder, confirmDraftMutation]);
+  }, [
+    activeDraftId,
+    selectedFolder,
+    confirmDraftMutation,
+    driveProcessingState,
+    unresolvedReviewCount,
+  ]);
 
   const clearImportHistory = useCallback(() => {
     setImportHistory([]);
@@ -710,11 +747,6 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
     }
     return folderTrail[folderTrail.length - 1]?.name || "Pasta";
   }, [folderTrail]);
-
-  const draftItems = useMemo(
-    () => draftData?.draft.items ?? [],
-    [draftData?.draft.items],
-  );
 
   const applyDecisionToAllDraftItems = useCallback(
     async (decision: UploadDecision) => {
@@ -1112,12 +1144,63 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
                     draftId: {activeDraftId}
                   </p>
 
+                  {draftData?.draft.rejected && draftData.draft.rejected.length > 0 && (
+                    <details className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+                      <summary className="cursor-pointer font-medium">
+                        {draftData.draft.rejected.length} arquivo(s) rejeitado(s)
+                      </summary>
+                      <div className="mt-2 space-y-1">
+                        {draftData.draft.rejected
+                          .slice(0, 10)
+                          .map((entry, index) => (
+                            <p
+                              key={`${entry.filename || entry.fileId || "rejected"}-${index}`}
+                            >
+                              {(entry.filename || entry.fileId || "Arquivo")} —{" "}
+                              {entry.reason}
+                            </p>
+                          ))}
+                      </div>
+                    </details>
+                  )}
+
+                  {draftData?.draft.processing?.state === "processing" && (
+                    <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-200">
+                      Analisando {draftData.draft.processing.analyzedCount}/
+                      {draftData.draft.processing.totalReceived} arquivo(s)...
+                    </div>
+                  )}
+
+                  {draftData?.draft.processing?.state === "failed" && (
+                    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
+                      Falha ao analisar draft.
+                      {draftData.draft.processing.error && (
+                        <p className="mt-1 text-[11px] text-red-200/80">
+                          {draftData.draft.processing.error}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {isDraftLoading ? (
                     <div className="rounded-lg border border-white/10 bg-white/5 p-6 flex items-center justify-center">
                       <Loader2 className="h-5 w-5 animate-spin text-[var(--color-primary)]" />
                     </div>
                   ) : draftItems.length > 0 ? (
                     <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                      <div className="rounded-lg border border-white/10 bg-white/5 p-2 text-[11px] text-[var(--color-textDim)]">
+                        Itens com review manual: {reviewRequiredCount} ·
+                        pendentes:{" "}
+                        <span
+                          className={
+                            unresolvedReviewCount > 0
+                              ? "text-yellow-300 font-medium"
+                              : "text-green-300 font-medium"
+                          }
+                        >
+                          {unresolvedReviewCount}
+                        </span>
+                      </div>
                       <div className="rounded-lg border border-white/10 bg-white/5 p-2 flex flex-wrap gap-2">
                         <button
                           onClick={() => void applySuggestionsToAllDraftItems()}
@@ -1165,7 +1248,9 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
                       onClick={() => void confirmDraft()}
                       disabled={
                         confirmDraftMutation.isPending ||
-                        draftItems.length === 0
+                        draftItems.length === 0 ||
+                        driveProcessingState !== "completed" ||
+                        unresolvedReviewCount > 0
                       }
                       className="inline-flex items-center gap-2 rounded-lg bg-emerald-600/70 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-600 disabled:opacity-60"
                     >
@@ -1176,6 +1261,16 @@ export function GoogleDrivePanel({ compact = false }: GoogleDrivePanelProps) {
                       )}
                       Confirmar e enviar jobs
                     </button>
+                    {unresolvedReviewCount > 0 && (
+                      <p className="mt-2 text-xs text-yellow-300">
+                        Resolva os itens com review manual antes de confirmar.
+                      </p>
+                    )}
+                    {driveProcessingState !== "completed" && (
+                      <p className="mt-2 text-xs text-blue-300">
+                        Aguarde o processamento do draft terminar para confirmar.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

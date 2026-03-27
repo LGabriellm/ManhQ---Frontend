@@ -16,21 +16,86 @@ import {
   Menu,
   X,
   Loader2,
+  History,
 } from "lucide-react";
 
-const navItems = [
-  { href: "/dashboard", label: "Visão Geral", icon: LayoutDashboard },
-  { href: "/dashboard/series", label: "Séries", icon: BookOpen },
-  { href: "/dashboard/uploads", label: "Uploads & Jobs", icon: Upload },
-  { href: "/dashboard/users", label: "Usuários", icon: Users },
-  { href: "/dashboard/approvals", label: "Aprovações", icon: ClipboardCheck },
+type DashboardRole = "ADMIN" | "EDITOR";
+
+const navItems: Array<{
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  roles: DashboardRole[];
+}> = [
+  {
+    href: "/dashboard",
+    label: "Visão Geral",
+    icon: LayoutDashboard,
+    roles: ["ADMIN"],
+  },
+  {
+    href: "/dashboard/series",
+    label: "Séries",
+    icon: BookOpen,
+    roles: ["ADMIN"],
+  },
+  {
+    href: "/dashboard/uploads",
+    label: "Uploads & Importações",
+    icon: Upload,
+    roles: ["ADMIN", "EDITOR"],
+  },
+  {
+    href: "/dashboard/submissions",
+    label: "Minhas Submissões",
+    icon: History,
+    roles: ["ADMIN", "EDITOR"],
+  },
+  {
+    href: "/dashboard/users",
+    label: "Usuários",
+    icon: Users,
+    roles: ["ADMIN"],
+  },
+  {
+    href: "/dashboard/approvals",
+    label: "Aprovações",
+    icon: ClipboardCheck,
+    roles: ["ADMIN"],
+  },
   {
     href: "/dashboard/subscriptions",
     label: "Assinaturas",
     icon: CreditCard,
+    roles: ["ADMIN"],
   },
-  { href: "/dashboard/security", label: "Segurança", icon: Shield },
+  {
+    href: "/dashboard/security",
+    label: "Segurança",
+    icon: Shield,
+    roles: ["ADMIN"],
+  },
 ];
+
+function canAccessDashboardPath(
+  pathname: string,
+  role: string | undefined,
+): boolean {
+  if (!role) {
+    return false;
+  }
+
+  if (
+    pathname === "/dashboard/uploads" ||
+    pathname.startsWith("/dashboard/uploads/") ||
+    pathname === "/dashboard/submissions" ||
+    pathname.startsWith("/dashboard/submissions/")
+  ) {
+    return role === "ADMIN" || role === "EDITOR";
+  }
+
+  return role === "ADMIN";
+}
 
 export default function DashboardLayout({
   children,
@@ -48,10 +113,15 @@ export default function DashboardLayout({
       return;
     }
 
-    if (!isLoading && isAuthenticated && user?.role !== "ADMIN") {
+    if (!isLoading && isAuthenticated && !canAccessDashboardPath(pathname, user?.role)) {
+      if (user?.role === "EDITOR") {
+        router.replace("/dashboard/uploads");
+        return;
+      }
+
       router.replace("/home");
     }
-  }, [isLoading, isAuthenticated, user, router]);
+  }, [isLoading, isAuthenticated, pathname, router, user]);
 
   if (isLoading) {
     return (
@@ -61,9 +131,14 @@ export default function DashboardLayout({
     );
   }
 
-  if (!isAuthenticated || user?.role !== "ADMIN") {
+  if (!isAuthenticated || !canAccessDashboardPath(pathname, user?.role)) {
     return null;
   }
+
+  const currentRole = user?.role === "ADMIN" ? "ADMIN" : "EDITOR";
+  const visibleNavItems = navItems.filter((item) =>
+    item.roles.includes(currentRole),
+  );
 
   return (
     <div className="flex min-h-screen bg-[var(--color-background)]">
@@ -82,7 +157,7 @@ export default function DashboardLayout({
 
           {/* Nav Links */}
           <nav className="flex-1 px-3 py-4 space-y-1">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));
@@ -148,7 +223,7 @@ export default function DashboardLayout({
         </div>
 
         <nav className="px-3 py-4 space-y-1">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive =
               pathname === item.href ||
               (item.href !== "/dashboard" && pathname.startsWith(item.href));

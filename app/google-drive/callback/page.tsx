@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, CheckCircle2, XCircle } from "lucide-react";
-import { useGoogleDriveCallback } from "@/hooks/useAdmin";
+import { useGoogleDriveCallback } from "@/hooks/useUploadWorkflow";
 import {
   getGoogleDriveCallbackErrorState,
   getGoogleDriveCallbackSuccessState,

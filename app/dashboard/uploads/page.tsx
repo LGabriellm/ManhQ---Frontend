@@ -1,2159 +1,1139 @@
 "use client";
 
-import React, {
-  useState,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-} from "react";
+import Link from "next/link";
+import { useDeferredValue, useRef, useState } from "react";
+import { useSeriesSearch } from "@/hooks/useApi";
+import { useMySubmissions } from "@/hooks/useAdmin";
+import { useAuth } from "@/contexts/AuthContext";
+import { GoogleDriveImportPanel } from "@/components/upload/GoogleDriveImportPanel";
+import { UploadItemCard } from "@/components/upload/UploadItemCard";
+import { UploadSessionList } from "@/components/upload/UploadSessionList";
 import {
-  useLocalUploadStage,
-  useLocalUploadStageWithSeries,
-  useLocalUploadDraft,
-  useUpdateLocalUploadDraftItem,
-  useBulkUpdateLocalUploadDraftItems,
-  useConfirmLocalUploadDraft,
-  useCancelLocalUploadDraft,
-  useUpload,
-  useUploadBulk,
-  useUploadFolder,
-  useUploadToSeries,
-  useAdminSeries,
-  useAdminJobs,
-  useClearCompletedJobs,
-  useScanLibrary,
-  useRetryJob,
-  useRetryAllJobs,
-  useDeleteJob,
-  usePauseJobs,
-  useResumeJobs,
-  useJobLogs,
-} from "@/hooks/useAdmin";
+  useBulkUpdateUploadDraft,
+  useCancelUploadDraft,
+  useConfirmUploadDraft,
+  useRetryUploadItem,
+  useStageLocalUpload,
+  useStageLocalUploadWithSeriesTitle,
+  useUpdateUploadDraftItem,
+  useUploadDraft,
+  useUploadSession,
+  useUploadSessions,
+  useUploadToExistingSeries,
+} from "@/hooks/useUploadWorkflow";
+import {
+  SESSION_STATUS_META,
+  TONE_STYLES,
+  countItemsFailed,
+  countItemsNeedingManualChoice,
+  formatDateTime,
+  getSessionProgress,
+  getSourceLabel,
+  isReviewPhase,
+} from "@/lib/upload-workflow";
 import type {
-  AdminJob,
-  UploadDecision,
-  UploadDraftItem,
-  UploadPlanPatch,
-  UploadResponse,
-  UploadBulkResponse,
-  UploadFolderResponse,
-  UploadSerieResponse,
-} from "@/types/api";
-import { GoogleDrivePanel } from "@/components/GoogleDrivePanel";
-import { BulkEditModal } from "@/components/admin/BulkEditModal";
-import { DetectionEvidencePanel } from "@/components/upload/DetectionEvidencePanel";
-import {
-  resolveUploadDraftProcessingState,
-  validateUploadDraftConfirmation,
-  type UploadDraftProcessingState,
-} from "@/lib/uploadDraftFlow";
-import {
-  countUnresolvedManualReviews,
-  isItemMarkedForManualReview,
-} from "@/lib/uploadReview";
-import { getUploadErrorMessage } from "@/lib/uploadErrors";
+  UploadDraft,
+  UploadSessionSummary,
+} from "@/types/upload-workflow";
 import toast from "react-hot-toast";
 import {
-  Upload,
-  FolderSync,
-  FolderOpen,
-  Trash2,
-  Loader2,
+  ArrowRight,
   CheckCircle2,
-  XCircle,
   Clock,
-  Cog,
-  Files,
-  RefreshCw,
-  RotateCcw,
-  FileText,
-  X,
-  Copy,
-  AlertTriangle,
-  Pause,
-  Play,
-  ChevronDown,
-  ChevronUp,
-  File,
   FolderUp,
+  Loader2,
   Search,
+  Upload,
 } from "lucide-react";
 
-// ===== Helpers =====
-function formatTimestamp(ts?: number): string {
-  if (!ts) return "—";
-  return new Date(ts).toLocaleString("pt-BR");
-}
+const ACCEPTED_EXTENSIONS = [".cbz", ".cbr", ".pdf", ".epub", ".zip"];
+const EMPTY_SESSIONS: UploadSessionSummary[] = [];
 
-function formatDuration(ms?: number): string {
-  if (!ms) return "—";
-  const secs = Math.floor(ms / 1000);
-  if (secs < 60) return `${secs}s`;
-  const mins = Math.floor(secs / 60);
-  const remaining = secs % 60;
-  return `${mins}m ${remaining}s`;
-}
+type LocalEntryMode = "review" | "existing" | "new";
 
-function formatFileSize(bytes?: number): string {
-  if (!bytes) return "—";
+function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function getJobDisplayName(job: AdminJob): string {
-  return job.name?.replace(/^upload-/, "") || job.id;
-}
-
-function extractJobIdsFromDirectUploadResponse(
-  payload:
-    | UploadResponse
-    | UploadBulkResponse
-    | UploadFolderResponse
-    | UploadSerieResponse,
-): string[] {
-  if ("jobId" in payload && payload.jobId) {
-    return [payload.jobId];
-  }
-  if ("accepted" in payload && Array.isArray(payload.accepted)) {
-    return payload.accepted
-      .map((entry) => ("jobId" in entry ? entry.jobId : undefined))
-      .filter((jobId): jobId is string => Boolean(jobId));
-  }
-  return [];
-}
-
-function normalizeJobProgress(progress: AdminJob["progress"]): number {
-  if (typeof progress === "number" && Number.isFinite(progress)) {
-    return progress;
+function createIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
   }
 
-  if (progress && typeof progress === "object") {
-    const maybePercent = (progress as { percent?: unknown }).percent;
-    if (typeof maybePercent === "number" && Number.isFinite(maybePercent)) {
-      return maybePercent;
-    }
-
-    const current = (progress as { current?: unknown }).current;
-    const total = (progress as { total?: unknown }).total;
-    if (
-      typeof current === "number" &&
-      Number.isFinite(current) &&
-      typeof total === "number" &&
-      Number.isFinite(total) &&
-      total > 0
-    ) {
-      return (current / total) * 100;
-    }
-  }
-
-  return 0;
+  return `${Date.now()}-${Math.random()}`;
 }
 
-const ACCEPTED_EXTENSIONS = [".cbz", ".cbr", ".zip", ".pdf", ".epub"];
-
-function isAcceptedFile(name: string): boolean {
-  return ACCEPTED_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext));
-}
-
-function useDebouncedValue<T>(value: T, delay = 300): T {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-
-  return debounced;
-}
-
-// ===== Job Status Badge =====
-function JobStatusBadge({ state }: { state: AdminJob["state"] }) {
-  const config: Record<
-    string,
-    { color: string; icon: React.ElementType; label: string }
-  > = {
-    waiting: { color: "#a3a3a3", icon: Clock, label: "Aguardando" },
-    delayed: { color: "#f59e0b", icon: Clock, label: "Adiado" },
-    active: { color: "#6366f1", icon: Cog, label: "Processando" },
-    completed: { color: "#22c55e", icon: CheckCircle2, label: "Concluído" },
-    failed: { color: "#ef4444", icon: XCircle, label: "Falhou" },
-  };
-
-  const c = config[state] || config.waiting;
-  const Icon = c.icon;
-
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
-      style={{ backgroundColor: `${c.color}15`, color: c.color }}
-    >
-      <Icon
-        className={`h-3.5 w-3.5 ${state === "active" ? "animate-spin" : ""}`}
-      />
-      {c.label}
-    </span>
+function filterAcceptedFiles(files: File[]) {
+  const accepted = files.filter((file) =>
+    ACCEPTED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext)),
   );
+  const rejected = files.length - accepted.length;
+
+  return { accepted, rejected };
 }
 
-// ===== Progress Bar =====
-function ProgressBar({ progress }: { progress: number }) {
-  return (
-    <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-      <div
-        className="h-full bg-[var(--color-primary)] rounded-full transition-all duration-500"
-        style={{ width: `${Math.min(100, Math.max(0, progress))}%` }}
-      />
-    </div>
-  );
+function extractFolderName(files: File[]): string | undefined {
+  const relativePath = files.find((file) => "webkitRelativePath" in file)?.webkitRelativePath;
+  if (!relativePath) {
+    return undefined;
+  }
+
+  return relativePath.split("/").filter(Boolean)[0];
 }
 
-// ===== Job Logs Modal =====
-function JobLogsModal({
-  jobId,
-  jobName,
-  onClose,
+function LocalUploadEntryPanel({
+  onOpenSession,
 }: {
-  jobId: string;
-  jobName: string;
-  onClose: () => void;
+  onOpenSession: (sessionId: string) => void;
 }) {
-  const { data, isLoading } = useJobLogs(jobId);
+  const [mode, setMode] = useState<LocalEntryMode>("review");
+  const [files, setFiles] = useState<File[]>([]);
+  const [newSeriesTitle, setNewSeriesTitle] = useState("");
+  const [selectedSeriesId, setSelectedSeriesId] = useState("");
+  const [selectedSeriesTitle, setSelectedSeriesTitle] = useState("");
+  const [seriesQuery, setSeriesQuery] = useState("");
+  const deferredSeriesQuery = useDeferredValue(seriesQuery.trim());
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
 
-  const copyLogs = () => {
-    if (data?.logs) {
-      navigator.clipboard.writeText(data.logs.join("\n"));
-      toast.success("Logs copiados");
-    }
-  };
+  const searchResults = useSeriesSearch(deferredSeriesQuery, 1, 8);
+  const stageMutation = useStageLocalUpload();
+  const stageWithTitleMutation = useStageLocalUploadWithSeriesTitle();
+  const directExistingMutation = useUploadToExistingSeries();
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative ui-modal w-full max-w-lg max-h-[80vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 border-b border-white/5">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-lg font-semibold text-[var(--color-textMain)] truncate">
-              Logs
-            </h2>
-            <p className="text-xs text-[var(--color-textDim)] truncate mt-0.5">
-              {jobName}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 ml-3">
-            {data?.logs && data.logs.length > 0 && (
-              <button
-                onClick={copyLogs}
-                className="p-2 rounded-lg hover:bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] transition-colors"
-                title="Copiar logs"
-              >
-                <Copy className="h-4 w-4" />
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
+  const addFiles = (incoming: File[]) => {
+    const { accepted, rejected } = filterAcceptedFiles(incoming);
 
-        <div className="flex-1 overflow-y-auto p-5">
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-[var(--color-primary)]" />
-            </div>
-          ) : data?.logs && data.logs.length > 0 ? (
-            <div className="space-y-1 font-mono text-xs">
-              {data.logs.map((log, i) => (
-                <p
-                  key={i}
-                  className="text-[var(--color-textDim)] leading-relaxed"
-                >
-                  <span className="text-[var(--color-textDim)]/50 select-none mr-2">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  {log}
-                </p>
-              ))}
-            </div>
-          ) : (
-            <p className="text-center text-[var(--color-textDim)] py-8 text-sm">
-              Nenhum log disponível
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ===== Upload Mode Tabs =====
-type UploadMode = "files" | "folder";
-
-// ===== Pending File Item =====
-interface PendingFile {
-  file: File;
-  folder?: string;
-}
-
-function LocalDraftItemEditor({
-  item,
-  onSave,
-  isSaving,
-}: {
-  item: UploadDraftItem;
-  onSave: (itemId: string, patch: UploadPlanPatch) => Promise<void>;
-  isSaving: boolean;
-}) {
-  const [decision, setDecision] = useState<UploadDecision>(
-    item.plan.decision || "NEW_SERIES",
-  );
-  const [targetSeriesId, setTargetSeriesId] = useState(
-    item.plan.targetSeriesId || item.suggestion.matchedSeriesId || "",
-  );
-  const [newSeriesTitle, setNewSeriesTitle] = useState(
-    item.plan.newSeriesTitle || item.parsed.normalizedTitle || "",
-  );
-  const [chapterNumber, setChapterNumber] = useState<number | "">(
-    item.plan.chapterNumber ?? item.parsed.number ?? "",
-  );
-  const [volume, setVolume] = useState<number | "">(item.plan.volume ?? "");
-  const [year, setYear] = useState<number | "">(item.plan.year ?? "");
-  const [isOneShot, setIsOneShot] = useState(Boolean(item.plan.isOneShot));
-  const [tagsInput, setTagsInput] = useState((item.plan.tags || []).join(", "));
-  const [description, setDescription] = useState(item.plan.description || "");
-  const [status, setStatus] = useState(item.plan.status || "");
-  const [author, setAuthor] = useState(item.plan.author || "");
-  const [artist, setArtist] = useState(item.plan.artist || "");
-  const [seriesQuery, setSeriesQuery] = useState(
-    item.suggestion.matchedSeriesTitle || "",
-  );
-  const [seriesSearchEnabled, setSeriesSearchEnabled] = useState(false);
-
-  const debouncedSeriesQuery = useDebouncedValue(seriesQuery, 300);
-  const shouldSearchSeries =
-    seriesSearchEnabled &&
-    decision === "EXISTING_SERIES" &&
-    debouncedSeriesQuery.length >= 2;
-  const { data: seriesSearchData, isLoading: isSeriesSearching } =
-    useAdminSeries(
-      {
-        search: shouldSearchSeries ? debouncedSeriesQuery : undefined,
-        page: 1,
-        limit: 8,
-      },
-      shouldSearchSeries,
-    );
-
-  const seriesOptions = shouldSearchSeries
-    ? (seriesSearchData?.series ?? [])
-    : [];
-
-  const applySuggestedSeries = async () => {
-    if (!item.suggestion.matchedSeriesId) {
-      toast.error("Sem série sugerida para este item");
+    if (accepted.length === 0) {
+      toast.error("Nenhum arquivo compatível encontrado.");
       return;
     }
 
-    setDecision("EXISTING_SERIES");
-    setTargetSeriesId(item.suggestion.matchedSeriesId);
-    setSeriesQuery(item.suggestion.matchedSeriesTitle || "");
+    if (rejected > 0) {
+      toast.error(`${rejected} arquivo(s) ignorado(s) por formato não suportado.`);
+    }
 
-    await onSave(item.id, {
-      decision: "EXISTING_SERIES",
-      targetSeriesId: item.suggestion.matchedSeriesId,
-      chapterNumber: chapterNumber === "" ? undefined : Number(chapterNumber),
+    setFiles((current) => {
+      const next = [...current];
+      accepted.forEach((file) => {
+        const exists = next.some(
+          (currentFile) =>
+            currentFile.name === file.name && currentFile.size === file.size,
+        );
+        if (!exists) {
+          next.push(file);
+        }
+      });
+      return next;
     });
   };
 
+  const handleSubmit = async () => {
+    if (files.length === 0) {
+      toast.error("Selecione ao menos um arquivo antes de continuar.");
+      return;
+    }
+
+    const folderName = extractFolderName(files);
+
+    try {
+      if (mode === "review") {
+        const result = await stageMutation.mutateAsync({
+          files,
+          folderName,
+        });
+        toast.success(result.nextStep);
+        onOpenSession(result.draftId);
+        setFiles([]);
+        return;
+      }
+
+      if (mode === "new") {
+        if (!newSeriesTitle.trim()) {
+          toast.error("Defina o título da nova série.");
+          return;
+        }
+
+        const result = await stageWithTitleMutation.mutateAsync({
+          files,
+          seriesTitle: newSeriesTitle.trim(),
+          folderName,
+        });
+        toast.success(result.nextStep);
+        onOpenSession(result.draftId);
+        setFiles([]);
+        return;
+      }
+
+      if (!selectedSeriesId) {
+        toast.error("Escolha a série de destino.");
+        return;
+      }
+
+      const result = await directExistingMutation.mutateAsync({
+        seriesId: selectedSeriesId,
+        files,
+      });
+      toast.success(result.message);
+      onOpenSession(result.sessionId);
+      setFiles([]);
+    } catch (error) {
+      const message =
+        (error as { message?: string })?.message ||
+        "Falha ao iniciar o fluxo de upload local";
+      toast.error(message);
+    }
+  };
+
+  const isSubmitting =
+    stageMutation.isPending ||
+    stageWithTitleMutation.isPending ||
+    directExistingMutation.isPending;
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+
   return (
-    <div className="rounded-lg border border-white/10 bg-[var(--color-surface)] p-3 space-y-2">
-      <p className="text-sm font-medium text-[var(--color-textMain)] truncate">
-        {item.originalName}
-      </p>
-      <p className="text-xs text-[var(--color-textDim)]">
-        Sugestão:{" "}
-        {item.suggestion.matchedSeriesTitle || item.parsed.normalizedTitle}
-      </p>
-      <DetectionEvidencePanel item={item} />
-
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-        <label className="text-[11px] text-[var(--color-textDim)]">
-          decision
-          <select
-            value={decision}
-            onChange={(event) =>
-              setDecision(event.target.value as UploadDecision)
-            }
-            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-          >
-            <option value="EXISTING_SERIES">EXISTING_SERIES</option>
-            <option value="NEW_SERIES">NEW_SERIES</option>
-            <option value="SKIP">SKIP</option>
-          </select>
-        </label>
-
-        {decision === "EXISTING_SERIES" ? (
-          <div className="space-y-1">
-            <label className="text-[11px] text-[var(--color-textDim)]">
-              Série existente (buscar por nome)
-            </label>
-            <input
-              value={seriesQuery}
-              onFocus={() => setSeriesSearchEnabled(true)}
-              onChange={(event) => {
-                setSeriesSearchEnabled(true);
-                setSeriesQuery(event.target.value);
-              }}
-              placeholder="Digite nome da série..."
-              className="w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-            />
-
-            {seriesSearchEnabled && debouncedSeriesQuery.length >= 2 && (
-              <div className="rounded-lg border border-white/10 bg-[var(--color-background)] max-h-32 overflow-y-auto">
-                {isSeriesSearching ? (
-                  <p className="px-2 py-1.5 text-[11px] text-[var(--color-textDim)]">
-                    Buscando séries...
-                  </p>
-                ) : seriesOptions.length > 0 ? (
-                  seriesOptions.map((serie) => (
-                    <button
-                      key={serie.id}
-                      type="button"
-                      onClick={() => {
-                        setTargetSeriesId(serie.id);
-                        setSeriesQuery(serie.title);
-                        setSeriesSearchEnabled(false);
-                      }}
-                      className="w-full text-left px-2 py-1.5 hover:bg-white/5 transition-colors"
-                    >
-                      <p className="text-xs text-[var(--color-textMain)] truncate">
-                        {serie.title}
-                      </p>
-                      <p className="text-[10px] text-[var(--color-textDim)] font-mono truncate">
-                        {serie.id}
-                      </p>
-                    </button>
-                  ))
-                ) : (
-                  <p className="px-2 py-1.5 text-[11px] text-[var(--color-textDim)]">
-                    Nenhuma série encontrada
-                  </p>
-                )}
-              </div>
-            )}
-
-            {targetSeriesId && (
-              <p className="text-[10px] text-[var(--color-primary)] font-mono truncate">
-                Selecionada: {targetSeriesId}
-              </p>
-            )}
-          </div>
-        ) : (
-          <label className="text-[11px] text-[var(--color-textDim)]">
-            newSeriesTitle
-            <input
-              value={newSeriesTitle}
-              onChange={(event) => setNewSeriesTitle(event.target.value)}
-              className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-            />
-          </label>
-        )}
-
-        <label className="text-[11px] text-[var(--color-textDim)]">
-          chapterNumber
-          <input
-            type="number"
-            value={chapterNumber}
-            onChange={(event) =>
-              setChapterNumber(
-                event.target.value === "" ? "" : Number(event.target.value),
-              )
-            }
-            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-          />
-        </label>
-
-        <label className="text-[11px] text-[var(--color-textDim)]">
-          volume
-          <input
-            type="number"
-            value={volume}
-            onChange={(event) =>
-              setVolume(
-                event.target.value === "" ? "" : Number(event.target.value),
-              )
-            }
-            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-          />
-        </label>
-
-        <label className="text-[11px] text-[var(--color-textDim)]">
-          year
-          <input
-            type="number"
-            value={year}
-            onChange={(event) =>
-              setYear(
-                event.target.value === "" ? "" : Number(event.target.value),
-              )
-            }
-            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-          />
-        </label>
-
-        <label className="text-[11px] text-[var(--color-textDim)]">
-          status
-          <input
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-          />
-        </label>
-
-        <label className="text-[11px] text-[var(--color-textDim)]">
-          author
-          <input
-            value={author}
-            onChange={(event) => setAuthor(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-          />
-        </label>
-
-        <label className="text-[11px] text-[var(--color-textDim)]">
-          artist
-          <input
-            value={artist}
-            onChange={(event) => setArtist(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-          />
-        </label>
-
-        <label className="text-[11px] text-[var(--color-textDim)] md:col-span-2">
-          tags (vírgula)
-          <input
-            value={tagsInput}
-            onChange={(event) => setTagsInput(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-          />
-        </label>
-
-        <label className="text-[11px] text-[var(--color-textDim)] md:col-span-2">
-          description
-          <textarea
-            value={description}
-            rows={2}
-            onChange={(event) => setDescription(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-white/10 bg-[var(--color-background)] px-2 py-1.5 text-xs text-[var(--color-textMain)]"
-          />
-        </label>
-
-        <label className="inline-flex items-center gap-2 text-[11px] text-[var(--color-textDim)] md:col-span-2">
-          <input
-            type="checkbox"
-            checked={isOneShot}
-            onChange={(event) => setIsOneShot(event.target.checked)}
-          />
-          isOneShot
-        </label>
+    <section className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-[var(--color-textDim)]/75">
+            Upload local
+          </p>
+          <h2 className="mt-2 text-xl font-semibold text-[var(--color-textMain)]">
+            Manual-first por padrão
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm text-[var(--color-textDim)]">
+            O backend pode sugerir destinos, mas o frontend só confirma a série
+            quando você escolhe explicitamente entre série existente, nova série
+            ou ignorar o item.
+          </p>
+        </div>
       </div>
 
-      <button
-        onClick={() => void applySuggestedSeries()}
-        disabled={isSaving || !item.suggestion.matchedSeriesId}
-        className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1 text-[11px] text-[var(--color-textMain)] hover:bg-white/15 disabled:opacity-50"
-      >
-        Usar sugestão automaticamente
-      </button>
+      <div className="mt-5 grid gap-2 sm:grid-cols-3">
+        {([
+          ["review", "Enviar e revisar sugestões"],
+          ["existing", "Enviar direto para série existente"],
+          ["new", "Enviar como nova série"],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setMode(value)}
+            className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
+              mode === value
+                ? "border-[var(--color-primary)]/35 bg-[var(--color-primary)]/10 text-[var(--color-textMain)]"
+                : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
+            }`}
+          >
+            <p className="text-sm font-medium">{label}</p>
+          </button>
+        ))}
+      </div>
 
-      <button
-        onClick={() =>
-          void onSave(item.id, {
-            decision,
-            targetSeriesId:
-              decision === "EXISTING_SERIES"
-                ? targetSeriesId || undefined
-                : undefined,
-            newSeriesTitle:
-              decision === "NEW_SERIES"
-                ? newSeriesTitle || undefined
-                : undefined,
-            chapterNumber:
-              chapterNumber === "" ? undefined : Number(chapterNumber),
-            volume: volume === "" ? null : Number(volume),
-            year: year === "" ? null : Number(year),
-            isOneShot,
-            tags: tagsInput
-              .split(",")
-              .map((tag) => tag.trim())
-              .filter(Boolean),
-            description: description || undefined,
-            status: status || undefined,
-            author: author || undefined,
-            artist: artist || undefined,
-          })
-        }
-        disabled={isSaving}
-        className="mt-1 inline-flex items-center gap-1 rounded-lg bg-[var(--color-primary)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
-      >
-        {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-        Salvar item
-      </button>
-    </div>
+      <div className="mt-5 rounded-[28px] border border-dashed border-white/12 bg-black/10 p-6">
+        <div className="flex flex-col items-center justify-center gap-3 text-center">
+          <div className="rounded-3xl bg-[var(--color-primary)]/10 p-4 text-[var(--color-primary)]">
+            <Upload className="h-6 w-6" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-[var(--color-textMain)]">
+              Selecione arquivos ou uma pasta inteira
+            </p>
+            <p className="mt-1 text-xs text-[var(--color-textDim)]">
+              Formatos aceitos: {ACCEPTED_EXTENSIONS.join(", ")}
+            </p>
+          </div>
+          <div className="flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07]"
+            >
+              <Upload className="h-4 w-4" />
+              Selecionar arquivos
+            </button>
+            <button
+              type="button"
+              onClick={() => folderInputRef.current?.click()}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07]"
+            >
+              <FolderUp className="h-4 w-4" />
+              Selecionar pasta
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept={ACCEPTED_EXTENSIONS.join(",")}
+        onChange={(event) => {
+          if (event.target.files) {
+            addFiles(Array.from(event.target.files));
+            event.target.value = "";
+          }
+        }}
+        className="hidden"
+      />
+      <input
+        ref={(element) => {
+          folderInputRef.current = element;
+          if (element) {
+            element.setAttribute("webkitdirectory", "");
+            element.setAttribute("directory", "");
+          }
+        }}
+        type="file"
+        multiple
+        onChange={(event) => {
+          if (event.target.files) {
+            addFiles(Array.from(event.target.files));
+            event.target.value = "";
+          }
+        }}
+        className="hidden"
+      />
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
+        <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
+                Arquivos preparados
+              </p>
+              <p className="mt-1 text-sm text-[var(--color-textMain)]">
+                {files.length} arquivo(s) · {formatBytes(totalSize)}
+              </p>
+            </div>
+            {files.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFiles([])}
+                className="text-xs text-[var(--color-textDim)] transition-colors hover:text-rose-300"
+              >
+                Limpar lista
+              </button>
+            )}
+          </div>
+
+          <div className="mt-4 max-h-60 space-y-2 overflow-y-auto">
+            {files.map((file, index) => (
+              <div
+                key={`${file.name}-${file.size}-${index}`}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-[var(--color-textMain)]">
+                    {file.name}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                    {formatBytes(file.size)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))
+                  }
+                  className="text-xs text-[var(--color-textDim)] transition-colors hover:text-rose-300"
+                >
+                  Remover
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
+          <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
+            Destino manual
+          </p>
+
+          {mode === "existing" && (
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+                  Buscar série existente
+                </span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-textDim)]" />
+                  <input
+                    type="text"
+                    value={seriesQuery}
+                    onChange={(event) => setSeriesQuery(event.target.value)}
+                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] py-2.5 pl-10 pr-4 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                    placeholder="Busque a série..."
+                  />
+                </div>
+              </label>
+
+              <div className="grid gap-2">
+                {searchResults.data?.items.map((series) => (
+                  <button
+                    key={series.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedSeriesId(series.id);
+                      setSelectedSeriesTitle(series.title);
+                      setSeriesQuery(series.title);
+                    }}
+                    className={`rounded-2xl border px-3 py-2 text-left transition-colors ${
+                      selectedSeriesId === series.id
+                        ? "border-emerald-500/25 bg-emerald-500/10 text-[var(--color-textMain)]"
+                        : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
+                    }`}
+                  >
+                    <p className="text-sm font-medium">{series.title}</p>
+                    <p className="mt-1 text-xs opacity-80">{series.id}</p>
+                  </button>
+                ))}
+              </div>
+
+              {selectedSeriesTitle && (
+                <p className="text-xs text-emerald-200">
+                  Série escolhida: {selectedSeriesTitle}
+                </p>
+              )}
+            </div>
+          )}
+
+          {mode === "new" && (
+            <label className="mt-4 block">
+              <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+                Título final da nova série
+              </span>
+              <input
+                type="text"
+                value={newSeriesTitle}
+                onChange={(event) => setNewSeriesTitle(event.target.value)}
+                className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                placeholder="Ex.: My New Series"
+              />
+            </label>
+          )}
+
+          <div className="mt-5 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm text-[var(--color-textDim)]">
+            {mode === "review"
+              ? "Sessão em stage: o backend analisa primeiro e você confirma o destino de cada item depois."
+              : mode === "existing"
+                ? "Destino já confirmado manualmente. O backend ainda analisa os arquivos, mas pode auto-submeter depois dessa escolha explícita."
+                : "O título final já fica pré-preenchido no plano, mas a sessão continua revisável antes da confirmação."}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={isSubmitting || files.length === 0}
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowRight className="h-4 w-4" />
+            )}
+            {mode === "review"
+              ? "Criar sessão de revisão"
+              : mode === "existing"
+                ? "Enviar para série existente"
+                : "Criar sessão com novo título"}
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
-// ===== Upload Zone (Redesigned) =====
-function UploadZone() {
-  const [isDragging, setIsDragging] = useState(false);
-  const [mode, setMode] = useState<UploadMode>("files");
-  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
-  const [seriesTitle, setSeriesTitle] = useState("");
-  const [folderName, setFolderName] = useState("");
-  const [activeDraftId, setActiveDraftId] = useState("");
-  const [localProcessingState, setLocalProcessingState] =
-    useState<UploadDraftProcessingState>("idle");
-  const [bulkEditOpen, setBulkEditOpen] = useState(false);
-  const [localConfirmResult, setLocalConfirmResult] = useState<{
-    accepted: number;
-    rejected: number;
-    skipped: number;
-    jobs: string[];
-  } | null>(null);
+export default function UploadsPage() {
+  const { isAdmin, isEditor } = useAuth();
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [bulkSeriesId, setBulkSeriesId] = useState("");
+  const [bulkSeriesTitle, setBulkSeriesTitle] = useState("");
+  const [bulkSeriesQuery, setBulkSeriesQuery] = useState("");
+  const [bulkNewSeriesTitle, setBulkNewSeriesTitle] = useState("");
+  const deferredBulkSeriesQuery = useDeferredValue(bulkSeriesQuery.trim());
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
-
-  const stageAutoMutation = useLocalUploadStage();
-  const stageMutation = useLocalUploadStageWithSeries();
-  const updateDraftItemMutation = useUpdateLocalUploadDraftItem();
-  const bulkUpdateMutation = useBulkUpdateLocalUploadDraftItems();
-  const confirmDraftMutation = useConfirmLocalUploadDraft();
-  const cancelDraftMutation = useCancelLocalUploadDraft();
-
-  const { data: draftData } = useLocalUploadDraft(activeDraftId, !!activeDraftId);
-  const processingState = useMemo(() => {
-    return resolveUploadDraftProcessingState(
-      localProcessingState,
-      draftData?.draft.processing?.state,
-    );
-  }, [draftData?.draft.processing?.state, localProcessingState]);
-  const draftItems = useMemo(
-    () => draftData?.draft.items ?? [],
-    [draftData?.draft.items],
+  const sessionsQuery = useUploadSessions({ page: 1, limit: 12 });
+  const sessions = sessionsQuery.data?.sessions ?? EMPTY_SESSIONS;
+  const resolvedActiveSessionId = activeSessionId ?? sessions[0]?.id ?? null;
+  const activeSummary =
+    sessions.find((session) => session.id === resolvedActiveSessionId) || null;
+  const activeSessionQuery = useUploadSession(
+    resolvedActiveSessionId || "",
+    Boolean(resolvedActiveSessionId),
   );
-  const reviewRequiredCount = useMemo(
-    () => draftItems.filter(isItemMarkedForManualReview).length,
-    [draftItems],
+  const activeSession = activeSessionQuery.data?.session || null;
+  const activeSource =
+    activeSession?.source || activeSummary?.source || null;
+  const activeStatus =
+    activeSession?.status || activeSummary?.status || null;
+  const shouldLoadDraft = Boolean(
+    resolvedActiveSessionId &&
+      activeSource &&
+      activeStatus &&
+      isReviewPhase(activeStatus),
   );
-  const unresolvedReviewCount = useMemo(
-    () => countUnresolvedManualReviews(draftItems),
-    [draftItems],
+  const activeDraftQuery = useUploadDraft(
+    activeSource || "LOCAL",
+    resolvedActiveSessionId || "",
+    shouldLoadDraft,
   );
+  const activeDraft = (activeDraftQuery.data as { draft?: UploadDraft } | undefined)?.draft || null;
 
-  // Process dropped/selected files
-  const addFiles = useCallback(
-    (files: File[], detectedFolder?: string) => {
-      const valid = files.filter((f) => isAcceptedFile(f.name));
-      if (valid.length === 0) {
-        toast.error(
-          "Nenhum arquivo compatível encontrado (.cbz, .cbr, .zip, .pdf, .epub)",
-        );
-        return;
-      }
+  const updateDraftItemMutation = useUpdateUploadDraftItem();
+  const bulkUpdateDraftMutation = useBulkUpdateUploadDraft();
+  const confirmDraftMutation = useConfirmUploadDraft();
+  const cancelDraftMutation = useCancelUploadDraft();
+  const retryItemMutation = useRetryUploadItem();
+  const submissionsQuery = useMySubmissions({ page: 1, limit: 5 });
 
-      const newItems: PendingFile[] = valid.map((f) => ({
-        file: f,
-        folder: detectedFolder,
-      }));
+  const bulkSeriesSearch = useSeriesSearch(deferredBulkSeriesQuery, 1, 6);
 
-      setPendingFiles((prev) => [...prev, ...newItems]);
+  const activeItems = activeSession?.items || activeDraft?.items || [];
+  const reviewPendingCount = countItemsNeedingManualChoice(activeItems);
+  const failedItemsCount = countItemsFailed(activeItems);
+  const isReviewWorkspace = Boolean(activeDraft && activeSource && activeSessionId);
+  const sessionStatusMeta = activeStatus ? SESSION_STATUS_META[activeStatus] : null;
+  const progress =
+    activeSession && activeSession.items.length > 0 ? getSessionProgress(activeSession) : 0;
 
-      // Auto-detect folder name if uploading a folder
-      if (detectedFolder && !seriesTitle) {
-        setSeriesTitle(detectedFolder);
-        setMode("folder");
-        setFolderName(detectedFolder);
-      }
-    },
-    [seriesTitle],
-  );
-
-  // Handle drag & drop
-  const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragging(false);
-
-      const items = e.dataTransfer.items;
-      if (!items) {
-        const files = Array.from(e.dataTransfer.files);
-        addFiles(files);
-        return;
-      }
-
-      const allFiles: File[] = [];
-      let detectedFolder: string | undefined;
-
-      const processEntry = async (
-        entry: FileSystemEntry,
-        path = "",
-      ): Promise<void> => {
-        if (entry.isFile) {
-          const fileEntry = entry as FileSystemFileEntry;
-          const file = await new Promise<File>((resolve, reject) => {
-            fileEntry.file(resolve, reject);
-          });
-          if (isAcceptedFile(file.name)) {
-            allFiles.push(file);
-          }
-        } else if (entry.isDirectory) {
-          const dirEntry = entry as FileSystemDirectoryEntry;
-          if (!path) {
-            detectedFolder = entry.name;
-          }
-          const reader = dirEntry.createReader();
-          const entries = await new Promise<FileSystemEntry[]>(
-            (resolve, reject) => {
-              reader.readEntries(resolve, reject);
-            },
-          );
-          for (const child of entries) {
-            await processEntry(child, `${path}${entry.name}/`);
-          }
-        }
-      };
-
-      const entries: FileSystemEntry[] = [];
-      for (let i = 0; i < items.length; i++) {
-        const entry = items[i].webkitGetAsEntry?.();
-        if (entry) entries.push(entry);
-      }
-
-      if (entries.length > 0) {
-        for (const entry of entries) {
-          await processEntry(entry);
-        }
-        addFiles(allFiles, detectedFolder);
-      } else {
-        addFiles(Array.from(e.dataTransfer.files));
-      }
-    },
-    [addFiles],
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  }, []);
-
-  const handleFolderSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files || files.length === 0) return;
-
-      const fileArray = Array.from(files);
-      const firstPath = fileArray[0]?.webkitRelativePath || "";
-      const detectedFolder = firstPath.split("/")[0] || "";
-
-      addFiles(fileArray, detectedFolder || undefined);
-      e.target.value = "";
-    },
-    [addFiles],
-  );
-
-  const removeFile = (index: number) => {
-    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const clearAll = () => {
-    setPendingFiles([]);
-    setFolderName("");
-    setSeriesTitle("");
-    setActiveDraftId("");
-    setLocalProcessingState("idle");
-    setLocalConfirmResult(null);
-  };
-
-  const startStage = async () => {
-    if (pendingFiles.length === 0) return;
-
-    try {
-      setLocalProcessingState("processing");
-      const files = pendingFiles.map((p) => p.file);
-      const normalizedFolderName =
-        mode === "folder" && folderName.trim() ? folderName.trim() : undefined;
-      const normalizedSeriesTitle = seriesTitle.trim();
-      const stageResponse = normalizedSeriesTitle
-        ? await stageMutation.mutateAsync({
-            files,
-            seriesTitle: normalizedSeriesTitle,
-            folderName: normalizedFolderName,
-          })
-        : await stageAutoMutation.mutateAsync({
-            files,
-            folderName: normalizedFolderName,
-          });
-
-      setActiveDraftId(stageResponse.draftId);
-      setLocalConfirmResult(null);
-
-      toast.success(
-        `Análise iniciada: ${stageResponse.processing?.totalReceived || stageResponse.items.length} arquivo(s)`,
-      );
-    } catch (err) {
-      setLocalProcessingState("failed");
-      toast.error(getUploadErrorMessage(err, "Erro ao iniciar stage"));
-    }
-  };
-
-  const saveLocalItemPatch = async (
+  const patchItem = async (
     itemId: string,
-    originalName: string,
-    patch: UploadPlanPatch,
+    data: Parameters<typeof updateDraftItemMutation.mutateAsync>[0]["data"],
   ) => {
+    if (!activeSource || !resolvedActiveSessionId) {
+      return;
+    }
+
     try {
       await updateDraftItemMutation.mutateAsync({
-        draftId: activeDraftId,
+        source: activeSource,
+        draftId: resolvedActiveSessionId,
         itemId,
-        data: patch,
+        data,
       });
-      toast.success(`Item atualizado: ${originalName}`);
-    } catch {
-      toast.error("Erro ao atualizar item do draft");
+      toast.success("Plano do item atualizado.");
+    } catch (error) {
+      const message =
+        (error as { message?: string })?.message ||
+        "Falha ao atualizar o item da sessão.";
+      toast.error(message);
     }
   };
 
-  const applyDecisionToAll = async (decision: UploadDecision) => {
-    const items = draftData?.draft.items || [];
-    if (items.length === 0) {
+  const retryItem = async (itemId: string) => {
+    try {
+      await retryItemMutation.mutateAsync(itemId);
+      toast.success("Item reenfileirado para nova tentativa.");
+    } catch (error) {
+      const message =
+        (error as { message?: string })?.message ||
+        "Falha ao reenfileirar o item.";
+      toast.error(message);
+    }
+  };
+
+  const applyBulkExistingSeries = async () => {
+    if (!activeSource || !resolvedActiveSessionId || !bulkSeriesId) {
+      toast.error("Escolha uma série para aplicar em lote.");
       return;
     }
 
     try {
-      await Promise.all(
-        items.map((item) =>
-          updateDraftItemMutation.mutateAsync({
-            draftId: activeDraftId,
-            itemId: item.id,
-            data: {
-              decision,
-              chapterNumber: item.plan.chapterNumber ?? item.parsed.number,
-              newSeriesTitle:
-                decision === "NEW_SERIES"
-                  ? item.plan.newSeriesTitle || item.parsed.normalizedTitle
-                  : undefined,
-              targetSeriesId:
-                decision === "EXISTING_SERIES"
-                  ? item.plan.targetSeriesId || item.suggestion.matchedSeriesId
-                  : undefined,
-            },
-          }),
-        ),
-      );
-      toast.success(`Decisão ${decision} aplicada em ${items.length} item(ns)`);
-    } catch {
-      toast.error("Falha ao aplicar decisão em lote");
+      await bulkUpdateDraftMutation.mutateAsync({
+        source: activeSource,
+        draftId: resolvedActiveSessionId,
+        data: {
+          targetSeriesId: bulkSeriesId,
+        },
+      });
+      toast.success("Série existente aplicada a todos os itens do draft.");
+    } catch (error) {
+      const message =
+        (error as { message?: string })?.message ||
+        "Falha ao aplicar a série em lote.";
+      toast.error(message);
     }
   };
 
-  const applySuggestionsToAll = async () => {
-    const items = (draftData?.draft.items || []).filter(
-      (item) => item.suggestion.matchedSeriesId,
-    );
-    if (items.length === 0) {
-      toast.error("Nenhum item com sugestão de série existente");
+  const applyBulkNewSeries = async () => {
+    if (!activeSource || !resolvedActiveSessionId || !bulkNewSeriesTitle.trim()) {
+      toast.error("Defina o novo título para aplicar em lote.");
       return;
     }
 
     try {
-      await Promise.all(
-        items.map((item) =>
-          updateDraftItemMutation.mutateAsync({
-            draftId: activeDraftId,
-            itemId: item.id,
-            data: {
-              decision: "EXISTING_SERIES",
-              targetSeriesId: item.suggestion.matchedSeriesId,
-              chapterNumber: item.plan.chapterNumber ?? item.parsed.number,
-            },
-          }),
-        ),
-      );
-      toast.success(`Sugestões aplicadas em ${items.length} item(ns)`);
-    } catch {
-      toast.error("Falha ao aplicar sugestões em lote");
+      await bulkUpdateDraftMutation.mutateAsync({
+        source: activeSource,
+        draftId: resolvedActiveSessionId,
+        data: {
+          seriesTitle: bulkNewSeriesTitle.trim(),
+        },
+      });
+      toast.success("Novo título aplicado ao draft.");
+    } catch (error) {
+      const message =
+        (error as { message?: string })?.message ||
+        "Falha ao aplicar o título em lote.";
+      toast.error(message);
     }
   };
 
-  const confirmLocalDraft = async () => {
-    if (!activeDraftId) {
+  const skipPendingItems = async () => {
+    if (!activeSource || !resolvedActiveSessionId) {
       return;
     }
 
-    if (unresolvedReviewCount > 0) {
-      toast.error(
-        `Há ${unresolvedReviewCount} item(ns) com revisão manual pendente.`,
-      );
+    const pendingItems = activeItems
+      .filter((item) => item.plan.selectionConfirmed !== true)
+      .map((item) => ({
+        itemId: item.id,
+        selected: false,
+      }));
+
+    if (pendingItems.length === 0) {
+      toast.error("Não há itens pendentes para ignorar.");
       return;
     }
 
-    const confirmationCheck = validateUploadDraftConfirmation(processingState);
-    if (!confirmationCheck.canConfirm) {
-      toast.error(
-        confirmationCheck.errorMessage ||
-          "Não foi possível confirmar o draft neste momento.",
-      );
+    try {
+      await bulkUpdateDraftMutation.mutateAsync({
+        source: activeSource,
+        draftId: resolvedActiveSessionId,
+        data: {
+          items: pendingItems,
+        },
+      });
+      toast.success("Itens pendentes marcados como ignorados.");
+    } catch (error) {
+      const message =
+        (error as { message?: string })?.message ||
+        "Falha ao ignorar itens pendentes.";
+      toast.error(message);
+    }
+  };
+
+  const confirmDraft = async () => {
+    if (!activeSource || !resolvedActiveSessionId) {
       return;
     }
 
     try {
       const result = await confirmDraftMutation.mutateAsync({
-        draftId: activeDraftId,
+        source: activeSource,
+        draftId: resolvedActiveSessionId,
+        idempotencyKey: createIdempotencyKey(),
       });
-
-      setLocalConfirmResult({
-        accepted: result.totals.accepted,
-        rejected: result.totals.rejected,
-        skipped: result.totals.skipped,
-        jobs: result.accepted.map((item) => item.jobId),
-      });
-
-      setPendingFiles([]);
-      setFolderName("");
-      setSeriesTitle("");
-      setActiveDraftId("");
-      setLocalProcessingState("idle");
-
-      toast.success("Draft confirmado e jobs enviados");
-    } catch (err) {
-      toast.error(getUploadErrorMessage(err, "Erro ao confirmar draft"));
-    }
-  };
-
-  const cancelLocalDraft = async () => {
-    if (!activeDraftId) {
-      return;
-    }
-
-    try {
-      await cancelDraftMutation.mutateAsync(activeDraftId);
-      setActiveDraftId("");
-      setLocalProcessingState("idle");
-      setLocalConfirmResult(null);
-      toast.success("Draft local cancelado");
-    } catch {
-      toast.error("Erro ao cancelar draft local");
-    }
-  };
-
-  const applyBulkEdit = async (updates: Record<string, UploadPlanPatch>) => {
-    if (!activeDraftId) {
-      return;
-    }
-
-    try {
-      const itemIds = Object.keys(updates);
-
-      // Apply updates to each item individually
-      await Promise.all(
-        itemIds.map((itemId) =>
-          updateDraftItemMutation.mutateAsync({
-            draftId: activeDraftId,
-            itemId,
-            data: updates[itemId] as UploadPlanPatch,
-          }),
-        ),
-      );
-
-      toast.success(`${itemIds.length} item(ns) atualizados`);
-    } catch {
-      toast.error("Erro ao aplicar edição em lote");
-    }
-  };
-
-  const isPending =
-    stageAutoMutation.isPending ||
-    stageMutation.isPending ||
-    updateDraftItemMutation.isPending ||
-    bulkUpdateMutation.isPending ||
-    confirmDraftMutation.isPending ||
-    cancelDraftMutation.isPending;
-
-  const totalSize = pendingFiles.reduce((sum, p) => sum + p.file.size, 0);
-
-  // Progress during processing
-  const processingProgress =
-    draftData?.draft.processing?.totalReceived &&
-    draftData?.draft.processing?.analyzedCount
-      ? (draftData.draft.processing.analyzedCount /
-          draftData.draft.processing.totalReceived) *
-        100
-      : 0;
-
-  // Handle drag & drop — supports folders via webkitGetAsEntry
-
-  return (
-    <div className="bg-[var(--color-surface)] rounded-xl border border-white/5 overflow-hidden">
-      {/* Series Title Input - Obrigatório */}
-      <div className="px-5 pt-4">
-        <label className="block text-sm text-[var(--color-textDim)] mb-1.5 font-medium">
-          Nome da Série (opcional)
-        </label>
-        <input
-          type="text"
-          value={seriesTitle}
-          onChange={(e) => setSeriesTitle(e.target.value)}
-          placeholder="Ex: Chainsaw Man, Asa Noturna"
-          disabled={!!activeDraftId}
-          className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-50"
-        />
-        <p className="text-[10px] text-[var(--color-textDim)] mt-1">
-          Se preenchido, usa o fluxo series-stage. Em branco, usa detecção
-          automática via draft stage.
-        </p>
-      </div>
-
-      {/* Mode Tabs */}
-      <div className="flex border-t border-b border-white/5 mt-4">
-        <button
-          onClick={() => setMode("files")}
-          disabled={!!activeDraftId}
-          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors disabled:opacity-50 ${
-            mode === "files"
-              ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)] bg-[var(--color-primary)]/5"
-              : "text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
-          }`}
-        >
-          <File className="h-4 w-4" />
-          Arquivos
-        </button>
-        <button
-          onClick={() => setMode("folder")}
-          disabled={!!activeDraftId}
-          className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors disabled:opacity-50 ${
-            mode === "folder"
-              ? "text-[var(--color-primary)] border-b-2 border-[var(--color-primary)] bg-[var(--color-primary)]/5"
-              : "text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
-          }`}
-        >
-          <FolderOpen className="h-4 w-4" />
-          Pasta
-        </button>
-      </div>
-
-      {/* Folder Name Input (only in folder mode) */}
-      {mode === "folder" && !activeDraftId && (
-        <div className="px-5 pt-4">
-          <label className="block text-xs text-[var(--color-textDim)] mb-1.5">
-            Sobrenome da pasta (opcional)
-          </label>
-          <input
-            type="text"
-            value={folderName}
-            onChange={(e) => setFolderName(e.target.value)}
-            placeholder="Auto-detectado a partir dos arquivos"
-            className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
-          />
-        </div>
-      )}
-
-      {/* Drop Zone */}
-      <div className="p-5">
-        <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          onClick={() => {
-            if (mode === "folder") {
-              folderInputRef.current?.click();
-            } else {
-              fileInputRef.current?.click();
-            }
-          }}
-          className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-            isDragging
-              ? "border-[var(--color-primary)] bg-[var(--color-primary)]/5 scale-[1.01]"
-              : "border-white/10 hover:border-white/20 bg-[var(--color-background)]"
-          } ${isPending ? "pointer-events-none opacity-60" : ""}`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".cbz,.cbr,.zip,.pdf,.epub"
-            multiple
-            onChange={(e) => {
-              if (e.target.files) {
-                addFiles(Array.from(e.target.files));
-                e.target.value = "";
-              }
-            }}
-            className="hidden"
-          />
-          {/* Folder input with webkitdirectory */}
-          <input
-            ref={(el) => {
-              (
-                folderInputRef as React.MutableRefObject<HTMLInputElement | null>
-              ).current = el;
-              if (el) {
-                el.setAttribute("webkitdirectory", "");
-                el.setAttribute("directory", "");
-              }
-            }}
-            type="file"
-            multiple
-            onChange={handleFolderSelect}
-            className="hidden"
-          />
-
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-14 h-14 rounded-xl bg-[var(--color-primary)]/10 flex items-center justify-center">
-              {mode === "folder" ? (
-                <FolderUp className="h-7 w-7 text-[var(--color-primary)]" />
-              ) : (
-                <Upload className="h-7 w-7 text-[var(--color-primary)]" />
-              )}
-            </div>
-            <div>
-              <p className="text-[var(--color-textMain)] font-medium">
-                {mode === "folder"
-                  ? "Arraste uma pasta aqui ou clique para selecionar"
-                  : "Arraste arquivos aqui ou clique para selecionar"}
-              </p>
-              <p className="text-xs text-[var(--color-textDim)] mt-1">
-                Formatos aceitos: .cbz, .cbr, .zip, .pdf, .epub
-                {mode === "folder" &&
-                  " · Arraste pastas diretamente do explorer"}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Pending Files List */}
-      {pendingFiles.length > 0 && (
-        <div className="border-t border-white/5">
-          <div className="flex items-center justify-between px-5 py-3 bg-[var(--color-background)]">
-            <div className="flex items-center gap-2">
-              <Files className="h-4 w-4 text-[var(--color-textDim)]" />
-              <span className="text-sm font-medium text-[var(--color-textMain)]">
-                {pendingFiles.length} arquivo(s)
-              </span>
-              <span className="text-xs text-[var(--color-textDim)]">
-                · {formatFileSize(totalSize)}
-              </span>
-            </div>
-            <button
-              onClick={clearAll}
-              className="text-xs text-[var(--color-textDim)] hover:text-red-400 transition-colors"
-            >
-              Limpar tudo
-            </button>
-          </div>
-
-          <div className="max-h-48 overflow-y-auto divide-y divide-white/5">
-            {pendingFiles.map((pf, i) => (
-              <div
-                key={`${pf.file.name}-${i}`}
-                className="flex items-center gap-3 px-5 py-2 hover:bg-white/[0.02]"
-              >
-                <FileText className="h-4 w-4 text-[var(--color-textDim)] shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-[var(--color-textMain)] truncate">
-                    {pf.file.name}
-                  </p>
-                  <p className="text-[10px] text-[var(--color-textDim)]">
-                    {formatFileSize(pf.file.size)}
-                    {pf.folder && (
-                      <span className="ml-2 text-[var(--color-primary)]">
-                        📁 {pf.folder}
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <button
-                  onClick={() => removeFile(i)}
-                  className="p-1 rounded hover:bg-white/5 text-[var(--color-textDim)] hover:text-red-400 transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* Upload Button */}
-          <div className="px-5 py-4 border-t border-white/5">
-            <button
-              onClick={startStage}
-              disabled={isPending}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary)]/90 transition-colors disabled:opacity-50"
-            >
-              {isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Processando...
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4" />
-                  Analisar {pendingFiles.length} arquivo(s)
-                  {mode === "folder" && folderName && (
-                    <span className="opacity-70">
-                      → &quot;{folderName}&quot;
-                    </span>
-                  )}
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {activeDraftId && (
-        <div className="border-t border-white/5 bg-[var(--color-background)] p-5 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-[var(--color-textMain)]">
-                {processingState === "processing"
-                  ? "Analisando arquivos..."
-                  : "Revisão do draft local"}
-              </p>
-              <p className="text-xs text-[var(--color-textDim)] font-mono mt-0.5">
-                draftId: {activeDraftId}
-              </p>
-            </div>
-            <button
-              onClick={cancelLocalDraft}
-              className="inline-flex items-center gap-1 rounded-lg bg-red-500/20 px-2.5 py-1.5 text-xs text-red-300 hover:bg-red-500/30"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Cancelar
-            </button>
-          </div>
-
-          {/* Processing Progress Bar */}
-          {processingState === "processing" && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[var(--color-textDim)]">
-                  Analisando {draftData?.draft.processing?.analyzedCount || 0}/
-                  {draftData?.draft.processing?.totalReceived || 0}
-                </span>
-                <span className="text-xs text-[var(--color-textDim)]">
-                  {Math.round(processingProgress)}%
-                </span>
-              </div>
-              <ProgressBar progress={processingProgress} />
-              {draftData?.draft.processing && (
-                <p className="text-[10px] text-[var(--color-textDim)]">
-                  Aceitos: {draftData.draft.processing.acceptedCount} ·
-                  Rejeitados: {draftData.draft.processing.rejectedCount}
-                </p>
-              )}
-            </div>
-          )}
-
-          {processingState === "failed" && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-              <p>Failed to process draft</p>
-              {draftData?.draft.processing?.error && (
-                <p className="text-[10px] mt-1 opacity-80">
-                  {draftData.draft.processing.error}
-                </p>
-              )}
-            </div>
-          )}
-
-          {draftData?.draft.rejected && draftData.draft.rejected.length > 0 && (
-            <details className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
-              <summary className="cursor-pointer font-medium">
-                {draftData.draft.rejected.length} arquivo(s) rejeitado(s)
-              </summary>
-              <div className="mt-2 space-y-1">
-                {draftData.draft.rejected.slice(0, 10).map((item, index) => (
-                  <p key={`${item.filename || item.fileId || "rejected"}-${index}`}>
-                    {(item.filename || item.fileId || "Arquivo")} — {item.reason}
-                  </p>
-                ))}
-              </div>
-            </details>
-          )}
-
-          {processingState === "completed" && draftItems.length ? (
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              <div className="rounded-lg border border-white/10 bg-[var(--color-surface)] p-2 text-[11px] text-[var(--color-textDim)]">
-                Itens com review manual: {reviewRequiredCount} · pendentes:{" "}
-                <span
-                  className={
-                    unresolvedReviewCount > 0
-                      ? "text-yellow-300 font-medium"
-                      : "text-green-300 font-medium"
-                  }
-                >
-                  {unresolvedReviewCount}
-                </span>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-[var(--color-surface)] p-2 flex flex-wrap gap-2">
-                <button
-                  onClick={() => setBulkEditOpen(true)}
-                  className="px-2 py-1 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-[11px] hover:bg-[var(--color-primary)]/30"
-                >
-                  ⚙️ Edição em Lote
-                </button>
-                <button
-                  onClick={() => void applySuggestionsToAll()}
-                  className="px-2 py-1 rounded bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-[11px] hover:bg-[var(--color-primary)]/30"
-                >
-                  Usar sugestões
-                </button>
-                <button
-                  onClick={() => void applyDecisionToAll("NEW_SERIES")}
-                  className="px-2 py-1 rounded bg-white/10 text-[var(--color-textMain)] text-[11px] hover:bg-white/15"
-                >
-                  Todos: NEW_SERIES
-                </button>
-                <button
-                  onClick={() => void applyDecisionToAll("SKIP")}
-                  className="px-2 py-1 rounded bg-white/10 text-[var(--color-textMain)] text-[11px] hover:bg-white/15"
-                >
-                  Todos: SKIP
-                </button>
-              </div>
-
-              {draftItems.map((item) => (
-                <LocalDraftItemEditor
-                  key={item.id}
-                  item={item}
-                  isSaving={
-                    updateDraftItemMutation.isPending ||
-                    bulkUpdateMutation.isPending
-                  }
-                  onSave={(itemId, patch) =>
-                    saveLocalItemPatch(itemId, item.originalName, {
-                      ...patch,
-                      chapterNumber:
-                        patch.chapterNumber ??
-                        item.plan.chapterNumber ??
-                        item.parsed.number,
-                      newSeriesTitle:
-                        patch.decision === "NEW_SERIES"
-                          ? patch.newSeriesTitle || item.parsed.normalizedTitle
-                          : patch.newSeriesTitle,
-                      targetSeriesId:
-                        patch.decision === "EXISTING_SERIES"
-                          ? patch.targetSeriesId ||
-                            item.suggestion.matchedSeriesId
-                          : patch.targetSeriesId,
-                    })
-                  }
-                />
-              ))}
-            </div>
-          ) : (
-            processingState === "completed" && (
-              <p className="text-xs text-[var(--color-textDim)]">
-                Nenhum item aceito na análise.
-              </p>
-            )
-          )}
-
-          {processingState === "completed" && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={confirmLocalDraft}
-                disabled={
-                  confirmDraftMutation.isPending ||
-                  !draftItems.length ||
-                  unresolvedReviewCount > 0
-                }
-                className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
-              >
-                {confirmDraftMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4" />
-                )}
-                Confirmar & Criar Jobs
-              </button>
-              {unresolvedReviewCount > 0 && (
-                <p className="text-xs text-yellow-300">
-                  Resolva os itens com review manual antes de confirmar.
-                </p>
-              )}
-            </div>
-          )}
-
-          {localConfirmResult && (
-            <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-xs text-green-200 space-y-1">
-              <p>
-                ✅ {localConfirmResult.accepted} aceitos ·{" "}
-                {localConfirmResult.rejected} rejeitados ·{" "}
-                {localConfirmResult.skipped} ignorados
-              </p>
-              {localConfirmResult.jobs.length > 0 && (
-                <p className="text-[10px] text-green-300/80">
-                  Jobs: {localConfirmResult.jobs.slice(0, 4).join(", ")}
-                  {localConfirmResult.jobs.length > 4 ? " ..." : ""}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Bulk Edit Modal */}
-      <BulkEditModal
-        isOpen={bulkEditOpen}
-        items={draftItems}
-        onClose={() => setBulkEditOpen(false)}
-        onApply={applyBulkEdit}
-        isPending={bulkUpdateMutation.isPending}
-      />
-    </div>
-  );
-}
-
-// ===== Google Drive Import Panel =====
-function GoogleDriveImportPanel() {
-  return <GoogleDrivePanel />;
-}
-
-type DirectUploadMode = "single" | "bulk" | "folder" | "series";
-
-function DirectUploadPanel() {
-  const [mode, setMode] = useState<DirectUploadMode>("single");
-  const [files, setFiles] = useState<File[]>([]);
-  const [folderName, setFolderName] = useState("");
-  const [seriesId, setSeriesId] = useState("");
-  const [result, setResult] = useState<{
-    message: string;
-    jobs: string[];
-    accepted: number;
-    rejected: number;
-    rejectedItems: Array<{ filename?: string; reason: string }>;
-    pendingApproval: boolean;
-  } | null>(null);
-
-  const singleUploadMutation = useUpload();
-  const bulkUploadMutation = useUploadBulk();
-  const folderUploadMutation = useUploadFolder();
-  const seriesUploadMutation = useUploadToSeries();
-
-  const isPending =
-    singleUploadMutation.isPending ||
-    bulkUploadMutation.isPending ||
-    folderUploadMutation.isPending ||
-    seriesUploadMutation.isPending;
-
-  const handleSubmit = async () => {
-    if (files.length === 0) {
-      toast.error("Selecione ao menos um arquivo");
-      return;
-    }
-    if (mode === "folder" && !folderName.trim()) {
-      toast.error("Informe o nome da pasta");
-      return;
-    }
-    if (mode === "series" && !seriesId.trim()) {
-      toast.error("Informe o ID da série de destino");
-      return;
-    }
-
-    try {
-      if (mode === "single") {
-        const file = files[0];
-        if (!file) {
-          toast.error("Selecione um arquivo");
-          return;
-        }
-        const payload = await singleUploadMutation.mutateAsync(file);
-        setResult({
-          message: payload.message || "Upload enviado",
-          jobs: extractJobIdsFromDirectUploadResponse(payload),
-          accepted: payload.jobId ? 1 : 0,
-          rejected: 0,
-          rejectedItems: [],
-          pendingApproval: Boolean(
-            (payload as { pendingApproval?: boolean }).pendingApproval,
-          ),
-        });
-      } else if (mode === "bulk") {
-        const payload = await bulkUploadMutation.mutateAsync(files);
-        setResult({
-          message: payload.message || "Upload em lote enviado",
-          jobs: extractJobIdsFromDirectUploadResponse(payload),
-          accepted: payload.accepted?.length || 0,
-          rejected: payload.rejected?.length || 0,
-          rejectedItems: payload.rejected || [],
-          pendingApproval: Boolean(
-            (payload as { pendingApproval?: boolean }).pendingApproval,
-          ),
-        });
-      } else if (mode === "folder") {
-        const payload = await folderUploadMutation.mutateAsync({
-          folderName: folderName.trim(),
-          files,
-        });
-        setResult({
-          message: payload.message || "Upload de pasta enviado",
-          jobs: extractJobIdsFromDirectUploadResponse(payload),
-          accepted: payload.accepted?.length || 0,
-          rejected: payload.rejected?.length || 0,
-          rejectedItems: payload.rejected || [],
-          pendingApproval: Boolean(
-            (payload as { pendingApproval?: boolean }).pendingApproval,
-          ),
-        });
-      } else {
-        const payload = await seriesUploadMutation.mutateAsync({
-          seriesId: seriesId.trim(),
-          files,
-        });
-        setResult({
-          message: payload.message || "Upload para série enviado",
-          jobs: extractJobIdsFromDirectUploadResponse(payload),
-          accepted:
-            "accepted" in payload
-              ? payload.accepted.length
-              : "jobId" in payload
-                ? 1
-                : 0,
-          rejected:
-            "rejected" in payload && Array.isArray(payload.rejected)
-              ? payload.rejected.length
-              : 0,
-          rejectedItems:
-            "rejected" in payload && Array.isArray(payload.rejected)
-              ? payload.rejected
-              : [],
-          pendingApproval: Boolean(
-            (payload as { pendingApproval?: boolean }).pendingApproval,
-          ),
-        });
-      }
-
-      toast.success("Upload direto enviado");
-    } catch (error) {
-      toast.error(getUploadErrorMessage(error, "Erro no upload direto"));
-    }
-  };
-
-  return (
-    <div className="bg-[var(--color-surface)] rounded-xl border border-white/5 p-4 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-[var(--color-textMain)]">
-          Upload Direto (sem revisão)
-        </h2>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {(
-          [
-            { key: "single", label: "Single" },
-            { key: "bulk", label: "Bulk" },
-            { key: "folder", label: "Folder" },
-            { key: "series", label: "Série" },
-          ] as const
-        ).map((entry) => (
-          <button
-            key={entry.key}
-            onClick={() => setMode(entry.key)}
-            className={`px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
-              mode === entry.key
-                ? "bg-[var(--color-primary)]/20 text-[var(--color-primary)]"
-                : "bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
-            }`}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="space-y-2">
-        <input
-          type="file"
-          multiple={mode !== "single"}
-          onChange={(event) => setFiles(Array.from(event.target.files || []))}
-          className="w-full text-sm text-[var(--color-textDim)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--color-primary)]/20 file:px-3 file:py-1.5 file:text-[var(--color-primary)] file:cursor-pointer"
-        />
-
-        {mode === "folder" && (
-          <input
-            type="text"
-            value={folderName}
-            onChange={(event) => setFolderName(event.target.value)}
-            placeholder="Nome da pasta"
-            className="w-full rounded-lg bg-[var(--color-background)] border border-white/10 px-3 py-2 text-sm text-[var(--color-textMain)]"
-          />
-        )}
-
-        {mode === "series" && (
-          <input
-            type="text"
-            value={seriesId}
-            onChange={(event) => setSeriesId(event.target.value)}
-            placeholder="ID da série"
-            className="w-full rounded-lg bg-[var(--color-background)] border border-white/10 px-3 py-2 text-sm text-[var(--color-textMain)]"
-          />
-        )}
-
-        <button
-          onClick={() => void handleSubmit()}
-          disabled={isPending || files.length === 0}
-          className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--color-primary)]/90 disabled:opacity-60"
-        >
-          {isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Upload className="h-4 w-4" />
-          )}
-          Enviar upload direto
-        </button>
-      </div>
-
-      {result && (
-        <div className="rounded-lg border border-white/10 bg-[var(--color-background)] p-3 text-xs space-y-1">
-          <p className="text-[var(--color-textMain)]">{result.message}</p>
-          <p className="text-[var(--color-textDim)]">
-            Aceitos: {result.accepted} · Rejeitados: {result.rejected}
-          </p>
-          {result.pendingApproval && (
-            <p className="text-yellow-300">Envio pendente de aprovação editorial.</p>
-          )}
-          {result.jobs.length > 0 && (
-            <p className="text-[var(--color-textDim)]">
-              Jobs: {result.jobs.slice(0, 5).join(", ")}
-              {result.jobs.length > 5 ? " ..." : ""}
-            </p>
-          )}
-          {result.rejectedItems.length > 0 && (
-            <details className="mt-1">
-              <summary className="cursor-pointer text-yellow-300">
-                Ver rejeições
-              </summary>
-              <div className="mt-1 space-y-1 text-yellow-200">
-                {result.rejectedItems.map((entry, index) => (
-                  <p key={`${entry.filename || "item"}-${index}`}>
-                    {entry.filename || "Arquivo"} — {entry.reason}
-                  </p>
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ===== Job Row =====
-function JobRow({
-  job,
-  onViewLogs,
-  onRetry,
-  onDelete,
-  isRetrying,
-}: {
-  job: AdminJob;
-  onViewLogs: (job: AdminJob) => void;
-  onRetry: (jobId: string) => void;
-  onDelete: (jobId: string) => void;
-  isRetrying: boolean;
-}) {
-  const progress = normalizeJobProgress(job.progress);
-  const isActive = job.state === "active" || job.state === "waiting";
-  const isCompleted = job.state === "completed";
-  const isFailed = job.state === "failed";
-
-  return (
-    <div className="px-4 py-3 hover:bg-white/[0.02] transition-colors">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-[var(--color-textMain)] truncate">
-            {getJobDisplayName(job)}
-          </p>
-          <p className="text-xs text-[var(--color-textDim)] mt-0.5">
-            {formatTimestamp(job.createdAt)}
-            {job.duration ? ` · ${formatDuration(job.duration)}` : ""}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <button
-            onClick={() => onViewLogs(job)}
-            title="Ver logs"
-            className="p-1.5 rounded-lg hover:bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] transition-colors"
-          >
-            <FileText className="h-3.5 w-3.5" />
-          </button>
-          {isFailed && (
-            <button
-              onClick={() => onRetry(job.id)}
-              disabled={isRetrying}
-              title="Tentar novamente"
-              className="p-1.5 rounded-lg hover:bg-white/5 text-[var(--color-textDim)] hover:text-yellow-500 transition-colors disabled:opacity-50"
-            >
-              {isRetrying ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RotateCcw className="h-3.5 w-3.5" />
-              )}
-            </button>
-          )}
-          {(isCompleted || isFailed) && (
-            <button
-              onClick={() => onDelete(job.id)}
-              title="Remover job"
-              className="p-1.5 rounded-lg hover:bg-white/5 text-[var(--color-textDim)] hover:text-red-400 transition-colors"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <JobStatusBadge state={job.state} />
-        </div>
-      </div>
-
-      {isActive && progress > 0 && (
-        <div className="mt-2">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs text-[var(--color-textDim)]">
-              Processando
-            </span>
-            <span className="text-xs text-[var(--color-textDim)]">
-              {Math.round(progress)}%
-            </span>
-          </div>
-          <ProgressBar progress={progress} />
-        </div>
-      )}
-
-      {isCompleted && job.result && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--color-textDim)]">
-          {job.result.seriesTitle && (
-            <span>Série: {job.result.seriesTitle}</span>
-          )}
-          {job.result.chapter != null && (
-            <span>Capítulo: {job.result.chapter}</span>
-          )}
-          {job.result.duplicate && (
-            <span className="text-yellow-500 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" />
-              Duplicado
-            </span>
-          )}
-          {job.result.stats && (
-            <>
-              {job.result.stats.originalSize != null &&
-                job.result.stats.optimizedSize != null && (
-                  <span>
-                    {formatFileSize(job.result.stats.originalSize)} →{" "}
-                    {formatFileSize(job.result.stats.optimizedSize)}
-                    {job.result.stats.compressionRatio != null && (
-                      <span className="text-green-500 ml-1">
-                        -{Math.round(job.result.stats.compressionRatio)}%
-                      </span>
-                    )}
-                  </span>
-                )}
-              {job.result.stats.filesProcessed != null && (
-                <span>{job.result.stats.filesProcessed} páginas</span>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {isFailed && job.error && (
-        <div className="mt-2 text-xs text-red-400 bg-red-500/5 rounded-lg px-3 py-2">
-          <p>{job.error}</p>
-          {job.attempts != null && job.maxAttempts != null && (
-            <p className="text-[var(--color-textDim)] mt-1">
-              Tentativas: {job.attempts}/{job.maxAttempts}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ===== Jobs Filter Tabs =====
-type JobFilter = "all" | "active" | "completed" | "failed";
-
-// ===== Main Page =====
-export default function UploadsPage() {
-  const { data, isLoading, error, refetch, isRefetching } = useAdminJobs();
-  const clearMutation = useClearCompletedJobs();
-  const scanMutation = useScanLibrary();
-  const retryMutation = useRetryJob();
-  const retryAllMutation = useRetryAllJobs();
-  const deleteMutation = useDeleteJob();
-  const pauseMutation = usePauseJobs();
-  const resumeMutation = useResumeJobs();
-  const [logsJob, setLogsJob] = useState<AdminJob | null>(null);
-  const [jobFilter, setJobFilter] = useState<JobFilter>("all");
-  const [jobSearch, setJobSearch] = useState("");
-  const [showControls, setShowControls] = useState(false);
-
-  const stats = data?.stats;
-  const allJobs = data?.jobs || [];
-
-  // Filter jobs
-  const filteredJobs = allJobs.filter((j) => {
-    if (jobFilter === "active" && j.state !== "active" && j.state !== "waiting")
-      return false;
-    if (jobFilter === "completed" && j.state !== "completed") return false;
-    if (jobFilter === "failed" && j.state !== "failed") return false;
-    if (
-      jobSearch &&
-      !getJobDisplayName(j).toLowerCase().includes(jobSearch.toLowerCase())
-    )
-      return false;
-    return true;
-  });
-
-  const handleClearCompleted = async () => {
-    try {
-      await clearMutation.mutateAsync();
-      toast.success("Jobs concluídos removidos");
-    } catch {
-      toast.error("Erro ao limpar jobs");
-    }
-  };
-
-  const handleScan = async (incremental: boolean) => {
-    try {
-      await scanMutation.mutateAsync(incremental);
       toast.success(
-        incremental
-          ? "Scan incremental iniciado"
-          : "Scan completo da biblioteca iniciado",
+        `${result.totals.accepted} aceitos · ${result.totals.rejected} rejeitados · ${result.totals.skipped} ignorados`,
       );
-    } catch {
-      toast.error("Erro ao iniciar scan");
+      setActiveSessionId(result.session.id);
+    } catch (error) {
+      const message =
+        (error as { message?: string })?.message ||
+        "Falha ao confirmar a sessão.";
+      toast.error(message);
     }
   };
 
-  const handleRetry = async (jobId: string) => {
+  const cancelDraft = async () => {
+    if (!activeSource || !resolvedActiveSessionId) {
+      return;
+    }
+
     try {
-      await retryMutation.mutateAsync(jobId);
-      toast.success("Job reenfileirado");
-    } catch {
-      toast.error("Erro ao reprocessar job");
+      await cancelDraftMutation.mutateAsync({
+        source: activeSource,
+        draftId: resolvedActiveSessionId,
+      });
+      toast.success("Sessão cancelada.");
+      setActiveSessionId(null);
+    } catch (error) {
+      const message =
+        (error as { message?: string })?.message ||
+        "Falha ao cancelar a sessão.";
+      toast.error(message);
     }
   };
 
-  const handleRetryAll = async () => {
-    try {
-      await retryAllMutation.mutateAsync();
-      toast.success("Todos os jobs falhados reenfileirados");
-    } catch {
-      toast.error("Erro ao reprocessar jobs");
-    }
-  };
-
-  const handleDeleteJob = async (jobId: string) => {
-    try {
-      await deleteMutation.mutateAsync(jobId);
-      toast.success("Job removido");
-    } catch {
-      toast.error("Erro ao remover job");
-    }
-  };
-
-  const handlePause = async () => {
-    try {
-      await pauseMutation.mutateAsync();
-      toast.success("Fila pausada");
-    } catch {
-      toast.error("Erro ao pausar fila");
-    }
-  };
-
-  const handleResume = async () => {
-    try {
-      await resumeMutation.mutateAsync();
-      toast.success("Fila retomada");
-    } catch {
-      toast.error("Erro ao retomar fila");
-    }
-  };
-
-  const failedCount = stats?.failed ?? 0;
+  const roleSummary = isEditor && !isAdmin
+    ? "Você pode criar sessões, revisar sugestões e acompanhar aprovações pendentes."
+    : "Sessões de upload, revisão manual, importações do Drive e estado de processamento em um único workspace.";
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--color-textMain)]">
-          Uploads & Jobs
-        </h1>
-        <p className="text-[var(--color-textDim)] text-sm mt-1">
-          Envie arquivos, pastas ou monitore o processamento
-        </p>
-      </div>
+    <div className="mx-auto max-w-7xl space-y-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.24em] text-[var(--color-textDim)]/75">
+            Upload system remodelado
+          </p>
+          <h1 className="mt-2 text-3xl font-bold text-[var(--color-textMain)]">
+            Uploads & Importações
+          </h1>
+          <p className="mt-2 max-w-3xl text-sm text-[var(--color-textDim)]">
+            {roleSummary}
+          </p>
+        </div>
 
-      {/* Upload Zone */}
-      <UploadZone />
-
-      {/* Direct Upload Flow */}
-      <DirectUploadPanel />
-
-      {/* Google Drive Import */}
-      <GoogleDriveImportPanel />
-
-      {/* Actions Bar */}
-      <div className="flex flex-wrap gap-2">
-        {/* Scan Buttons */}
-        <button
-          onClick={() => handleScan(false)}
-          disabled={scanMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-surface)] border border-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] text-sm font-medium transition-colors disabled:opacity-50"
-        >
-          {scanMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <FolderSync className="h-4 w-4" />
-          )}
-          Scan Completo
-        </button>
-        <button
-          onClick={() => handleScan(true)}
-          disabled={scanMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-surface)] border border-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] text-sm font-medium transition-colors disabled:opacity-50"
-        >
-          {scanMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Scan Incremental
-        </button>
-
-        {/* Queue Controls Toggle */}
-        <button
-          onClick={() => setShowControls((v) => !v)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-surface)] border border-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] text-sm font-medium transition-colors"
-        >
-          <Cog className="h-4 w-4" />
-          Controles
-          {showControls ? (
-            <ChevronUp className="h-3 w-3" />
-          ) : (
-            <ChevronDown className="h-3 w-3" />
-          )}
-        </button>
-
-        {/* Refresh */}
-        <button
-          onClick={() => refetch()}
-          disabled={isRefetching}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-surface)] border border-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] text-sm font-medium transition-colors ml-auto"
-        >
-          <RefreshCw
-            className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
-          />
-          Atualizar
-        </button>
-      </div>
-
-      {/* Queue Control Panel (collapsible) */}
-      {showControls && (
-        <div className="flex flex-wrap gap-2 p-4 bg-[var(--color-surface)] rounded-xl border border-white/5">
-          <button
-            onClick={handlePause}
-            disabled={pauseMutation.isPending}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 text-xs font-medium transition-colors disabled:opacity-50"
-          >
-            <Pause className="h-3.5 w-3.5" />
-            Pausar Fila
-          </button>
-          <button
-            onClick={handleResume}
-            disabled={resumeMutation.isPending}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/10 text-green-500 hover:bg-green-500/20 text-xs font-medium transition-colors disabled:opacity-50"
-          >
-            <Play className="h-3.5 w-3.5" />
-            Retomar Fila
-          </button>
-          <button
-            onClick={handleClearCompleted}
-            disabled={clearMutation.isPending || (stats?.completed ?? 0) === 0}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)] text-xs font-medium transition-colors disabled:opacity-50"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Limpar Concluídos
-          </button>
-          {failedCount > 0 && (
-            <button
-              onClick={handleRetryAll}
-              disabled={retryAllMutation.isPending}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 text-xs font-medium transition-colors disabled:opacity-50"
+        <div className="flex flex-wrap gap-2">
+          {isAdmin && (
+            <Link
+              href="/dashboard/approvals"
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07]"
             >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Reprocessar Falhados ({failedCount})
-            </button>
+              <CheckCircle2 className="h-4 w-4" />
+              Fila de aprovações
+            </Link>
           )}
-        </div>
-      )}
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div className="bg-[var(--color-surface)] rounded-xl p-4 border border-white/5 flex items-center gap-3">
-          <Cog className="h-5 w-5 text-indigo-500" />
-          <div>
-            <p className="text-lg font-bold text-[var(--color-textMain)]">
-              {stats?.active ?? 0}
-            </p>
-            <p className="text-xs text-[var(--color-textDim)]">Ativos</p>
-          </div>
-        </div>
-        <div className="bg-[var(--color-surface)] rounded-xl p-4 border border-white/5 flex items-center gap-3">
-          <Clock className="h-5 w-5 text-[var(--color-textDim)]" />
-          <div>
-            <p className="text-lg font-bold text-[var(--color-textMain)]">
-              {stats?.waiting ?? 0}
-            </p>
-            <p className="text-xs text-[var(--color-textDim)]">Na fila</p>
-          </div>
-        </div>
-        <div className="bg-[var(--color-surface)] rounded-xl p-4 border border-white/5 flex items-center gap-3">
-          <Clock className="h-5 w-5 text-yellow-500" />
-          <div>
-            <p className="text-lg font-bold text-[var(--color-textMain)]">
-              {stats?.delayed ?? 0}
-            </p>
-            <p className="text-xs text-[var(--color-textDim)]">Adiados</p>
-          </div>
-        </div>
-        <div className="bg-[var(--color-surface)] rounded-xl p-4 border border-white/5 flex items-center gap-3">
-          <CheckCircle2 className="h-5 w-5 text-green-500" />
-          <div>
-            <p className="text-lg font-bold text-[var(--color-textMain)]">
-              {stats?.completed ?? 0}
-            </p>
-            <p className="text-xs text-[var(--color-textDim)]">Concluídos</p>
-          </div>
-        </div>
-        <div className="bg-[var(--color-surface)] rounded-xl p-4 border border-white/5 flex items-center gap-3">
-          <XCircle className="h-5 w-5 text-red-500" />
-          <div>
-            <p className="text-lg font-bold text-[var(--color-textMain)]">
-              {stats?.failed ?? 0}
-            </p>
-            <p className="text-xs text-[var(--color-textDim)]">Falharam</p>
-          </div>
+          <Link
+            href="/dashboard/submissions"
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07]"
+          >
+            <Clock className="h-4 w-4" />
+            Minhas submissões
+          </Link>
         </div>
       </div>
 
-      {/* Jobs Section */}
-      <div className="bg-[var(--color-surface)] rounded-xl border border-white/5 overflow-hidden">
-        {/* Jobs Header with filters */}
-        <div className="px-4 py-3 border-b border-white/5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-[var(--color-textMain)]">
-              Jobs de Processamento
-            </h2>
-            {stats && (
-              <span className="text-xs text-[var(--color-textDim)]">
-                {filteredJobs.length}
-                {jobFilter !== "all" ? ` de ${allJobs.length}` : ""} jobs
-              </span>
+      <div className="grid gap-8">
+        <LocalUploadEntryPanel onOpenSession={setActiveSessionId} />
+        <GoogleDriveImportPanel onOpenSession={setActiveSessionId} />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+        <section className="space-y-6">
+          <div className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-[var(--color-textDim)]/75">
+                  Workspace da sessão
+                </p>
+                <h2 className="mt-2 text-xl font-semibold text-[var(--color-textMain)]">
+                  {activeSummary?.inputName || "Selecione uma sessão"}
+                </h2>
+                <p className="mt-2 text-sm text-[var(--color-textDim)]">
+                  {activeSummary
+                    ? `${getSourceLabel(activeSummary.source)} · criada em ${formatDateTime(
+                        activeSummary.createdAt,
+                      )}`
+                    : "Escolha uma sessão na coluna ao lado para revisar itens, confirmar destinos ou acompanhar processamento."}
+                </p>
+              </div>
+
+              {sessionStatusMeta && (
+                <span
+                  className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-medium ${TONE_STYLES[sessionStatusMeta.tone]}`}
+                >
+                  {sessionStatusMeta.label}
+                </span>
+              )}
+            </div>
+
+            {!activeSummary ? (
+              <div className="mt-6 rounded-3xl border border-dashed border-white/10 bg-black/10 p-8 text-center text-sm text-[var(--color-textDim)]">
+                Nenhuma sessão ativa. Use os painéis acima para começar um upload
+                local ou uma importação do Google Drive.
+              </div>
+            ) : (
+              <>
+                <div className="mt-5 grid gap-4 md:grid-cols-4">
+                  <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                      Itens
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                      {activeSummary.counts.total}
+                    </p>
+                  </div>
+                  <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                      Revisão pendente
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                      {reviewPendingCount}
+                    </p>
+                  </div>
+                  <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                      Em aprovação
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                      {activeSummary.counts.approvalPending}
+                    </p>
+                  </div>
+                  <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                      Falhas
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                      {failedItemsCount}
+                    </p>
+                  </div>
+                </div>
+
+                {activeSession && (
+                  <div className="mt-5 rounded-3xl border border-white/8 bg-black/10 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-[var(--color-textMain)]">
+                          Progresso da sessão
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                          {progress}% concluído
+                        </p>
+                      </div>
+                      {activeSession.lastError?.message && (
+                        <p className="text-xs text-rose-200">
+                          {activeSession.lastError.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="mt-3 h-2 rounded-full bg-white/8">
+                      <div
+                        className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {activeDraft && (
+                  <div className="mt-5 rounded-3xl border border-white/8 bg-black/10 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-[var(--color-textMain)]">
+                          Análise do draft
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                          {activeDraft.processing.analyzedCount}/
+                          {activeDraft.processing.totalReceived} analisados
+                        </p>
+                      </div>
+                      <p className="text-xs text-[var(--color-textDim)]">
+                        Estado: {activeDraft.processing.state}
+                      </p>
+                    </div>
+                    <div className="mt-3 h-2 rounded-full bg-white/8">
+                      <div
+                        className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
+                        style={{
+                          width: `${
+                            activeDraft.processing.totalReceived > 0
+                              ? (activeDraft.processing.analyzedCount /
+                                  activeDraft.processing.totalReceived) *
+                                100
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                    {activeDraft.processing.error && (
+                      <p className="mt-3 text-xs text-rose-200">
+                        {activeDraft.processing.error}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {isReviewWorkspace && (
+                  <div className="mt-6 rounded-[32px] border border-white/8 bg-black/10 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
+                          Ações em lote
+                        </p>
+                        <p className="mt-1 text-sm text-[var(--color-textDim)]">
+                          Use as mesmas escolhas manuais em vários itens quando o
+                          destino já estiver claro.
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void skipPendingItems()}
+                          disabled={bulkUpdateDraftMutation.isPending}
+                          className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-[var(--color-textMain)]"
+                        >
+                          Ignorar pendentes
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void cancelDraft()}
+                          disabled={cancelDraftMutation.isPending}
+                          className="rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200"
+                        >
+                          Cancelar sessão
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                      <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                        <p className="text-sm font-medium text-[var(--color-textMain)]">
+                          Aplicar série existente
+                        </p>
+                        <div className="mt-3 space-y-2">
+                          <div className="relative">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-textDim)]" />
+                            <input
+                              type="text"
+                              value={bulkSeriesQuery}
+                              onChange={(event) => setBulkSeriesQuery(event.target.value)}
+                              className="w-full rounded-2xl border border-white/8 bg-white/[0.03] py-2.5 pl-10 pr-4 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                              placeholder="Busque a série..."
+                            />
+                          </div>
+                          <div className="grid gap-2">
+                            {bulkSeriesSearch.data?.items.map((series) => (
+                              <button
+                                key={series.id}
+                                type="button"
+                                onClick={() => {
+                                  setBulkSeriesId(series.id);
+                                  setBulkSeriesTitle(series.title);
+                                  setBulkSeriesQuery(series.title);
+                                }}
+                                className={`rounded-2xl border px-3 py-2 text-left transition-colors ${
+                                  bulkSeriesId === series.id
+                                    ? "border-emerald-500/25 bg-emerald-500/10 text-[var(--color-textMain)]"
+                                    : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)]"
+                                }`}
+                              >
+                                <p className="text-sm font-medium">{series.title}</p>
+                                <p className="mt-1 text-xs opacity-80">{series.id}</p>
+                              </button>
+                            ))}
+                          </div>
+                          {bulkSeriesTitle && (
+                            <p className="text-xs text-emerald-200">
+                              Selecionada: {bulkSeriesTitle}
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void applyBulkExistingSeries()}
+                            disabled={bulkUpdateDraftMutation.isPending || !bulkSeriesId}
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+                          >
+                            Aplicar série existente
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                        <p className="text-sm font-medium text-[var(--color-textMain)]">
+                          Aplicar novo título
+                        </p>
+                        <div className="mt-3 space-y-3">
+                          <input
+                            type="text"
+                            value={bulkNewSeriesTitle}
+                            onChange={(event) => setBulkNewSeriesTitle(event.target.value)}
+                            className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                            placeholder="Título canônico da nova série"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void applyBulkNewSeries()}
+                            disabled={
+                              bulkUpdateDraftMutation.isPending ||
+                              !bulkNewSeriesTitle.trim()
+                            }
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+                          >
+                            Aplicar novo título
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-[var(--color-textMain)]">
+                            Confirmar sessão
+                          </p>
+                          <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                            Só confirme quando todo item não ignorado tiver
+                            destino manual validado.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void confirmDraft()}
+                          disabled={
+                            confirmDraftMutation.isPending ||
+                            reviewPendingCount > 0 ||
+                            activeStatus === "ANALYZING"
+                          }
+                          className="inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+                        >
+                          {confirmDraftMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4" />
+                          )}
+                          Confirmar e enviar
+                        </button>
+                      </div>
+
+                      {reviewPendingCount > 0 && (
+                        <p className="mt-3 text-xs text-amber-200">
+                          Ainda existem {reviewPendingCount} item(ns) sem decisão
+                          manual confirmada.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {activeStatus === "APPROVAL_PENDING" && (
+                  <div className="mt-6 rounded-3xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+                    {isAdmin ? (
+                      <span>
+                        Há itens aguardando aprovação administrativa.{" "}
+                        <Link
+                          href="/dashboard/approvals"
+                          className="font-semibold underline"
+                        >
+                          Abrir fila de aprovações
+                        </Link>
+                        .
+                      </span>
+                    ) : (
+                      "Seu envio foi aceito, mas ainda depende de aprovação administrativa antes do processamento."
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Filter tabs */}
-            {(
-              [
-                { key: "all", label: "Todos" },
-                { key: "active", label: "Ativos" },
-                { key: "completed", label: "Concluídos" },
-                { key: "failed", label: "Falhados" },
-              ] as const
-            ).map((f) => (
-              <button
-                key={f.key}
-                onClick={() => setJobFilter(f.key)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  jobFilter === f.key
-                    ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
-                    : "bg-white/5 text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-
-            {/* Search */}
-            <div className="relative flex-1 min-w-36 ml-auto">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-textDim)]" />
-              <input
-                type="text"
-                value={jobSearch}
-                onChange={(e) => setJobSearch(e.target.value)}
-                placeholder="Buscar job..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-xs focus:outline-none focus:border-[var(--color-primary)]"
-              />
+          {activeSummary && (
+            <div className="space-y-4">
+              {activeSessionQuery.isLoading && (
+                <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4 text-sm text-[var(--color-textDim)]">
+                  Carregando detalhes da sessão...
+                </div>
+              )}
+              {activeItems.map((item) => (
+                <UploadItemCard
+                  key={item.id}
+                  item={item}
+                  disabled={!isReviewWorkspace}
+                  onPatch={patchItem}
+                  onRetry={retryItem}
+                />
+              ))}
             </div>
-          </div>
-        </div>
+          )}
+        </section>
 
-        {/* Jobs List */}
-        {isLoading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-[var(--color-primary)]" />
-          </div>
-        ) : error ? (
-          <div className="px-4 py-10 text-center">
-            <p className="text-sm text-red-400 font-medium">
-              Falha ao carregar jobs
+        <aside className="space-y-6">
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.24em] text-[var(--color-textDim)]/75">
+                  Sessões recentes
+                </p>
+                <p className="mt-1 text-sm text-[var(--color-textDim)]">
+                  Sessões persistidas são a fonte de verdade do fluxo.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => sessionsQuery.refetch()}
+                className="text-xs text-[var(--color-textDim)] transition-colors hover:text-[var(--color-textMain)]"
+              >
+                Atualizar
+              </button>
+            </div>
+            <UploadSessionList
+              sessions={sessions}
+              activeSessionId={resolvedActiveSessionId}
+              onSelect={setActiveSessionId}
+            />
+          </section>
+
+          <section className="rounded-[32px] border border-white/8 bg-white/[0.03] p-5">
+            <p className="text-xs uppercase tracking-[0.24em] text-[var(--color-textDim)]/75">
+              Minhas submissões
             </p>
-            <p className="text-xs text-[var(--color-textDim)] mt-1">
-              Verifique conexão/sessão e tente atualizar.
+            <div className="mt-4 space-y-3">
+              {submissionsQuery.data?.submissions?.map((submission) => (
+                <div
+                  key={`${submission.approvalId}-${submission.id}`}
+                  className="rounded-2xl border border-white/8 bg-black/10 p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-[var(--color-textMain)]">
+                        {submission.originalName}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                        {formatDateTime(submission.createdAt)}
+                      </p>
+                    </div>
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+                        submission.approval.status === "APPROVED"
+                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                          : submission.approval.status === "REJECTED"
+                            ? "border-rose-500/20 bg-rose-500/10 text-rose-200"
+                            : "border-amber-500/20 bg-amber-500/10 text-amber-200"
+                      }`}
+                    >
+                      {submission.approval.status}
+                    </span>
+                  </div>
+                  {submission.approval.reason && (
+                    <p className="mt-2 text-xs text-rose-200">
+                      {submission.approval.reason}
+                    </p>
+                  )}
+                </div>
+              ))}
+              {!submissionsQuery.data?.submissions?.length && (
+                <div className="rounded-2xl border border-white/8 bg-black/10 p-4 text-sm text-[var(--color-textDim)]">
+                  Nenhuma submissão recente.
+                </div>
+              )}
+            </div>
+            <Link
+              href="/dashboard/submissions"
+              className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-primary)]"
+            >
+              Abrir histórico completo
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </section>
+
+          <section className="rounded-[32px] border border-white/8 bg-white/[0.03] p-5">
+            <p className="text-xs uppercase tracking-[0.24em] text-[var(--color-textDim)]/75">
+              Regras do fluxo
             </p>
-          </div>
-        ) : filteredJobs.length === 0 ? (
-          <div className="flex flex-col items-center py-12 text-[var(--color-textDim)]">
-            <Files className="h-10 w-10 mb-3 opacity-40" />
-            <p className="text-sm">
-              {allJobs.length === 0
-                ? "Nenhum job encontrado"
-                : "Nenhum job corresponde ao filtro"}
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-white/5">
-            {filteredJobs.map((job) => (
-              <JobRow
-                key={job.id}
-                job={job}
-                onViewLogs={setLogsJob}
-                onRetry={handleRetry}
-                onDelete={handleDeleteJob}
-                isRetrying={retryMutation.isPending}
-              />
-            ))}
-          </div>
-        )}
+            <div className="mt-4 space-y-3 text-sm text-[var(--color-textDim)]">
+              <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+                Sugestão forte não é decisão final. O bloqueio real é{" "}
+                <code className="text-[var(--color-textMain)]">
+                  plan.selectionConfirmed
+                </code>
+                .
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+                O backend nunca auto-cria série canônica a partir de inferência.
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+                Google Drive usa preview e análise metadata-first antes de baixar
+                o arquivo final.
+              </div>
+            </div>
+          </section>
+        </aside>
       </div>
-
-      {/* Logs Modal */}
-      {logsJob && (
-        <JobLogsModal
-          jobId={logsJob.id}
-          jobName={getJobDisplayName(logsJob)}
-          onClose={() => setLogsJob(null)}
-        />
-      )}
     </div>
   );
 }

@@ -18,13 +18,23 @@ export function normalizeCoverUrl<T extends Partial<Series>>(series: T): T {
 export function getCoverUrl(urlOrPath?: string | null): string {
   if (!urlOrPath) return "";
 
-  const normalizedInput = urlOrPath.startsWith("/series/")
+  let normalizedInput = urlOrPath.startsWith("/series/")
     ? urlOrPath.replace("/series/", "/public/series/")
     : urlOrPath;
 
   if (
     normalizedInput.startsWith("http://") ||
-    normalizedInput.startsWith("https://") ||
+    normalizedInput.startsWith("https://")
+  ) {
+    try {
+      const parsed = new URL(normalizedInput);
+      normalizedInput = `${parsed.pathname}${parsed.search}`;
+    } catch {
+      return normalizedInput;
+    }
+  }
+
+  if (
     normalizedInput.startsWith("data:") ||
     normalizedInput.startsWith("blob:")
   ) {

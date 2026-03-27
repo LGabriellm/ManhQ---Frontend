@@ -1,4 +1,6 @@
 // Tipos da API ManhQ
+import type { MetadataSourceRecord } from "@/types/metadata-review";
+import type { UploadApprovalListItem } from "@/types/upload-workflow";
 
 // ===== Autenticação =====
 export interface User {
@@ -653,6 +655,8 @@ export interface AdminHealth {
   seriesWithoutTags: number;
   seriesWithoutCover: number;
   metadataCompleteness: number;
+  seriesWithoutMetadataProfile?: number;
+  seriesPendingMetadataReview?: number;
 }
 
 export interface AdminRecentSeries {
@@ -692,6 +696,20 @@ export interface AdminSeriesItem {
   hasDescription: boolean;
   hasTags: boolean;
   hasCover: boolean;
+  workType?: string | null;
+  metadata?: {
+    reviewRequired: boolean;
+    confidence: number;
+    confidenceLabel: "low" | "medium" | "high";
+    workType: string;
+    canonicalGenres: string[];
+    themes: string[];
+    audience: string[];
+    titleAliases: string[];
+    metadataSources: MetadataSourceRecord[];
+    lastEnrichedAt: string | null;
+    lastReviewedAt: string | null;
+  } | null;
 }
 
 export interface AdminSeriesListResponse {
@@ -718,6 +736,7 @@ export interface UpdateSeriesRequest {
   artist?: string;
   status?: string;
   tags?: string;
+  workType?: string;
 }
 
 // ===== Metadata (Multi-fonte) =====
@@ -1843,21 +1862,7 @@ export interface RevokeSessionsResponse {
 }
 
 // ===== Admin — Content Approvals =====
-export interface ApprovalItem {
-  id: string;
-  submitter: { id: string; name: string; email: string };
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  originalName: string;
-  safeName: string;
-  fileSize: number;
-  fileHash: string;
-  targetSeriesId: string | null;
-  forcedSeriesTitle: string | null;
-  reviewer: { id: string; name: string } | null;
-  reviewedAt: string | null;
-  rejectionReason: string | null;
-  createdAt: string;
-}
+export type ApprovalItem = UploadApprovalListItem;
 
 export interface ApprovalsListResponse {
   approvals: ApprovalItem[];
@@ -1885,11 +1890,12 @@ export interface ApprovalsStatsResponse {
 
 export interface ApproveResponse {
   message: string;
-  jobId: string;
+  jobId?: string;
   approval: {
     id: string;
     originalName: string;
-    submitter: { id: string; name: string };
+    sessionId?: string;
+    submitterId?: string;
   };
 }
 
@@ -1919,16 +1925,7 @@ export interface BulkRejectResponse {
 }
 
 // ===== Editor — My Submissions =====
-export interface SubmissionItem {
-  id: string;
-  status: "PENDING" | "APPROVED" | "REJECTED";
-  originalName: string;
-  fileSize: number;
-  createdAt: string;
-  reviewer: { id: string; name: string } | null;
-  reviewedAt: string | null;
-  rejectionReason: string | null;
-}
+export type SubmissionItem = UploadApprovalListItem;
 
 export interface SubmissionsListResponse {
   submissions: SubmissionItem[];

@@ -15,6 +15,7 @@ import {
   Clock,
   Loader2,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 
 function StatCard({
@@ -168,7 +169,48 @@ export default function DashboardPage() {
           <Activity className="h-5 w-5 text-[var(--color-primary)]" />
           Saúde da Biblioteca
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="surface-panel glass-card rounded-3xl p-5 mb-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-sm text-[var(--color-textDim)]">
+                Completude de metadata
+              </p>
+              <p className="mt-2 text-3xl font-bold text-[var(--color-textMain)]">
+                {health.metadataCompleteness}%
+              </p>
+              <p className="mt-2 text-xs text-[var(--color-textDim)]">
+                {health.seriesPendingMetadataReview ?? 0} série(s) aguardando
+                revisão manual.
+              </p>
+            </div>
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center"
+              style={{ backgroundColor: "#22c55e15" }}
+            >
+              <Sparkles className="h-6 w-6 text-emerald-400" />
+            </div>
+          </div>
+          <div className="mt-4 h-2 rounded-full bg-white/5">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-500"
+              style={{ width: `${Math.max(0, Math.min(100, health.metadataCompleteness))}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+          <HealthCard
+            label="Sem Perfil Canônico"
+            value={health.seriesWithoutMetadataProfile ?? health.seriesWithoutMeta}
+            icon={Sparkles}
+            severity={healthSeverity(health.seriesWithoutMetadataProfile ?? health.seriesWithoutMeta)}
+          />
+          <HealthCard
+            label="Revisão de Metadata"
+            value={health.seriesPendingMetadataReview ?? 0}
+            icon={Clock}
+            severity={healthSeverity(health.seriesPendingMetadataReview ?? 0)}
+          />
           <HealthCard
             label="Sem Metadados"
             value={health.seriesWithoutMeta}

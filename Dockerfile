@@ -16,8 +16,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # NEXT_PUBLIC_* é embutida no JS durante o build
-ARG NEXT_PUBLIC_API_URL=https://api.manhq.com.br
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_SITE_URL=https://app.manhq.com.br
+ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build

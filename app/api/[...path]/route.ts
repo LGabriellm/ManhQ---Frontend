@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.API_URL || "https://api.manhq.com.br";
-const FORWARDED_COOKIE_NAMES = ["manhq_session"];
+const FORWARDED_COOKIE_NAMES = ["manhq_session", "cf_clearance", "__cf_bm"];
 
 // Prefixos de path permitidos — rejeita qualquer rota fora desta lista
 const ALLOWED_PREFIXES = [
@@ -21,9 +21,11 @@ const ALLOWED_PREFIXES = [
   "carousel",
   "public/series/",
   "categories",
+  "search",
   "progress",
   "favorites",
   "user/",
+  "my/submissions",
   "upload",
   "upload/",
   "jobs",
@@ -42,7 +44,6 @@ const ALLOWED_PREFIXES = [
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;
-
 function matchesAllowedPrefix(targetPath: string, prefix: string): boolean {
   if (prefix.endsWith("/")) {
     return targetPath.startsWith(prefix);
@@ -71,6 +72,45 @@ function buildForwardedCookieHeader(req: NextRequest): string | null {
   return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
 }
 
+function rewriteSetCookieHeader(
+  cookie: string,
+  req: NextRequest,
+): string {
+  const isHttps = req.nextUrl.protocol === "https:";
+  let rewritten = cookie.replace(/;\s*Domain=[^;]+/gi, "");
+
+  if (isHttps && !/;\s*Secure/i.test(rewritten)) {
+    rewritten = `${rewritten}; Secure`;
+  }
+
+  if (!/;\s*SameSite=/i.test(rewritten)) {
+    rewritten = `${rewritten}; SameSite=Lax`;
+  }
+
+  if (!/;\s*Path=/i.test(rewritten)) {
+    rewritten = `${rewritten}; Path=/`;
+  }
+
+  if (!/;\s*HttpOnly/i.test(rewritten) && cookie.startsWith("manhq_session=")) {
+    rewritten = `${rewritten}; HttpOnly`;
+  }
+
+  return rewritten;
+}
+
+function getSetCookieHeaders(headers: Headers): string[] {
+  const withGetSetCookie = headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+
+  if (typeof withGetSetCookie.getSetCookie === "function") {
+    return withGetSetCookie.getSetCookie();
+  }
+
+  const setCookie = headers.get("set-cookie");
+  return setCookie ? [setCookie] : [];
+}
+
 async function handler(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -86,6 +126,9 @@ async function handler(
   url.search = req.nextUrl.search;
 
   const headers = new Headers(req.headers);
+  const forwardedHost = req.headers.get("host") || req.nextUrl.host;
+  const forwardedProto = req.nextUrl.protocol.replace(":", "");
+
   // Remove headers que não devem ser repassados
   headers.delete("host");
   headers.delete("connection");
@@ -95,11 +138,18 @@ async function handler(
   headers.delete("x-forwarded-host");
   headers.delete("x-forwarded-proto");
   headers.delete("x-real-ip");
+  headers.delete("content-length");
+  headers.delete("origin");
+  headers.delete("referer");
 
   const forwardedCookie = buildForwardedCookieHeader(req);
   if (forwardedCookie) {
     headers.set("cookie", forwardedCookie);
   }
+
+  headers.set("accept-encoding", "identity");
+  headers.set("x-forwarded-host", forwardedHost);
+  headers.set("x-forwarded-proto", forwardedProto);
 
   const init: RequestInit = {
     method: req.method,
@@ -119,9 +169,19 @@ async function handler(
 
     // Repassar response com headers originais
     const responseHeaders = new Headers(response.headers);
+    const setCookies = getSetCookieHeaders(response.headers);
     // Remover headers que o Next.js gerencia
     responseHeaders.delete("transfer-encoding");
     responseHeaders.delete("content-encoding");
+    responseHeaders.delete("content-length");
+    responseHeaders.delete("set-cookie");
+
+    for (const cookie of setCookies) {
+      responseHeaders.append(
+        "set-cookie",
+        rewriteSetCookieHeader(cookie, req),
+      );
+    }
 
     return new Response(response.body, {
       status: response.status,

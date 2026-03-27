@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import {
@@ -8,7 +9,6 @@ import {
   useDeleteSeries,
   useMetadataSearch,
   useEnrichSeries,
-  useEnrichAll,
   useAdminMedias,
   useMediaPages,
   useDeletePages,
@@ -25,6 +25,7 @@ import {
   useSetSeriesCoverFromUpload,
 } from "@/hooks/useAdmin";
 import { AuthCover } from "@/components/AuthCover";
+import { MetadataSummaryBadges } from "@/components/metadata/MetadataSummaryBadges";
 import { mediaService } from "@/services/media.service";
 import type {
   AdminSeriesItem,
@@ -47,7 +48,6 @@ import {
   BookOpen,
   AlertTriangle,
   Filter,
-  Wand2,
   FileText,
   Eye,
   Plus,
@@ -392,6 +392,7 @@ function EditSeriesModal({
 }
 
 // ===== Enrich Modal =====
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function EnrichModal({
   series,
   onClose,
@@ -1784,7 +1785,6 @@ function SeriesDetailView({
   } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [editSeriesModal, setEditSeriesModal] = useState(false);
-  const [enrichSeriesModal, setEnrichSeriesModal] = useState(false);
   const [deleteSeriesModal, setDeleteSeriesModal] = useState(false);
   const [uploadModal, setUploadModal] = useState(false);
   const [changeCoverModal, setChangeCoverModal] = useState(false);
@@ -1922,6 +1922,7 @@ function SeriesDetailView({
                 </span>
               )}
             </div>
+            <MetadataSummaryBadges series={series} />
 
             {/* Actions */}
             <div className="flex flex-wrap gap-2 mt-4">
@@ -1939,13 +1940,13 @@ function SeriesDetailView({
                 <Upload className="h-3.5 w-3.5" />
                 Alterar capa
               </button>
-              <button
-                onClick={() => setEnrichSeriesModal(true)}
+              <Link
+                href={`/dashboard/series/${series.id}/metadata`}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 transition-colors"
               >
                 <Sparkles className="h-3.5 w-3.5" />
-                Enriquecer
-              </button>
+                Revisar metadados
+              </Link>
               <button
                 onClick={() => setUploadModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors"
@@ -2196,12 +2197,6 @@ function SeriesDetailView({
           onClose={() => setEditSeriesModal(false)}
         />
       )}
-      {enrichSeriesModal && (
-        <EnrichModal
-          series={series}
-          onClose={() => setEnrichSeriesModal(false)}
-        />
-      )}
       {deleteSeriesModal && (
         <DeleteSeriesConfirm
           series={series}
@@ -2262,8 +2257,6 @@ export default function SeriesManagementPage() {
     null,
   );
 
-  const enrichAllMutation = useEnrichAll();
-
   useEffect(() => {
     debounceRef.current = setTimeout(() => {
       setDebouncedSearch(search);
@@ -2278,15 +2271,6 @@ export default function SeriesManagementPage() {
     search: debouncedSearch || undefined,
     missingMeta: missingMeta || undefined,
   });
-
-  const handleEnrichAll = async () => {
-    try {
-      const result = await enrichAllMutation.mutateAsync();
-      toast.success(`Enriquecimento iniciado para ${result.total} séries`);
-    } catch {
-      toast.error("Erro ao iniciar enriquecimento");
-    }
-  };
 
   const series = data?.series || [];
   const pagination = data?.pagination;
@@ -2314,19 +2298,11 @@ export default function SeriesManagementPage() {
               ? `${pagination.total} séries no total`
               : "Carregando..."}
           </p>
+          <p className="text-[var(--color-textDim)] text-xs mt-2">
+            Abra uma série para revisar o perfil canônico, atualizar sugestões e
+            salvar a metadata manualmente.
+          </p>
         </div>
-        <button
-          onClick={handleEnrichAll}
-          disabled={enrichAllMutation.isPending}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:bg-[var(--color-primary)]/90 transition-colors disabled:opacity-50"
-        >
-          {enrichAllMutation.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Wand2 className="h-4 w-4" />
-          )}
-          Enriquecer Tudo
-        </button>
       </div>
 
       {/* Search & Filter */}
@@ -2411,6 +2387,7 @@ export default function SeriesManagementPage() {
                       </span>
                     )}
                   </div>
+                  <MetadataSummaryBadges series={s} compact />
                 </div>
 
                 {/* Arrow */}

@@ -8,6 +8,16 @@ import { LayoutWrapper } from "@/components/LayoutWrapper";
 import { Toaster } from "react-hot-toast";
 
 const GTM_ID = "GTM-TZ335BQZ";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+const metadataBase = (() => {
+  if (!siteUrl) return undefined;
+
+  try {
+    return new URL(siteUrl);
+  } catch {
+    return undefined;
+  }
+})();
 
 const GTM_SCRIPT = `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
 new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
@@ -36,6 +46,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase,
   title: "ManHQ - Leitor de Mangás e HQ Comics",
   description:
     "Leia seus mangás e HQ comics favoritos online. Mobile-first, rápido e gratuito.",

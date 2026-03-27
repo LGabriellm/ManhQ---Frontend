@@ -58,6 +58,21 @@ npm start
 
 Abra [http://localhost:3000](http://localhost:3000) no navegador.
 
+## 🌐 Domínio e Proxy
+
+O cliente deve chamar o backend sempre via `/api/*`. Em produção:
+
+- `API_URL` aponta para a origem real do backend/API.
+- `NEXT_PUBLIC_SITE_URL` aponta para a URL pública do frontend.
+- `TRAEFIK_HOST` define o host publicado pelo container do frontend.
+
+Se o frontend mudar de domínio atrás do Cloudflare:
+
+- mantenha o navegador no domínio do frontend e deixe o proxy do Next encaminhar para `API_URL`
+- alinhe o backend com o novo host público em `FRONTEND_URL`
+- revise `AUTH_COOKIE_DOMAIN` no backend; se ele continuar preso ao domínio antigo da API, o login pode falhar no novo domínio do frontend
+- desative challenges/WAF do Cloudflare nas rotas da API se elas começarem a retornar HTML em vez de JSON
+
 ## 📦 Estrutura do Projeto
 
 ```

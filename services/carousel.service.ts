@@ -16,32 +16,19 @@ function normalizeCoverUrl(rawUrl: string): string {
     return rawUrl;
   }
 
-  const normalizedInput = rawUrl.startsWith("/series/")
+  let normalizedInput = rawUrl.startsWith("/series/")
     ? rawUrl.replace("/series/", "/public/series/")
     : rawUrl;
 
-  const backendBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-
   if (
-    backendBaseUrl &&
-    (normalizedInput.startsWith("http://") ||
-      normalizedInput.startsWith("https://"))
+    normalizedInput.startsWith("http://") ||
+    normalizedInput.startsWith("https://")
   ) {
     try {
-      const backend = new URL(backendBaseUrl);
       const incoming = new URL(normalizedInput);
-
-      if (incoming.origin === backend.origin) {
-        const rawPath = incoming.pathname.startsWith("/api/")
-          ? incoming.pathname.slice(4)
-          : incoming.pathname;
-        const normalizedPath = rawPath.startsWith("/series/")
-          ? rawPath.replace("/series/", "/public/series/")
-          : rawPath;
-        return `/api${normalizedPath}${incoming.search}`;
-      }
+      normalizedInput = `${incoming.pathname}${incoming.search}`;
     } catch {
-      // noop
+      return normalizedInput;
     }
   }
 
@@ -91,4 +78,3 @@ export const carouselService = {
     return normalizeCarouselCovers(response.data);
   },
 };
-

@@ -1,3 +1,4 @@
+import { resolveDraftWorkflow, resolveSessionWorkflow } from "@/lib/upload-workflow";
 import api from "@/services/api";
 import type {
   BulkUpdateUploadDraftRequest,
@@ -18,6 +19,7 @@ import type {
   GoogleDriveStatusResponse,
   StageLocalUploadResponse,
   UpdateUploadDraftItemRequest,
+  UploadDraft,
   UploadDraftBulkResponse,
   UploadDraftCancelResponse,
   UploadDraftConfirmResponse,
@@ -25,8 +27,10 @@ import type {
   UploadDraftResponse,
   UploadRetryItemResponse,
   UploadSessionCreatedResponse,
+  UploadSessionDetail,
   UploadSessionDetailResponse,
   UploadSessionListResponse,
+  UploadSessionSummary,
   UploadSource,
   UploadSessionStatus,
 } from "@/types/upload-workflow";
@@ -37,6 +41,79 @@ function buildDraftRoute(source: UploadSource, draftId: string): string {
   }
 
   return `/upload/drafts/${draftId}`;
+}
+
+function appendFilesToFormData(formData: FormData, files: File[]) {
+  files.forEach((file) => formData.append("files[]", file));
+}
+
+function normalizeSessionSummary(
+  session: UploadSessionSummary,
+): UploadSessionSummary {
+  return {
+    ...session,
+    workflow: resolveSessionWorkflow(session),
+  };
+}
+
+function normalizeSessionDetail(session: UploadSessionDetail): UploadSessionDetail {
+  return {
+    ...session,
+    workflow: resolveSessionWorkflow(session),
+  };
+}
+
+function normalizeSessionStub<T extends { id: string; status: UploadSessionStatus }>(
+  session: T & { workflow?: UploadSessionSummary["workflow"] },
+): T & { workflow: UploadSessionSummary["workflow"] } {
+  return {
+    ...session,
+    workflow: resolveSessionWorkflow({
+      status: session.status,
+      workflow: session.workflow,
+    }),
+  };
+}
+
+function normalizeDraft(draft: UploadDraft): UploadDraft {
+  const normalizedDraft = {
+    ...draft,
+    workflow: draft.workflow,
+  };
+
+  return {
+    ...normalizedDraft,
+    workflow: resolveDraftWorkflow(normalizedDraft),
+  };
+}
+
+function normalizeDraftResponse<
+  T extends UploadDraftResponse | GoogleDriveDraftResponse,
+>(response: T): T {
+  return {
+    ...response,
+    draft: normalizeDraft(response.draft),
+  };
+}
+
+function normalizeConfirmResponse(
+  response: UploadDraftConfirmResponse,
+): UploadDraftConfirmResponse {
+  const alreadyHandled = response.alreadyHandled ?? [];
+
+  return {
+    ...response,
+    alreadyHandled,
+    noOp: response.noOp ?? false,
+    totals: {
+      accepted: response.totals?.accepted ?? response.accepted.length,
+      alreadyHandled:
+        response.totals?.alreadyHandled ?? alreadyHandled.length,
+      rejected: response.totals?.rejected ?? response.rejected.length,
+      skipped: response.totals?.skipped ?? response.skipped.length,
+    },
+    session: normalizeSessionDetail(response.session),
+  };
 }
 
 export const uploadWorkflowService = {
@@ -51,14 +128,22 @@ export const uploadWorkflowService = {
         params,
       },
     );
-    return response.data;
+
+    return {
+      ...response.data,
+      sessions: response.data.sessions.map(normalizeSessionSummary),
+    };
   },
 
   async getSession(sessionId: string): Promise<UploadSessionDetailResponse> {
     const response = await api.get<UploadSessionDetailResponse>(
       `/upload/sessions/${sessionId}`,
     );
-    return response.data;
+
+    return {
+      ...response.data,
+      session: normalizeSessionDetail(response.data.session),
+    };
   },
 
   async stageLocalUpload(
@@ -66,7 +151,7 @@ export const uploadWorkflowService = {
     folderName?: string,
   ): Promise<StageLocalUploadResponse> {
     const formData = new FormData();
-    files.forEach((file) => formData.append("files[]", file));
+    appendFilesToFormData(formData, files);
     if (folderName?.trim()) {
       formData.append("folderName", folderName.trim());
     }
@@ -75,7 +160,11 @@ export const uploadWorkflowService = {
       "/upload/stage",
       formData,
     );
-    return response.data;
+
+    return {
+      ...response.data,
+      session: normalizeSessionStub(response.data.session),
+    };
   },
 
   async stageLocalUploadWithSeriesTitle(
@@ -84,7 +173,7 @@ export const uploadWorkflowService = {
     folderName?: string,
   ): Promise<StageLocalUploadResponse> {
     const formData = new FormData();
-    files.forEach((file) => formData.append("files[]", file));
+    appendFilesToFormData(formData, files);
     formData.append("seriesTitle", seriesTitle.trim());
     if (folderName?.trim()) {
       formData.append("folderName", folderName.trim());
@@ -94,7 +183,11 @@ export const uploadWorkflowService = {
       "/upload/workflow/series-stage",
       formData,
     );
-    return response.data;
+
+    return {
+      ...response.data,
+      session: normalizeSessionStub(response.data.session),
+    };
   },
 
   async uploadToExistingSeries(
@@ -102,13 +195,17 @@ export const uploadWorkflowService = {
     files: File[],
   ): Promise<UploadSessionCreatedResponse> {
     const formData = new FormData();
-    files.forEach((file) => formData.append("files[]", file));
+    appendFilesToFormData(formData, files);
 
     const response = await api.post<UploadSessionCreatedResponse>(
       `/upload/series/${seriesId}`,
       formData,
     );
-    return response.data;
+
+    return {
+      ...response.data,
+      session: normalizeSessionStub(response.data.session),
+    };
   },
 
   async getDraft(
@@ -118,7 +215,8 @@ export const uploadWorkflowService = {
     const response = await api.get<UploadDraftResponse | GoogleDriveDraftResponse>(
       buildDraftRoute(source, draftId),
     );
-    return response.data;
+
+    return normalizeDraftResponse(response.data);
   },
 
   async updateDraftItem(
@@ -143,7 +241,11 @@ export const uploadWorkflowService = {
       `${buildDraftRoute(source, draftId)}/items/bulk`,
       data,
     );
-    return response.data;
+
+    return {
+      ...response.data,
+      draft: normalizeDraft(response.data.draft),
+    };
   },
 
   async confirmDraft(
@@ -162,7 +264,8 @@ export const uploadWorkflowService = {
           : undefined,
       },
     );
-    return response.data;
+
+    return normalizeConfirmResponse(response.data);
   },
 
   async cancelDraft(
@@ -179,12 +282,23 @@ export const uploadWorkflowService = {
     const response = await api.post<UploadRetryItemResponse>(
       `/upload/items/${itemId}/retry`,
     );
-    return response.data;
+
+    return {
+      ...response.data,
+      session: normalizeSessionDetail(response.data.session),
+    };
   },
 
-  async getGoogleDriveAuthUrl(): Promise<GoogleDriveAuthUrlResponse> {
+  async getGoogleDriveAuthUrl(params?: {
+    returnUrl?: string;
+    intent?: string;
+    draftId?: string;
+  }): Promise<GoogleDriveAuthUrlResponse> {
     const response = await api.get<GoogleDriveAuthUrlResponse>(
       "/integrations/google-drive/auth-url",
+      {
+        params,
+      },
     );
     return response.data;
   },
@@ -268,7 +382,11 @@ export const uploadWorkflowService = {
           : undefined,
       },
     );
-    return response.data;
+
+    return {
+      ...response.data,
+      session: normalizeSessionSummary(response.data.session),
+    };
   },
 
   async importFromGoogleDrive(
@@ -284,6 +402,14 @@ export const uploadWorkflowService = {
           }
         : undefined,
     });
-    return response.data;
+
+    if ("dryRun" in response.data) {
+      return response.data;
+    }
+
+    return {
+      ...response.data,
+      session: normalizeSessionSummary(response.data.session),
+    };
   },
 };

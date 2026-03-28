@@ -4,14 +4,19 @@ import {
   type DiscoverResponse,
 } from "@/services/discover.service";
 
+interface UseDiscoverOptions {
+  enabled?: boolean;
+}
+
 /**
  * Busca todos os carrosséis de uma vez (recentlyAdded, recentlyUpdated, mostViewed).
  * Ideal para a home page — uma única request em vez de três.
  */
-export function useDiscover() {
+export function useDiscover(options: UseDiscoverOptions = {}) {
   return useQuery<DiscoverResponse>({
     queryKey: ["discover"],
     queryFn: () => discoverService.getAll(),
+    enabled: options.enabled ?? true,
     staleTime: 1000 * 60 * 5, // 5 minutos
   });
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useDeferredValue,
   useEffect,
@@ -22,6 +23,7 @@ import type {
   UpdateUploadDraftItemRequest,
   UploadDecision,
   UploadItem,
+  UploadSeriesCandidate,
 } from "@/types/upload-workflow";
 import {
   AlertTriangle,
@@ -43,8 +45,8 @@ function parseTags(value: string): string[] {
 
 function getInitialSeriesSearchLabel(item: UploadItem): string {
   return (
-    item.suggestion.matchedSeriesTitle ||
     item.plan.newSeriesTitle ||
+    item.suggestion.matchedSeriesTitle ||
     item.originalName
   );
 }
@@ -61,9 +63,31 @@ function getInitialDecision(item: UploadItem): UploadDecision {
   return "NEW_SERIES";
 }
 
+function getDestinationSummary(item: UploadItem): string {
+  if (item.plan.decision === "EXISTING_SERIES") {
+    return item.suggestion.matchedSeriesTitle || item.plan.targetSeriesId || "Série existente";
+  }
+
+  if (item.plan.decision === "NEW_SERIES") {
+    return item.plan.newSeriesTitle || "Nova série";
+  }
+
+  if (item.plan.decision === "SKIP") {
+    return "Ignorado";
+  }
+
+  return "Pendente";
+}
+
+function resolveCandidateTitle(candidate: UploadSeriesCandidate): string {
+  return candidate.matchedSeriesTitle || candidate.normalizedTitle;
+}
+
 interface UploadItemCardProps {
   item: UploadItem;
   disabled?: boolean;
+  disabledReason?: string | null;
+  retryDisabled?: boolean;
   onPatch: (itemId: string, data: UpdateUploadDraftItemRequest) => Promise<void>;
   onRetry?: (itemId: string) => Promise<void>;
 }
@@ -71,6 +95,8 @@ interface UploadItemCardProps {
 export function UploadItemCard({
   item,
   disabled = false,
+  disabledReason = null,
+  retryDisabled = false,
   onPatch,
   onRetry,
 }: UploadItemCardProps) {
@@ -143,6 +169,12 @@ export function UploadItemCard({
   const statusMeta = ITEM_STATUS_META[item.status];
   const confidenceMeta = CONFIDENCE_META[item.suggestion.confidence];
   const needsManualChoice = itemNeedsManualChoice(item);
+  const destinationSummary = getDestinationSummary(item);
+  const topCandidates = useMemo(
+    () =>
+      item.suggestion.candidates.filter((candidate) => candidate.matchedSeriesId).slice(0, 4),
+    [item.suggestion.candidates],
+  );
 
   const saveChanges = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -173,7 +205,7 @@ export function UploadItemCard({
   };
 
   const retryItem = async () => {
-    if (!onRetry || disabled) {
+    if (!onRetry || retryDisabled) {
       return;
     }
 
@@ -183,6 +215,17 @@ export function UploadItemCard({
     } finally {
       setIsRetrying(false);
     }
+  };
+
+  const applyCandidate = (candidate: UploadSeriesCandidate) => {
+    if (!candidate.matchedSeriesId) {
+      return;
+    }
+
+    setDecision("EXISTING_SERIES");
+    setTargetSeriesId(candidate.matchedSeriesId);
+    setSelectedSeriesTitle(resolveCandidateTitle(candidate));
+    setSeriesQuery(resolveCandidateTitle(candidate));
   };
 
   return (
@@ -203,9 +246,13 @@ export function UploadItemCard({
             >
               {confidenceMeta.label}
             </span>
-            {needsManualChoice && (
+            {needsManualChoice ? (
               <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200">
-                Aguardando decisão manual
+                Revisão pendente
+              </span>
+            ) : (
+              <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-200">
+                Escolha registrada
               </span>
             )}
           </div>
@@ -219,19 +266,6 @@ export function UploadItemCard({
             {item.plan.selectionSource && <span>Origem: {item.plan.selectionSource}</span>}
           </div>
 
-          {item.suggestion.matchedSeriesTitle && (
-            <p className="mt-3 text-sm text-[var(--color-textMain)]">
-              Sugestão principal:{" "}
-              <span className="font-medium">{item.suggestion.matchedSeriesTitle}</span>
-              {item.suggestion.confidenceScore ? (
-                <span className="text-[var(--color-textDim)]">
-                  {" "}
-                  · score {Math.round(item.suggestion.confidenceScore)}
-                </span>
-              ) : null}
-            </p>
-          )}
-
           {primaryStage?.detail && (
             <p className="mt-2 text-xs text-[var(--color-textDim)]">
               {primaryStage.detail}
@@ -244,7 +278,7 @@ export function UploadItemCard({
             <button
               type="button"
               onClick={() => void retryItem()}
-              disabled={disabled || isRetrying}
+              disabled={retryDisabled || isRetrying}
               className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.08] disabled:opacity-50"
             >
               {isRetrying ? (
@@ -265,8 +299,50 @@ export function UploadItemCard({
             ) : (
               <ChevronDown className="h-3.5 w-3.5" />
             )}
-            {expanded ? "Fechar detalhes" : "Revisar item"}
+            {expanded ? "Fechar detalhes" : "Abrir revisão"}
           </button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
+            Sugestão do sistema
+          </p>
+          <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
+            {item.suggestion.matchedSeriesTitle || "Sem correspondência dominante"}
+          </p>
+          <p className="mt-1 text-xs text-[var(--color-textDim)]">
+            {item.suggestion.confidenceScore != null
+              ? `Score ${Math.round(item.suggestion.confidenceScore)}`
+              : "Score não informado"}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
+            Destino atual
+          </p>
+          <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
+            {destinationSummary}
+          </p>
+          <p className="mt-1 text-xs text-[var(--color-textDim)]">
+            {item.plan.decision
+              ? `Decisão ${item.plan.decision}`
+              : "Ainda sem decisão final"}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
+            Metadados finais
+          </p>
+          <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
+            Cap. {item.plan.chapterNumber ?? "—"} · Vol. {item.plan.volume ?? "—"}
+          </p>
+          <p className="mt-1 text-xs text-[var(--color-textDim)]">
+            Ano {item.plan.year ?? "—"} · {item.plan.isOneShot ? "One-shot" : "Serializado"}
+          </p>
         </div>
       </div>
 
@@ -301,6 +377,19 @@ export function UploadItemCard({
         </div>
       )}
 
+      {item.error?.message && (
+        <div className="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-100">
+          <p className="font-medium">Erro do item</p>
+          <p className="mt-1 text-xs">{item.error.message}</p>
+        </div>
+      )}
+
+      {disabledReason && (
+        <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-3 text-sm text-[var(--color-textDim)]">
+          {disabledReason}
+        </div>
+      )}
+
       {expanded && (
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
           <form className="space-y-4" onSubmit={(event) => void saveChanges(event)}>
@@ -308,10 +397,10 @@ export function UploadItemCard({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/75">
-                    Destino
+                    Decisão manual
                   </p>
                   <h4 className="mt-1 text-sm font-semibold text-[var(--color-textMain)]">
-                    Decisão manual obrigatória
+                    Confirme ou substitua a sugestão
                   </h4>
                 </div>
                 {item.plan.selectionConfirmed && (
@@ -329,11 +418,12 @@ export function UploadItemCard({
                       key={option}
                       type="button"
                       onClick={() => setDecision(option)}
+                      disabled={disabled}
                       className={`rounded-2xl border px-3 py-3 text-left transition-colors ${
                         decision === option
                           ? "border-[var(--color-primary)]/35 bg-[var(--color-primary)]/10 text-[var(--color-textMain)]"
                           : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
-                      }`}
+                      } disabled:opacity-50`}
                     >
                       <p className="text-sm font-medium">
                         {option === "EXISTING_SERIES"
@@ -344,15 +434,37 @@ export function UploadItemCard({
                       </p>
                       <p className="mt-1 text-xs opacity-80">
                         {option === "EXISTING_SERIES"
-                          ? "Vincula manualmente a uma série já existente."
+                          ? "Vincule manualmente a uma série já cadastrada."
                           : option === "NEW_SERIES"
-                            ? "Confirma um novo título canônico."
-                            : "Mantém o item fora do processamento."}
+                            ? "Confirme um novo título canônico."
+                            : "Mantenha o item fora do processamento."}
                       </p>
                     </button>
                   ),
                 )}
               </div>
+
+              {topCandidates.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs text-[var(--color-textDim)]">
+                    Candidatos rápidos sugeridos
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {topCandidates.map((candidate) => (
+                      <button
+                        key={`${candidate.normalizedTitle}-${candidate.matchedSeriesId}`}
+                        type="button"
+                        onClick={() => applyCandidate(candidate)}
+                        disabled={disabled}
+                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07] disabled:opacity-50"
+                      >
+                        <Sparkles className="h-3.5 w-3.5 text-[var(--color-primary)]" />
+                        {resolveCandidateTitle(candidate)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {decision === "EXISTING_SERIES" && (
                 <div className="mt-4 space-y-3">
@@ -366,36 +478,36 @@ export function UploadItemCard({
                         type="text"
                         value={seriesQuery}
                         onChange={(event) => setSeriesQuery(event.target.value)}
-                        className="w-full rounded-2xl border border-white/8 bg-white/[0.03] py-2.5 pl-10 pr-4 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                        disabled={disabled}
+                        className="w-full rounded-2xl border border-white/8 bg-white/[0.03] py-2.5 pl-10 pr-4 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                         placeholder="Busque pelo título da série..."
                       />
                     </div>
                   </label>
 
-                  <div className="grid gap-2">
-                    {item.suggestion.matchedSeriesId &&
-                      item.suggestion.matchedSeriesTitle && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTargetSeriesId(item.suggestion.matchedSeriesId || "");
-                            setSelectedSeriesTitle(
-                              item.suggestion.matchedSeriesTitle || "",
-                            );
-                            setSeriesQuery(item.suggestion.matchedSeriesTitle || "");
-                          }}
-                          className="flex items-center justify-between rounded-2xl border border-[var(--color-primary)]/20 bg-[var(--color-primary)]/10 px-3 py-2 text-sm text-[var(--color-textMain)]"
-                        >
-                          <span className="flex items-center gap-2">
-                            <Sparkles className="h-3.5 w-3.5 text-[var(--color-primary)]" />
-                            Confirmar sugestão: {item.suggestion.matchedSeriesTitle}
-                          </span>
-                          <span className="text-xs text-[var(--color-textDim)]">
-                            score {Math.round(item.suggestion.confidenceScore)}
-                          </span>
-                        </button>
-                      )}
+                  {item.suggestion.matchedSeriesId &&
+                    item.suggestion.matchedSeriesTitle && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTargetSeriesId(item.suggestion.matchedSeriesId || "");
+                          setSelectedSeriesTitle(item.suggestion.matchedSeriesTitle || "");
+                          setSeriesQuery(item.suggestion.matchedSeriesTitle || "");
+                        }}
+                        disabled={disabled}
+                        className="flex items-center justify-between rounded-2xl border border-[var(--color-primary)]/20 bg-[var(--color-primary)]/10 px-3 py-2 text-sm text-[var(--color-textMain)] disabled:opacity-50"
+                      >
+                        <span className="flex items-center gap-2">
+                          <Sparkles className="h-3.5 w-3.5 text-[var(--color-primary)]" />
+                          Aplicar sugestão principal
+                        </span>
+                        <span className="text-xs text-[var(--color-textDim)]">
+                          {item.suggestion.matchedSeriesTitle}
+                        </span>
+                      </button>
+                    )}
 
+                  <div className="grid gap-2">
                     {seriesSearch?.items?.map((series) => (
                       <button
                         key={series.id}
@@ -405,11 +517,12 @@ export function UploadItemCard({
                           setSelectedSeriesTitle(series.title);
                           setSeriesQuery(series.title);
                         }}
+                        disabled={disabled}
                         className={`rounded-2xl border px-3 py-2 text-left transition-colors ${
                           targetSeriesId === series.id
                             ? "border-emerald-500/25 bg-emerald-500/10 text-[var(--color-textMain)]"
                             : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
-                        }`}
+                        } disabled:opacity-50`}
                       >
                         <p className="text-sm font-medium">{series.title}</p>
                         <p className="mt-1 text-xs opacity-80">{series.id}</p>
@@ -434,7 +547,8 @@ export function UploadItemCard({
                     type="text"
                     value={newSeriesTitle}
                     onChange={(event) => setNewSeriesTitle(event.target.value)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                    disabled={disabled}
+                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                     placeholder="Digite o título definitivo..."
                   />
                 </label>
@@ -443,7 +557,7 @@ export function UploadItemCard({
 
             <section className="rounded-3xl border border-white/8 bg-black/10 p-4">
               <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/75">
-                Capítulo e metadados
+                Ajustes finais
               </p>
 
               <div className="mt-4 grid gap-3 md:grid-cols-4">
@@ -456,7 +570,8 @@ export function UploadItemCard({
                     step="0.1"
                     value={chapterNumber}
                     onChange={(event) => setChapterNumber(event.target.value)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                    disabled={disabled}
+                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                   />
                 </label>
                 <label className="block">
@@ -467,7 +582,8 @@ export function UploadItemCard({
                     type="number"
                     value={volume}
                     onChange={(event) => setVolume(event.target.value)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                    disabled={disabled}
+                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                   />
                 </label>
                 <label className="block">
@@ -478,7 +594,8 @@ export function UploadItemCard({
                     type="number"
                     value={year}
                     onChange={(event) => setYear(event.target.value)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                    disabled={disabled}
+                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                   />
                 </label>
                 <label className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5">
@@ -486,6 +603,7 @@ export function UploadItemCard({
                     type="checkbox"
                     checked={isOneShot}
                     onChange={(event) => setIsOneShot(event.target.checked)}
+                    disabled={disabled}
                     className="rounded border-white/15 bg-transparent"
                   />
                   <span className="text-sm text-[var(--color-textMain)]">
@@ -503,7 +621,8 @@ export function UploadItemCard({
                     type="text"
                     value={author}
                     onChange={(event) => setAuthor(event.target.value)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                    disabled={disabled}
+                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                   />
                 </label>
                 <label className="block">
@@ -514,7 +633,8 @@ export function UploadItemCard({
                     type="text"
                     value={artist}
                     onChange={(event) => setArtist(event.target.value)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                    disabled={disabled}
+                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                   />
                 </label>
               </div>
@@ -528,7 +648,8 @@ export function UploadItemCard({
                     type="text"
                     value={status}
                     onChange={(event) => setStatus(event.target.value)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                    disabled={disabled}
+                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                   />
                 </label>
                 <label className="block">
@@ -539,7 +660,8 @@ export function UploadItemCard({
                     type="text"
                     value={tagsInput}
                     onChange={(event) => setTagsInput(event.target.value)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                    disabled={disabled}
+                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                     placeholder="ação, fantasia, clássico"
                   />
                 </label>
@@ -553,7 +675,8 @@ export function UploadItemCard({
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   rows={4}
-                  className="w-full rounded-[22px] border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                  disabled={disabled}
+                  className="w-full rounded-[22px] border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                 />
               </label>
             </section>
@@ -569,7 +692,7 @@ export function UploadItemCard({
                 ) : (
                   <CheckCircle2 className="h-4 w-4" />
                 )}
-                Confirmar decisão do item
+                Salvar revisão do item
               </button>
             </div>
           </form>
@@ -581,13 +704,13 @@ export function UploadItemCard({
               </p>
 
               <div className="mt-4 space-y-2">
-                {item.suggestion.candidates.slice(0, 3).map((candidate) => (
+                {item.suggestion.candidates.slice(0, 5).map((candidate) => (
                   <div
                     key={`${candidate.normalizedTitle}-${candidate.matchedSeriesId || "new"}`}
                     className="rounded-2xl border border-white/8 bg-white/[0.03] p-3"
                   >
                     <p className="text-sm font-medium text-[var(--color-textMain)]">
-                      {candidate.matchedSeriesTitle || candidate.normalizedTitle}
+                      {resolveCandidateTitle(candidate)}
                     </p>
                     <p className="mt-1 text-xs text-[var(--color-textDim)]">
                       Evidência {Math.round(candidate.evidenceScore)} · score total{" "}
@@ -640,35 +763,37 @@ export function UploadItemCard({
               </div>
             </section>
 
-            {(item.error?.message || item.completedAt || item.processedAt) && (
-              <section className="rounded-3xl border border-white/8 bg-black/10 p-4">
-                <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/75">
-                  Resultado
-                </p>
-                <dl className="mt-4 grid gap-3 text-sm">
-                  <div>
-                    <dt className="text-[var(--color-textDim)]">Processado em</dt>
-                    <dd className="mt-1 text-[var(--color-textMain)]">
-                      {formatDateTime(item.processedAt || item.completedAt)}
-                    </dd>
+            <section className="rounded-3xl border border-white/8 bg-black/10 p-4">
+              <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/75">
+                Resultado e histórico
+              </p>
+              <div className="mt-4 space-y-2 text-sm text-[var(--color-textDim)]">
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                  Aprovação: <span className="text-[var(--color-textMain)]">{item.approval.status}</span>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                  Processado em {formatDateTime(item.processedAt || item.completedAt || item.updatedAt)}
+                </div>
+                {item.result.seriesId && (
+                  <Link
+                    href={`/series/${item.result.seriesId}`}
+                    className="block rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 transition-colors hover:bg-emerald-500/15"
+                  >
+                    Abrir série resultante
+                  </Link>
+                )}
+                {item.result.queueJobId && (
+                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs">
+                    Job: {item.result.queueJobId}
                   </div>
-                  {item.result.seriesTitle && (
-                    <div>
-                      <dt className="text-[var(--color-textDim)]">Série final</dt>
-                      <dd className="mt-1 text-[var(--color-textMain)]">
-                        {item.result.seriesTitle}
-                      </dd>
-                    </div>
-                  )}
-                  {item.error?.message && (
-                    <div>
-                      <dt className="text-[var(--color-textDim)]">Erro atual</dt>
-                      <dd className="mt-1 text-rose-200">{item.error.message}</dd>
-                    </div>
-                  )}
-                </dl>
-              </section>
-            )}
+                )}
+                {item.approval.reason && (
+                  <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                    {item.approval.reason}
+                  </div>
+                )}
+              </div>
+            </section>
           </aside>
         </div>
       )}

@@ -2,8 +2,9 @@
 
 import type { UploadSessionSummary } from "@/types/upload-workflow";
 import {
-  SESSION_STATUS_META,
+  NEXT_ACTION_META,
   TONE_STYLES,
+  WORKFLOW_STATE_META,
   formatDateTime,
   getSourceLabel,
 } from "@/lib/upload-workflow";
@@ -12,6 +13,15 @@ interface UploadSessionListProps {
   sessions: UploadSessionSummary[];
   activeSessionId: string | null;
   onSelect: (sessionId: string) => void;
+}
+
+function getResolvedCount(session: UploadSessionSummary): number {
+  return (
+    session.counts.completed +
+    session.counts.skipped +
+    session.counts.failed +
+    session.counts.rejected
+  );
 }
 
 export function UploadSessionList({
@@ -31,8 +41,12 @@ export function UploadSessionList({
   return (
     <div className="grid gap-3">
       {sessions.map((session) => {
-        const status = SESSION_STATUS_META[session.status];
+        const stateMeta = WORKFLOW_STATE_META[session.workflow.state];
+        const nextActionMeta = NEXT_ACTION_META[session.workflow.nextAction];
         const isActive = activeSessionId === session.id;
+        const total = session.counts.total || 0;
+        const resolved = getResolvedCount(session);
+        const progress = total > 0 ? Math.round((resolved / total) * 100) : 0;
 
         return (
           <button
@@ -55,11 +69,31 @@ export function UploadSessionList({
                   {formatDateTime(session.updatedAt)}
                 </p>
               </div>
-              <span
-                className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${TONE_STYLES[status.tone]}`}
-              >
-                {status.label}
-              </span>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${TONE_STYLES[stateMeta.tone]}`}
+                >
+                  {stateMeta.label}
+                </span>
+                {isActive && (
+                  <span className="inline-flex items-center rounded-full border border-[var(--color-primary)]/25 bg-[var(--color-primary)]/12 px-2.5 py-1 text-[11px] font-medium text-[var(--color-primary)]">
+                    Ativa
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-white/8 bg-black/10 p-3">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
+                Próxima ação
+              </p>
+              <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
+                {nextActionMeta.label}
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                {nextActionMeta.description}
+              </p>
             </div>
 
             <div className="mt-4 grid gap-2 text-xs text-[var(--color-textDim)] sm:grid-cols-4">
@@ -76,15 +110,15 @@ export function UploadSessionList({
                   Revisão
                 </p>
                 <p className="mt-1 text-sm font-medium text-[var(--color-textMain)]">
-                  {session.counts.reviewRequired}
+                  {session.workflow.counts.reviewRequired}
                 </p>
               </div>
               <div>
                 <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
-                  Em fila
+                  Confirmáveis
                 </p>
                 <p className="mt-1 text-sm font-medium text-[var(--color-textMain)]">
-                  {session.counts.queued + session.counts.processing}
+                  {session.workflow.counts.confirmable}
                 </p>
               </div>
               <div>
@@ -92,10 +126,29 @@ export function UploadSessionList({
                   Falhas
                 </p>
                 <p className="mt-1 text-sm font-medium text-[var(--color-textMain)]">
-                  {session.counts.failed + session.counts.rejected}
+                  {session.workflow.counts.failed}
                 </p>
               </div>
             </div>
+
+            <div className="mt-4">
+              <div className="flex items-center justify-between gap-3 text-[11px] text-[var(--color-textDim)]">
+                <span>Progresso resolvido</span>
+                <span>{progress}%</span>
+              </div>
+              <div className="mt-2 h-2 rounded-full bg-white/8">
+                <div
+                  className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+
+            {session.expiresAt && !session.workflow.isTerminal && (
+              <p className="mt-3 text-xs text-[var(--color-textDim)]">
+                Expira em {formatDateTime(session.expiresAt)}
+              </p>
+            )}
 
             {session.lastError?.message && (
               <p className="mt-3 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">

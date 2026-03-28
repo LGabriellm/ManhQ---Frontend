@@ -1,6 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  resolveDraftWorkflow,
+  resolveSessionWorkflow,
+  shouldPollWorkflow,
+} from "@/lib/upload-workflow";
 import { uploadWorkflowService } from "@/services/upload-workflow.service";
 import type {
   BulkUpdateUploadDraftRequest,
@@ -9,9 +14,14 @@ import type {
   GoogleDriveNodesParams,
   GoogleDriveStageRequest,
   UpdateUploadDraftItemRequest,
-  UploadSource,
+  UploadDraft,
+  UploadSessionDetail,
   UploadSessionStatus,
+  UploadSource,
 } from "@/types/upload-workflow";
+
+const ACTIVE_WORKFLOW_POLL_INTERVAL_MS = 4000;
+const SESSION_LIST_POLL_INTERVAL_MS = 15000;
 
 const uploadWorkflowKeys = {
   all: ["upload-workflow"] as const,
@@ -36,6 +46,47 @@ const uploadWorkflowKeys = {
     maxFiles?: number;
   }) => [...uploadWorkflowKeys.all, "google-drive", "preview", params] as const,
 };
+
+function shouldPollSessionList(
+  sessions:
+    | Array<{
+        workflow?: UploadSessionDetail["workflow"];
+        status: UploadSessionStatus;
+      }>
+    | undefined,
+): boolean {
+  return Boolean(
+    sessions?.some((session) =>
+      shouldPollWorkflow(
+        resolveSessionWorkflow({
+          status: session.status,
+          workflow: session.workflow,
+        }),
+      ),
+    ),
+  );
+}
+
+function hydrateDraft(
+  queryClient: ReturnType<typeof useQueryClient>,
+  source: UploadSource,
+  draft: UploadDraft,
+) {
+  queryClient.setQueryData(uploadWorkflowKeys.draft(source, draft.id), {
+    success: true,
+    draft,
+  });
+}
+
+function hydrateSession(
+  queryClient: ReturnType<typeof useQueryClient>,
+  session: UploadSessionDetail,
+) {
+  queryClient.setQueryData(uploadWorkflowKeys.session(session.id), {
+    success: true,
+    session,
+  });
+}
 
 async function invalidateWorkflowQueries(
   queryClient: ReturnType<typeof useQueryClient>,
@@ -68,7 +119,10 @@ export function useUploadSessions(params?: {
     queryKey: uploadWorkflowKeys.sessions(params),
     queryFn: () => uploadWorkflowService.getSessions(params),
     staleTime: 1000 * 10,
-    refetchInterval: 1000 * 15,
+    refetchInterval: (query) =>
+      shouldPollSessionList(query.state.data?.sessions)
+        ? SESSION_LIST_POLL_INTERVAL_MS
+        : false,
   });
 }
 
@@ -77,8 +131,17 @@ export function useUploadSession(sessionId: string, enabled = true) {
     queryKey: uploadWorkflowKeys.session(sessionId),
     queryFn: () => uploadWorkflowService.getSession(sessionId),
     enabled: enabled && !!sessionId,
-    staleTime: 1000 * 5,
-    refetchInterval: 1000 * 8,
+    staleTime: 1000 * 2,
+    refetchInterval: (query) => {
+      const session = query.state.data?.session;
+      if (!session) {
+        return false;
+      }
+
+      return shouldPollWorkflow(resolveSessionWorkflow(session))
+        ? ACTIVE_WORKFLOW_POLL_INTERVAL_MS
+        : false;
+    },
   });
 }
 
@@ -92,7 +155,16 @@ export function useUploadDraft(
     queryFn: () => uploadWorkflowService.getDraft(source, draftId),
     enabled: enabled && !!draftId,
     staleTime: 1000 * 2,
-    refetchInterval: 1000 * 4,
+    refetchInterval: (query) => {
+      const draft = query.state.data?.draft;
+      if (!draft) {
+        return false;
+      }
+
+      return shouldPollWorkflow(resolveDraftWorkflow(draft))
+        ? ACTIVE_WORKFLOW_POLL_INTERVAL_MS
+        : false;
+    },
   });
 }
 
@@ -195,7 +267,8 @@ export function useBulkUpdateUploadDraft() {
       draftId: string;
       data: BulkUpdateUploadDraftRequest;
     }) => uploadWorkflowService.bulkUpdateDraft(source, draftId, data),
-    onSuccess: async (_result, variables) => {
+    onSuccess: async (result, variables) => {
+      hydrateDraft(queryClient, variables.source, result.draft);
       await invalidateWorkflowQueries(
         queryClient,
         variables.draftId,
@@ -219,7 +292,8 @@ export function useConfirmUploadDraft() {
       idempotencyKey?: string;
     }) =>
       uploadWorkflowService.confirmDraft(source, draftId, idempotencyKey),
-    onSuccess: async (_result, variables) => {
+    onSuccess: async (result, variables) => {
+      hydrateSession(queryClient, result.session);
       await invalidateWorkflowQueries(
         queryClient,
         variables.draftId,
@@ -256,6 +330,7 @@ export function useRetryUploadItem() {
   return useMutation({
     mutationFn: (itemId: string) => uploadWorkflowService.retryItem(itemId),
     onSuccess: async (result) => {
+      hydrateSession(queryClient, result.session);
       await invalidateWorkflowQueries(
         queryClient,
         result.session.id,
@@ -270,13 +345,17 @@ export function useGoogleDriveStatus(enabled = true) {
     queryKey: uploadWorkflowKeys.googleDriveStatus(),
     queryFn: () => uploadWorkflowService.getGoogleDriveStatus(),
     enabled,
-    staleTime: 1000 * 15,
+    staleTime: 1000 * 10,
   });
 }
 
 export function useGoogleDriveAuthUrl() {
   return useMutation({
-    mutationFn: () => uploadWorkflowService.getGoogleDriveAuthUrl(),
+    mutationFn: (params?: {
+      returnUrl?: string;
+      intent?: string;
+      draftId?: string;
+    }) => uploadWorkflowService.getGoogleDriveAuthUrl(params),
   });
 }
 
@@ -343,6 +422,21 @@ export function useGoogleDrivePreview(params: {
   });
 }
 
+export function useGoogleDrivePreviewRequest() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      folderId: string;
+      recursive?: boolean;
+      maxFiles?: number;
+    }) => uploadWorkflowService.getGoogleDrivePreview(params),
+    onSuccess: async (result, variables) => {
+      queryClient.setQueryData(uploadWorkflowKeys.googleDrivePreview(variables), result);
+    },
+  });
+}
+
 export function useStageGoogleDrive() {
   const queryClient = useQueryClient();
 
@@ -354,10 +448,11 @@ export function useStageGoogleDrive() {
       data: GoogleDriveStageRequest;
       idempotencyKey?: string;
     }) => uploadWorkflowService.stageGoogleDrive(data, idempotencyKey),
-    onSuccess: () =>
-      queryClient.invalidateQueries({
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
         queryKey: uploadWorkflowKeys.sessions(),
-      }),
+      });
+    },
   });
 }
 

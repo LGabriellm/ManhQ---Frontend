@@ -3,6 +3,7 @@ export type UploadSource = "LOCAL" | "GOOGLE_DRIVE";
 export type UploadSessionStatus =
   | "ANALYZING"
   | "READY_FOR_REVIEW"
+  | "READY_TO_CONFIRM"
   | "APPROVAL_PENDING"
   | "PROCESSING"
   | "COMPLETED"
@@ -10,6 +11,36 @@ export type UploadSessionStatus =
   | "FAILED"
   | "CANCELED"
   | "EXPIRED";
+
+export type UploadWorkflowState = UploadSessionStatus;
+
+export type UploadWorkflowNextAction =
+  | "POLL_ANALYSIS"
+  | "REVIEW_ITEMS"
+  | "CONFIRM_UPLOAD"
+  | "WAIT_APPROVAL"
+  | "POLL_PROCESSING"
+  | "RETRY_FAILED_ITEMS"
+  | "START_NEW_UPLOAD"
+  | "DONE";
+
+export interface UploadWorkflowCounts {
+  pendingAnalysis: number;
+  reviewRequired: number;
+  confirmable: number;
+  failed: number;
+  alreadyHandled: number;
+}
+
+export interface UploadWorkflow {
+  state: UploadWorkflowState;
+  nextAction: UploadWorkflowNextAction;
+  canEdit: boolean;
+  canConfirm: boolean;
+  isTerminal: boolean;
+  submitted: boolean;
+  counts: UploadWorkflowCounts;
+}
 
 export type UploadItemStatus =
   | "RECEIVED"
@@ -79,6 +110,7 @@ export interface UploadSessionSummary {
   id: string;
   source: UploadSource;
   status: UploadSessionStatus;
+  workflow: UploadWorkflow;
   inputName: string | null;
   metadata: UploadSessionMetadata;
   expiresAt: string | null;
@@ -131,6 +163,7 @@ export interface UploadDraft {
   createdAt: number;
   expiresAt: number | null;
   sessionStatus: UploadSessionStatus;
+  workflow: UploadWorkflow;
   items: UploadItem[];
   rejected: UploadRejectedItem[];
   processing: {
@@ -348,12 +381,27 @@ export interface UploadDraftConfirmResponse {
     filename: string;
     reason: string;
   }>;
+  alreadyHandled: Array<{
+    itemId: string;
+    filename: string;
+    queueState?:
+      | "APPROVAL_PENDING"
+      | "QUEUED"
+      | "PROCESSING"
+      | "COMPLETED"
+      | "FAILED"
+      | "SKIPPED"
+      | "REJECTED"
+      | "CANCELED";
+  }>;
   skipped: Array<{
     itemId: string;
     filename: string;
   }>;
+  noOp: boolean;
   totals: {
     accepted: number;
+    alreadyHandled: number;
     rejected: number;
     skipped: number;
   };
@@ -370,7 +418,7 @@ export interface StageLocalUploadResponse {
   draftId: string;
   status: UploadSessionStatus;
   expiresAt: string | null;
-  session: Pick<UploadSessionSummary, "id" | "status">;
+  session: Pick<UploadSessionSummary, "id" | "status" | "workflow">;
   nextStep: string;
 }
 
@@ -378,7 +426,7 @@ export interface UploadSessionCreatedResponse {
   success: true;
   message: string;
   sessionId: string;
-  session: Pick<UploadSessionSummary, "id" | "status">;
+  session: Pick<UploadSessionSummary, "id" | "status" | "workflow">;
 }
 
 export interface GoogleDriveAccount {
@@ -389,6 +437,10 @@ export interface GoogleDriveAccount {
 
 export interface GoogleDriveAuthUrlResponse {
   url: string;
+  callbackMode?: string | null;
+  returnUrl?: string | null;
+  intent?: string | null;
+  draftId?: string | null;
 }
 
 export interface GoogleDriveStatusResponse {
@@ -400,6 +452,18 @@ export interface GoogleDriveCallbackResponse {
   success: true;
   connected: boolean;
   account?: GoogleDriveAccount;
+}
+
+export interface GoogleDriveCallbackMessage {
+  source: "google_drive_callback";
+  success: boolean;
+  connected: boolean;
+  account?: GoogleDriveAccount;
+  draftId?: string | null;
+  intent?: string | null;
+  nextAction?: "REFETCH_DRAFT" | "REFRESH_GOOGLE_DRIVE_STATUS";
+  error?: string;
+  errorCode?: string;
 }
 
 export interface GoogleDriveDisconnectResponse {

@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Search, Flame, Play, ChevronRight, WifiOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { MangaCard } from "@/components/MangaCard";
@@ -68,18 +70,46 @@ function RowTitle({ label, href, accentColor = "#e50914" }: RowTitleProps) {
 
 // ─── Página ──────────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const {
     data: discover,
     isLoading: discoverLoading,
     error: discoverError,
     refetch: refetchDiscover,
-  } = useDiscover();
+  } = useDiscover({ enabled: isAuthenticated });
   const { data: continueReading, isLoading: continueLoading } =
     useContinueReading({ limit: 5 });
 
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.replace("/auth/login");
+    }
+  }, [authLoading, isAuthenticated, router]);
+
   const firstName = user?.name?.split(" ")[0] ?? "Leitor";
   const featured = discover?.mostViewed[0];
+
+  if (authLoading || !isAuthenticated) {
+    return (
+      <main className="min-h-screen bg-background pb-28">
+        <div className="pt-5 space-y-8">
+          <div className="mx-4 h-52 rounded-3xl bg-surface/60 animate-pulse" />
+          <div className="space-y-2.5">
+            <ContinueSkeleton />
+            <ContinueSkeleton />
+          </div>
+          <section>
+            <HorizontalScroll>
+              {[1, 2, 3, 4, 5].map((i) => (
+                <CardSkeleton key={i} />
+              ))}
+            </HorizontalScroll>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen pb-28 bg-background">

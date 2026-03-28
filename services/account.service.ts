@@ -17,20 +17,20 @@ import type {
 export const accountService = {
   // Obter dados completos da conta + preferências
   async getAccount(): Promise<AccountResponse> {
-    const response = await api.get<AccountResponse>("/v1/account");
+    const response = await api.get<AccountResponse>("/account");
     return response.data;
   },
 
   // Obter somente preferências
   async getPreferences(): Promise<UserPreferences> {
-    const response = await api.get<UserPreferences>("/v1/account/preferences");
+    const response = await api.get<UserPreferences>("/account/preferences");
     return response.data;
   },
 
   // Verificar disponibilidade de username
   async checkUsername(username: string): Promise<UsernameCheckResponse> {
     const response = await api.get<UsernameCheckResponse>(
-      "/v1/account/username/check",
+      "/account/username/check",
       { params: { username } },
     );
     return response.data;
@@ -41,7 +41,7 @@ export const accountService = {
     data: UpdateProfileRequest,
   ): Promise<UpdateProfileResponse> {
     const response = await api.patch<UpdateProfileResponse>(
-      "/v1/account/profile",
+      "/account/profile",
       data,
     );
     return response.data;
@@ -52,7 +52,7 @@ export const accountService = {
     data: UpdatePreferencesRequest,
   ): Promise<UpdatePreferencesResponse> {
     const response = await api.patch<UpdatePreferencesResponse>(
-      "/v1/account/preferences",
+      "/account/preferences",
       data,
     );
     return response.data;
@@ -64,7 +64,7 @@ export const accountService = {
   ): Promise<{ account: Pick<Account, "id" | "name" | "email" | "username"> }> {
     const response = await api.patch<{
       account: Pick<Account, "id" | "name" | "email" | "username">;
-    }>("/v1/account/security/email", data);
+    }>("/account/security/email", data);
     return response.data;
   },
 
@@ -73,7 +73,7 @@ export const accountService = {
     data: ChangePasswordRequest,
   ): Promise<{ success: boolean }> {
     const response = await api.patch<{ success: boolean }>(
-      "/v1/account/security/password",
+      "/account/security/password",
       data,
     );
     return response.data;
@@ -84,7 +84,7 @@ export const accountService = {
     const formData = new FormData();
     formData.append("avatar", file);
     const response = await api.post<AvatarUploadResponse>(
-      "/v1/account/avatar",
+      "/account/avatar",
       formData,
       { headers: { "Content-Type": "multipart/form-data" } },
     );
@@ -93,8 +93,11 @@ export const accountService = {
 
   // Remover avatar
   async removeAvatar(): Promise<AvatarRemoveResponse> {
-    const response =
-      await api.delete<AvatarRemoveResponse>("/v1/account/avatar");
+    const response = await api.delete<AvatarRemoveResponse>("/account/avatar");
     return response.data;
+  },
+
+  getAvatarUrl(userId: string): string {
+    return `/api/account/avatar/${userId}`;
   },
 };

@@ -8,15 +8,46 @@ export interface DiscoverResponse {
   mostViewed: Series[];
 }
 
+function normalizeDiscoverPayload(payload: unknown): DiscoverResponse {
+  if (!payload || typeof payload !== "object") {
+    return {
+      recentlyAdded: [],
+      recentlyUpdated: [],
+      mostViewed: [],
+    };
+  }
+
+  const rawPayload = payload as {
+    recentlyAdded?: Series[];
+    recentlyUpdated?: Series[];
+    mostViewed?: Series[];
+    sections?: {
+      recentlyAdded?: Series[];
+      recentlyUpdated?: Series[];
+      mostViewed?: Series[];
+    };
+  };
+
+  const source = rawPayload.sections ?? rawPayload;
+
+  return {
+    recentlyAdded: normalizeCoverList(
+      Array.isArray(source.recentlyAdded) ? source.recentlyAdded : [],
+    ),
+    recentlyUpdated: normalizeCoverList(
+      Array.isArray(source.recentlyUpdated) ? source.recentlyUpdated : [],
+    ),
+    mostViewed: normalizeCoverList(
+      Array.isArray(source.mostViewed) ? source.mostViewed : [],
+    ),
+  };
+}
+
 export const discoverService = {
   /** Retorna todos os carrosséis de uma vez */
   async getAll(): Promise<DiscoverResponse> {
-    const response = await api.get<DiscoverResponse>("/discover");
-    return {
-      recentlyAdded: normalizeCoverList(response.data.recentlyAdded),
-      recentlyUpdated: normalizeCoverList(response.data.recentlyUpdated),
-      mostViewed: normalizeCoverList(response.data.mostViewed),
-    };
+    const response = await api.get<unknown>("/discover");
+    return normalizeDiscoverPayload(response.data);
   },
 
   /** Séries adicionadas recentemente */

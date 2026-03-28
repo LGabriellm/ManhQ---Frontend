@@ -1,61 +1,61 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useRef, useState } from "react";
-import { useSeriesSearch } from "@/hooks/useApi";
-import { useMySubmissions } from "@/hooks/useAdmin";
-import { useAuth } from "@/contexts/AuthContext";
-import { GoogleDriveImportPanel } from "@/components/upload/GoogleDriveImportPanel";
-import { UploadItemCard } from "@/components/upload/UploadItemCard";
-import { UploadSessionList } from "@/components/upload/UploadSessionList";
-import {
-  useBulkUpdateUploadDraft,
-  useCancelUploadDraft,
-  useConfirmUploadDraft,
-  useRetryUploadItem,
-  useStageLocalUpload,
-  useStageLocalUploadWithSeriesTitle,
-  useUpdateUploadDraftItem,
-  useUploadDraft,
-  useUploadSession,
-  useUploadSessions,
-  useUploadToExistingSeries,
-} from "@/hooks/useUploadWorkflow";
-import {
-  SESSION_STATUS_META,
-  TONE_STYLES,
-  countItemsFailed,
-  countItemsNeedingManualChoice,
-  formatDateTime,
-  getSessionProgress,
-  getSourceLabel,
-  isReviewPhase,
-} from "@/lib/upload-workflow";
-import type {
-  UploadDraft,
-  UploadSessionSummary,
-} from "@/types/upload-workflow";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
   ArrowRight,
   CheckCircle2,
   Clock,
-  FolderUp,
   Loader2,
   Search,
-  Upload,
 } from "lucide-react";
+import { GoogleDriveImportPanel } from "@/components/upload/GoogleDriveImportPanel";
+import { LocalUploadEntryPanel } from "@/components/upload/LocalUploadEntryPanel";
+import { UploadItemCard } from "@/components/upload/UploadItemCard";
+import { UploadSessionList } from "@/components/upload/UploadSessionList";
+import { useAuth } from "@/contexts/AuthContext";
+import { useSeriesSearch } from "@/hooks/useApi";
+import { useMySubmissions } from "@/hooks/useAdmin";
+import { useGoogleDriveReconnectRecovery } from "@/hooks/useGoogleDriveReconnectRecovery";
+import {
+  useBulkUpdateUploadDraft,
+  useCancelUploadDraft,
+  useConfirmUploadDraft,
+  useRetryUploadItem,
+  useUpdateUploadDraftItem,
+  useUploadDraft,
+  useUploadSession,
+  useUploadSessions,
+} from "@/hooks/useUploadWorkflow";
+import {
+  NEXT_ACTION_META,
+  SESSION_STATUS_META,
+  TONE_STYLES,
+  WORKFLOW_STATE_META,
+  countItemsFailed,
+  countItemsNeedingManualChoice,
+  formatDateTime,
+  getSessionProgress,
+  getSourceLabel,
+  getWorkflowSummary,
+  itemCanBeEdited,
+  workflowNeedsDraft,
+} from "@/lib/upload-workflow";
+import {
+  getUploadErrorMessage,
+  isUploadConflictError,
+  isUploadMissingError,
+} from "@/lib/uploadErrors";
+import type {
+  UpdateUploadDraftItemRequest,
+  UploadDraft,
+  UploadItem,
+  UploadSessionSummary,
+} from "@/types/upload-workflow";
 
-const ACCEPTED_EXTENSIONS = [".cbz", ".cbr", ".pdf", ".epub", ".zip"];
 const EMPTY_SESSIONS: UploadSessionSummary[] = [];
-
-type LocalEntryMode = "review" | "existing" | "new";
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+const ACTIVE_SESSION_STORAGE_KEY = "manhq-upload-active-session-id";
 
 function createIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -65,423 +65,94 @@ function createIdempotencyKey(): string {
   return `${Date.now()}-${Math.random()}`;
 }
 
-function filterAcceptedFiles(files: File[]) {
-  const accepted = files.filter((file) =>
-    ACCEPTED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext)),
-  );
-  const rejected = files.length - accepted.length;
-
-  return { accepted, rejected };
-}
-
-function extractFolderName(files: File[]): string | undefined {
-  const relativePath = files.find((file) => "webkitRelativePath" in file)?.webkitRelativePath;
-  if (!relativePath) {
-    return undefined;
+function getInitialActiveSessionId(): string | null {
+  if (typeof window === "undefined") {
+    return null;
   }
 
-  return relativePath.split("/").filter(Boolean)[0];
+  return window.localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
 }
 
-function LocalUploadEntryPanel({
-  onOpenSession,
-}: {
-  onOpenSession: (sessionId: string) => void;
-}) {
-  const [mode, setMode] = useState<LocalEntryMode>("review");
-  const [files, setFiles] = useState<File[]>([]);
-  const [newSeriesTitle, setNewSeriesTitle] = useState("");
-  const [selectedSeriesId, setSelectedSeriesId] = useState("");
-  const [selectedSeriesTitle, setSelectedSeriesTitle] = useState("");
-  const [seriesQuery, setSeriesQuery] = useState("");
-  const deferredSeriesQuery = useDeferredValue(seriesQuery.trim());
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const folderInputRef = useRef<HTMLInputElement | null>(null);
+function getDraftAnalysisProgress(draft: UploadDraft): number {
+  if (!draft.processing.totalReceived) {
+    return 0;
+  }
 
-  const searchResults = useSeriesSearch(deferredSeriesQuery, 1, 8);
-  const stageMutation = useStageLocalUpload();
-  const stageWithTitleMutation = useStageLocalUploadWithSeriesTitle();
-  const directExistingMutation = useUploadToExistingSeries();
-
-  const addFiles = (incoming: File[]) => {
-    const { accepted, rejected } = filterAcceptedFiles(incoming);
-
-    if (accepted.length === 0) {
-      toast.error("Nenhum arquivo compatível encontrado.");
-      return;
-    }
-
-    if (rejected > 0) {
-      toast.error(`${rejected} arquivo(s) ignorado(s) por formato não suportado.`);
-    }
-
-    setFiles((current) => {
-      const next = [...current];
-      accepted.forEach((file) => {
-        const exists = next.some(
-          (currentFile) =>
-            currentFile.name === file.name && currentFile.size === file.size,
-        );
-        if (!exists) {
-          next.push(file);
-        }
-      });
-      return next;
-    });
-  };
-
-  const handleSubmit = async () => {
-    if (files.length === 0) {
-      toast.error("Selecione ao menos um arquivo antes de continuar.");
-      return;
-    }
-
-    const folderName = extractFolderName(files);
-
-    try {
-      if (mode === "review") {
-        const result = await stageMutation.mutateAsync({
-          files,
-          folderName,
-        });
-        toast.success(result.nextStep);
-        onOpenSession(result.draftId);
-        setFiles([]);
-        return;
-      }
-
-      if (mode === "new") {
-        if (!newSeriesTitle.trim()) {
-          toast.error("Defina o título da nova série.");
-          return;
-        }
-
-        const result = await stageWithTitleMutation.mutateAsync({
-          files,
-          seriesTitle: newSeriesTitle.trim(),
-          folderName,
-        });
-        toast.success(result.nextStep);
-        onOpenSession(result.draftId);
-        setFiles([]);
-        return;
-      }
-
-      if (!selectedSeriesId) {
-        toast.error("Escolha a série de destino.");
-        return;
-      }
-
-      const result = await directExistingMutation.mutateAsync({
-        seriesId: selectedSeriesId,
-        files,
-      });
-      toast.success(result.message);
-      onOpenSession(result.sessionId);
-      setFiles([]);
-    } catch (error) {
-      const message =
-        (error as { message?: string })?.message ||
-        "Falha ao iniciar o fluxo de upload local";
-      toast.error(message);
-    }
-  };
-
-  const isSubmitting =
-    stageMutation.isPending ||
-    stageWithTitleMutation.isPending ||
-    directExistingMutation.isPending;
-  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
-
-  return (
-    <section className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-[var(--color-textDim)]/75">
-            Upload local
-          </p>
-          <h2 className="mt-2 text-xl font-semibold text-[var(--color-textMain)]">
-            Manual-first por padrão
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm text-[var(--color-textDim)]">
-            O backend pode sugerir destinos, mas o frontend só confirma a série
-            quando você escolhe explicitamente entre série existente, nova série
-            ou ignorar o item.
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-2 sm:grid-cols-3">
-        {([
-          ["review", "Enviar e revisar sugestões"],
-          ["existing", "Enviar direto para série existente"],
-          ["new", "Enviar como nova série"],
-        ] as const).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setMode(value)}
-            className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
-              mode === value
-                ? "border-[var(--color-primary)]/35 bg-[var(--color-primary)]/10 text-[var(--color-textMain)]"
-                : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
-            }`}
-          >
-            <p className="text-sm font-medium">{label}</p>
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-5 rounded-[28px] border border-dashed border-white/12 bg-black/10 p-6">
-        <div className="flex flex-col items-center justify-center gap-3 text-center">
-          <div className="rounded-3xl bg-[var(--color-primary)]/10 p-4 text-[var(--color-primary)]">
-            <Upload className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-[var(--color-textMain)]">
-              Selecione arquivos ou uma pasta inteira
-            </p>
-            <p className="mt-1 text-xs text-[var(--color-textDim)]">
-              Formatos aceitos: {ACCEPTED_EXTENSIONS.join(", ")}
-            </p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07]"
-            >
-              <Upload className="h-4 w-4" />
-              Selecionar arquivos
-            </button>
-            <button
-              type="button"
-              onClick={() => folderInputRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07]"
-            >
-              <FolderUp className="h-4 w-4" />
-              Selecionar pasta
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        multiple
-        accept={ACCEPTED_EXTENSIONS.join(",")}
-        onChange={(event) => {
-          if (event.target.files) {
-            addFiles(Array.from(event.target.files));
-            event.target.value = "";
-          }
-        }}
-        className="hidden"
-      />
-      <input
-        ref={(element) => {
-          folderInputRef.current = element;
-          if (element) {
-            element.setAttribute("webkitdirectory", "");
-            element.setAttribute("directory", "");
-          }
-        }}
-        type="file"
-        multiple
-        onChange={(event) => {
-          if (event.target.files) {
-            addFiles(Array.from(event.target.files));
-            event.target.value = "";
-          }
-        }}
-        className="hidden"
-      />
-
-      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
-        <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
-                Arquivos preparados
-              </p>
-              <p className="mt-1 text-sm text-[var(--color-textMain)]">
-                {files.length} arquivo(s) · {formatBytes(totalSize)}
-              </p>
-            </div>
-            {files.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setFiles([])}
-                className="text-xs text-[var(--color-textDim)] transition-colors hover:text-rose-300"
-              >
-                Limpar lista
-              </button>
-            )}
-          </div>
-
-          <div className="mt-4 max-h-60 space-y-2 overflow-y-auto">
-            {files.map((file, index) => (
-              <div
-                key={`${file.name}-${file.size}-${index}`}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-[var(--color-textMain)]">
-                    {file.name}
-                  </p>
-                  <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                    {formatBytes(file.size)}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))
-                  }
-                  className="text-xs text-[var(--color-textDim)] transition-colors hover:text-rose-300"
-                >
-                  Remover
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
-          <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
-            Destino manual
-          </p>
-
-          {mode === "existing" && (
-            <div className="mt-4 space-y-3">
-              <label className="block">
-                <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                  Buscar série existente
-                </span>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-textDim)]" />
-                  <input
-                    type="text"
-                    value={seriesQuery}
-                    onChange={(event) => setSeriesQuery(event.target.value)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] py-2.5 pl-10 pr-4 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
-                    placeholder="Busque a série..."
-                  />
-                </div>
-              </label>
-
-              <div className="grid gap-2">
-                {searchResults.data?.items.map((series) => (
-                  <button
-                    key={series.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedSeriesId(series.id);
-                      setSelectedSeriesTitle(series.title);
-                      setSeriesQuery(series.title);
-                    }}
-                    className={`rounded-2xl border px-3 py-2 text-left transition-colors ${
-                      selectedSeriesId === series.id
-                        ? "border-emerald-500/25 bg-emerald-500/10 text-[var(--color-textMain)]"
-                        : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
-                    }`}
-                  >
-                    <p className="text-sm font-medium">{series.title}</p>
-                    <p className="mt-1 text-xs opacity-80">{series.id}</p>
-                  </button>
-                ))}
-              </div>
-
-              {selectedSeriesTitle && (
-                <p className="text-xs text-emerald-200">
-                  Série escolhida: {selectedSeriesTitle}
-                </p>
-              )}
-            </div>
-          )}
-
-          {mode === "new" && (
-            <label className="mt-4 block">
-              <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                Título final da nova série
-              </span>
-              <input
-                type="text"
-                value={newSeriesTitle}
-                onChange={(event) => setNewSeriesTitle(event.target.value)}
-                className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
-                placeholder="Ex.: My New Series"
-              />
-            </label>
-          )}
-
-          <div className="mt-5 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm text-[var(--color-textDim)]">
-            {mode === "review"
-              ? "Sessão em stage: o backend analisa primeiro e você confirma o destino de cada item depois."
-              : mode === "existing"
-                ? "Destino já confirmado manualmente. O backend ainda analisa os arquivos, mas pode auto-submeter depois dessa escolha explícita."
-                : "O título final já fica pré-preenchido no plano, mas a sessão continua revisável antes da confirmação."}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => void handleSubmit()}
-            disabled={isSubmitting || files.length === 0}
-            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
-          >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ArrowRight className="h-4 w-4" />
-            )}
-            {mode === "review"
-              ? "Criar sessão de revisão"
-              : mode === "existing"
-                ? "Enviar para série existente"
-                : "Criar sessão com novo título"}
-          </button>
-        </div>
-      </div>
-    </section>
+  return Math.round(
+    (draft.processing.analyzedCount / draft.processing.totalReceived) * 100,
   );
+}
+
+function getItemDisabledReason(
+  item: UploadItem,
+  activeDraft: UploadDraft | null,
+): string | null {
+  if (!activeDraft) {
+    return "Este item está em modo de acompanhamento. Carregue um draft editável para revisar.";
+  }
+
+  if (!activeDraft.workflow.canEdit) {
+    if (activeDraft.workflow.canConfirm) {
+      return "A edição manual foi encerrada. O draft já está pronto para confirmação.";
+    }
+
+    if (activeDraft.workflow.isTerminal) {
+      return "O draft já foi finalizado e não aceita novas edições.";
+    }
+
+    return NEXT_ACTION_META[activeDraft.workflow.nextAction].description;
+  }
+
+  if (item.status !== "READY_FOR_REVIEW") {
+    return "Somente itens em READY_FOR_REVIEW continuam editáveis.";
+  }
+
+  return null;
 }
 
 export default function UploadsPage() {
   const { isAdmin, isEditor } = useAuth();
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(
+    getInitialActiveSessionId,
+  );
   const [bulkSeriesId, setBulkSeriesId] = useState("");
   const [bulkSeriesTitle, setBulkSeriesTitle] = useState("");
   const [bulkSeriesQuery, setBulkSeriesQuery] = useState("");
   const [bulkNewSeriesTitle, setBulkNewSeriesTitle] = useState("");
+  const handledMissingSelectionRef = useRef<string | null>(null);
   const deferredBulkSeriesQuery = useDeferredValue(bulkSeriesQuery.trim());
+
+  const { recoverGoogleDriveReconnect, isReconnectingGoogleDrive } =
+    useGoogleDriveReconnectRecovery();
 
   const sessionsQuery = useUploadSessions({ page: 1, limit: 12 });
   const sessions = sessionsQuery.data?.sessions ?? EMPTY_SESSIONS;
   const resolvedActiveSessionId = activeSessionId ?? sessions[0]?.id ?? null;
   const activeSummary =
     sessions.find((session) => session.id === resolvedActiveSessionId) || null;
+
   const activeSessionQuery = useUploadSession(
     resolvedActiveSessionId || "",
     Boolean(resolvedActiveSessionId),
   );
   const activeSession = activeSessionQuery.data?.session || null;
-  const activeSource =
-    activeSession?.source || activeSummary?.source || null;
-  const activeStatus =
-    activeSession?.status || activeSummary?.status || null;
+  const activeSource = activeSession?.source || activeSummary?.source || null;
+  const activeWorkflow =
+    activeSession?.workflow || activeSummary?.workflow || null;
   const shouldLoadDraft = Boolean(
     resolvedActiveSessionId &&
       activeSource &&
-      activeStatus &&
-      isReviewPhase(activeStatus),
+      activeWorkflow &&
+      workflowNeedsDraft(activeWorkflow),
   );
   const activeDraftQuery = useUploadDraft(
     activeSource || "LOCAL",
     resolvedActiveSessionId || "",
     shouldLoadDraft,
   );
-  const activeDraft = (activeDraftQuery.data as { draft?: UploadDraft } | undefined)?.draft || null;
+  const activeDraft =
+    (activeDraftQuery.data as { draft?: UploadDraft } | undefined)?.draft || null;
+  const workspaceWorkflow = activeDraft?.workflow || activeWorkflow || null;
 
   const updateDraftItemMutation = useUpdateUploadDraftItem();
   const bulkUpdateDraftMutation = useBulkUpdateUploadDraft();
@@ -491,20 +162,168 @@ export default function UploadsPage() {
   const submissionsQuery = useMySubmissions({ page: 1, limit: 5 });
 
   const bulkSeriesSearch = useSeriesSearch(deferredBulkSeriesQuery, 1, 6);
-
-  const activeItems = activeSession?.items || activeDraft?.items || [];
-  const reviewPendingCount = countItemsNeedingManualChoice(activeItems);
-  const failedItemsCount = countItemsFailed(activeItems);
-  const isReviewWorkspace = Boolean(activeDraft && activeSource && activeSessionId);
-  const sessionStatusMeta = activeStatus ? SESSION_STATUS_META[activeStatus] : null;
-  const progress =
+  const activeItems = activeDraft?.items || activeSession?.items || [];
+  const reviewPendingCount =
+    activeDraft?.workflow.counts.reviewRequired ||
+    workspaceWorkflow?.counts.reviewRequired ||
+    countItemsNeedingManualChoice(activeItems);
+  const failedItemsCount =
+    workspaceWorkflow?.counts.failed || countItemsFailed(activeItems);
+  const confirmableCount = workspaceWorkflow?.counts.confirmable || 0;
+  const pendingAnalysisCount = workspaceWorkflow?.counts.pendingAnalysis || 0;
+  const sessionProgress =
     activeSession && activeSession.items.length > 0 ? getSessionProgress(activeSession) : 0;
+  const draftProgress = activeDraft ? getDraftAnalysisProgress(activeDraft) : 0;
+  const workflowSummary = getWorkflowSummary(workspaceWorkflow);
+  const activeDraftCanEdit = activeDraft?.workflow.canEdit ?? false;
+  const activeDraftCanConfirm = activeDraft?.workflow.canConfirm ?? false;
+  const activeDraftWorkflowState = activeDraft?.workflow.state ?? null;
+  const roleSummary = isEditor && !isAdmin
+    ? "Você pode criar sessões, revisar sugestões, reconectar o Google Drive e acompanhar aprovações pendentes."
+    : "Sessões persistidas, revisão manual, callbacks do Google Drive e estados de processamento em um único workspace.";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (resolvedActiveSessionId) {
+      window.localStorage.setItem(
+        ACTIVE_SESSION_STORAGE_KEY,
+        resolvedActiveSessionId,
+      );
+      return;
+    }
+
+    window.localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+  }, [resolvedActiveSessionId]);
+
+  const clearActiveSelection = (message?: string) => {
+    setActiveSessionId(null);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    }
+    if (message) {
+      toast.error(message);
+    }
+  };
+
+  useEffect(() => {
+    const missingError =
+      (activeSessionQuery.error && isUploadMissingError(activeSessionQuery.error)
+        ? activeSessionQuery.error
+        : null) ||
+      (activeDraftQuery.error && isUploadMissingError(activeDraftQuery.error)
+        ? activeDraftQuery.error
+        : null);
+
+    if (!missingError || !resolvedActiveSessionId) {
+      return;
+    }
+
+    if (handledMissingSelectionRef.current === resolvedActiveSessionId) {
+      return;
+    }
+
+    handledMissingSelectionRef.current = resolvedActiveSessionId;
+    const timeoutId = window.setTimeout(() => {
+      clearActiveSelection(
+        "A sessão ou o draft não existe mais. Se necessário, inicie um novo upload.",
+      );
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    activeDraftQuery.error,
+    activeSessionQuery.error,
+    resolvedActiveSessionId,
+  ]);
+
+  const refreshActiveWorkspace = async () => {
+    await activeSessionQuery.refetch();
+    if (activeSource) {
+      await activeDraftQuery.refetch();
+    }
+    await sessionsQuery.refetch();
+  };
+
+  const ensureFreshDraft = async () => {
+    if (!activeSource || !resolvedActiveSessionId) {
+      return false;
+    }
+
+    const result = await activeDraftQuery.refetch();
+    return Boolean(result.data?.draft);
+  };
+
+  const handleRecoverableActionError = async ({
+    error,
+    intent,
+    retry,
+  }: {
+    error: unknown;
+    intent: string;
+    retry?: () => Promise<void>;
+  }) => {
+    if (isUploadConflictError(error)) {
+      await refreshActiveWorkspace();
+      toast.error(
+        "O draft mudou no backend. A tela foi atualizada com o estado mais recente.",
+      );
+      return true;
+    }
+
+    if (isUploadMissingError(error)) {
+      clearActiveSelection(
+        "O draft não está mais disponível. Reabra a sessão correta ou inicie um novo upload.",
+      );
+      return true;
+    }
+
+    if (activeSource === "GOOGLE_DRIVE") {
+      try {
+        const recovered = await recoverGoogleDriveReconnect({
+          error,
+          draftId: resolvedActiveSessionId,
+          intent,
+          onConnected: async () => {
+            await refreshActiveWorkspace();
+          },
+          retry,
+        });
+
+        if (recovered) {
+          toast.success("Google Drive reconectado. O fluxo foi retomado.");
+          return true;
+        }
+      } catch (reconnectError) {
+        toast.error(
+          getUploadErrorMessage(
+            reconnectError,
+            "Não foi possível restabelecer a conexão com Google Drive.",
+          ),
+        );
+        return true;
+      }
+    }
+
+    return false;
+  };
 
   const patchItem = async (
     itemId: string,
-    data: Parameters<typeof updateDraftItemMutation.mutateAsync>[0]["data"],
+    data: UpdateUploadDraftItemRequest,
+    allowRecovery = true,
   ) => {
-    if (!activeSource || !resolvedActiveSessionId) {
+    if (!activeSource || !resolvedActiveSessionId || !activeDraft?.workflow.canEdit) {
+      return;
+    }
+
+    const draftReady = await ensureFreshDraft();
+    if (!draftReady) {
+      toast.error("O draft não está disponível para edição no momento.");
       return;
     }
 
@@ -517,10 +336,22 @@ export default function UploadsPage() {
       });
       toast.success("Plano do item atualizado.");
     } catch (error) {
-      const message =
-        (error as { message?: string })?.message ||
-        "Falha ao atualizar o item da sessão.";
-      toast.error(message);
+      if (
+        allowRecovery &&
+        (await handleRecoverableActionError({
+          error,
+          intent: "google_drive_edit_draft_item",
+          retry: async () => {
+            await patchItem(itemId, data, false);
+          },
+        }))
+      ) {
+        return;
+      }
+
+      toast.error(
+        getUploadErrorMessage(error, "Falha ao atualizar o item da sessão."),
+      );
     }
   };
 
@@ -529,16 +360,19 @@ export default function UploadsPage() {
       await retryItemMutation.mutateAsync(itemId);
       toast.success("Item reenfileirado para nova tentativa.");
     } catch (error) {
-      const message =
-        (error as { message?: string })?.message ||
-        "Falha ao reenfileirar o item.";
-      toast.error(message);
+      toast.error(getUploadErrorMessage(error, "Falha ao reenfileirar o item."));
     }
   };
 
-  const applyBulkExistingSeries = async () => {
+  const applyBulkExistingSeries = async (allowRecovery = true) => {
     if (!activeSource || !resolvedActiveSessionId || !bulkSeriesId) {
       toast.error("Escolha uma série para aplicar em lote.");
+      return;
+    }
+
+    const draftReady = await ensureFreshDraft();
+    if (!draftReady) {
+      toast.error("O draft não está mais pronto para edição em lote.");
       return;
     }
 
@@ -550,18 +384,36 @@ export default function UploadsPage() {
           targetSeriesId: bulkSeriesId,
         },
       });
-      toast.success("Série existente aplicada a todos os itens do draft.");
+      toast.success("Série existente aplicada a todos os itens editáveis.");
     } catch (error) {
-      const message =
-        (error as { message?: string })?.message ||
-        "Falha ao aplicar a série em lote.";
-      toast.error(message);
+      if (
+        allowRecovery &&
+        (await handleRecoverableActionError({
+          error,
+          intent: "google_drive_bulk_existing_series",
+          retry: async () => {
+            await applyBulkExistingSeries(false);
+          },
+        }))
+      ) {
+        return;
+      }
+
+      toast.error(
+        getUploadErrorMessage(error, "Falha ao aplicar a série em lote."),
+      );
     }
   };
 
-  const applyBulkNewSeries = async () => {
+  const applyBulkNewSeries = async (allowRecovery = true) => {
     if (!activeSource || !resolvedActiveSessionId || !bulkNewSeriesTitle.trim()) {
       toast.error("Defina o novo título para aplicar em lote.");
+      return;
+    }
+
+    const draftReady = await ensureFreshDraft();
+    if (!draftReady) {
+      toast.error("O draft não está mais pronto para edição em lote.");
       return;
     }
 
@@ -575,27 +427,45 @@ export default function UploadsPage() {
       });
       toast.success("Novo título aplicado ao draft.");
     } catch (error) {
-      const message =
-        (error as { message?: string })?.message ||
-        "Falha ao aplicar o título em lote.";
-      toast.error(message);
+      if (
+        allowRecovery &&
+        (await handleRecoverableActionError({
+          error,
+          intent: "google_drive_bulk_new_series",
+          retry: async () => {
+            await applyBulkNewSeries(false);
+          },
+        }))
+      ) {
+        return;
+      }
+
+      toast.error(
+        getUploadErrorMessage(error, "Falha ao aplicar o título em lote."),
+      );
     }
   };
 
-  const skipPendingItems = async () => {
-    if (!activeSource || !resolvedActiveSessionId) {
+  const skipPendingItems = async (allowRecovery = true) => {
+    if (!activeSource || !resolvedActiveSessionId || !activeDraft) {
       return;
     }
 
-    const pendingItems = activeItems
-      .filter((item) => item.plan.selectionConfirmed !== true)
+    const pendingItems = activeDraft.items
+      .filter((item) => item.status === "READY_FOR_REVIEW")
       .map((item) => ({
         itemId: item.id,
         selected: false,
       }));
 
     if (pendingItems.length === 0) {
-      toast.error("Não há itens pendentes para ignorar.");
+      toast.error("Não há itens editáveis pendentes para ignorar.");
+      return;
+    }
+
+    const draftReady = await ensureFreshDraft();
+    if (!draftReady) {
+      toast.error("O draft não está mais pronto para edição em lote.");
       return;
     }
 
@@ -609,15 +479,33 @@ export default function UploadsPage() {
       });
       toast.success("Itens pendentes marcados como ignorados.");
     } catch (error) {
-      const message =
-        (error as { message?: string })?.message ||
-        "Falha ao ignorar itens pendentes.";
-      toast.error(message);
+      if (
+        allowRecovery &&
+        (await handleRecoverableActionError({
+          error,
+          intent: "google_drive_skip_pending_items",
+          retry: async () => {
+            await skipPendingItems(false);
+          },
+        }))
+      ) {
+        return;
+      }
+
+      toast.error(
+        getUploadErrorMessage(error, "Falha ao ignorar itens pendentes."),
+      );
     }
   };
 
-  const confirmDraft = async () => {
-    if (!activeSource || !resolvedActiveSessionId) {
+  const confirmDraft = async (allowRecovery = true) => {
+    if (!activeSource || !resolvedActiveSessionId || !activeDraft) {
+      return;
+    }
+
+    const draftReady = await ensureFreshDraft();
+    if (!draftReady) {
+      toast.error("O draft não está mais disponível para confirmação.");
       return;
     }
 
@@ -627,15 +515,38 @@ export default function UploadsPage() {
         draftId: resolvedActiveSessionId,
         idempotencyKey: createIdempotencyKey(),
       });
+
+      const segments = [
+        `${result.totals.accepted} aceitos`,
+        `${result.totals.alreadyHandled} já movimentados`,
+        `${result.totals.rejected} rejeitados`,
+        `${result.totals.skipped} ignorados`,
+      ];
+
       toast.success(
-        `${result.totals.accepted} aceitos · ${result.totals.rejected} rejeitados · ${result.totals.skipped} ignorados`,
+        result.noOp
+          ? `Nenhuma nova transição foi criada. ${segments.join(" · ")}`
+          : segments.join(" · "),
       );
+
       setActiveSessionId(result.session.id);
     } catch (error) {
-      const message =
-        (error as { message?: string })?.message ||
-        "Falha ao confirmar a sessão.";
-      toast.error(message);
+      if (
+        allowRecovery &&
+        (await handleRecoverableActionError({
+          error,
+          intent: "google_drive_confirm_draft",
+          retry: async () => {
+            await confirmDraft(false);
+          },
+        }))
+      ) {
+        return;
+      }
+
+      toast.error(
+        getUploadErrorMessage(error, "Falha ao confirmar a sessão."),
+      );
     }
   };
 
@@ -650,18 +561,24 @@ export default function UploadsPage() {
         draftId: resolvedActiveSessionId,
       });
       toast.success("Sessão cancelada.");
-      setActiveSessionId(null);
+      clearActiveSelection();
+      await sessionsQuery.refetch();
     } catch (error) {
-      const message =
-        (error as { message?: string })?.message ||
-        "Falha ao cancelar a sessão.";
-      toast.error(message);
+      toast.error(getUploadErrorMessage(error, "Falha ao cancelar a sessão."));
     }
   };
 
-  const roleSummary = isEditor && !isAdmin
-    ? "Você pode criar sessões, revisar sugestões e acompanhar aprovações pendentes."
-    : "Sessões de upload, revisão manual, importações do Drive e estado de processamento em um único workspace.";
+  const stateMeta = workspaceWorkflow
+    ? WORKFLOW_STATE_META[workspaceWorkflow.state]
+    : activeSummary
+      ? SESSION_STATUS_META[activeSummary.status]
+      : null;
+  const reviewWorkspaceVisible = Boolean(
+    activeDraft &&
+      workspaceWorkflow &&
+      !workspaceWorkflow.isTerminal &&
+      (workspaceWorkflow.canEdit || workspaceWorkflow.canConfirm),
+  );
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -712,67 +629,95 @@ export default function UploadsPage() {
                   Workspace da sessão
                 </p>
                 <h2 className="mt-2 text-xl font-semibold text-[var(--color-textMain)]">
-                  {activeSummary?.inputName || "Selecione uma sessão"}
+                  {activeSession?.inputName ||
+                    activeSummary?.inputName ||
+                    "Selecione uma sessão"}
                 </h2>
                 <p className="mt-2 text-sm text-[var(--color-textDim)]">
-                  {activeSummary
-                    ? `${getSourceLabel(activeSummary.source)} · criada em ${formatDateTime(
-                        activeSummary.createdAt,
+                  {activeSession || activeSummary
+                    ? `${getSourceLabel(
+                        (activeSession || activeSummary)!.source,
+                      )} · criada em ${formatDateTime(
+                        (activeSession || activeSummary)!.createdAt,
                       )}`
-                    : "Escolha uma sessão na coluna ao lado para revisar itens, confirmar destinos ou acompanhar processamento."}
+                    : "Escolha uma sessão na coluna ao lado para reconstruir a tela a partir de workflow.state e workflow.nextAction."}
                 </p>
               </div>
 
-              {sessionStatusMeta && (
+              {stateMeta && (
                 <span
-                  className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-medium ${TONE_STYLES[sessionStatusMeta.tone]}`}
+                  className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-medium ${TONE_STYLES[stateMeta.tone]}`}
                 >
-                  {sessionStatusMeta.label}
+                  {stateMeta.label}
                 </span>
               )}
             </div>
 
-            {!activeSummary ? (
+            {!resolvedActiveSessionId ? (
               <div className="mt-6 rounded-3xl border border-dashed border-white/10 bg-black/10 p-8 text-center text-sm text-[var(--color-textDim)]">
                 Nenhuma sessão ativa. Use os painéis acima para começar um upload
                 local ou uma importação do Google Drive.
               </div>
             ) : (
               <>
-                <div className="mt-5 grid gap-4 md:grid-cols-4">
-                  <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
-                      Itens
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
-                      {activeSummary.counts.total}
-                    </p>
+                {workspaceWorkflow && workflowSummary && (
+                  <div className="mt-5 rounded-[28px] border border-white/8 bg-black/10 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
+                          Próxima ação
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-[var(--color-textMain)]">
+                          {workflowSummary.label}
+                        </p>
+                        <p className="mt-2 max-w-2xl text-sm text-[var(--color-textDim)]">
+                          {workflowSummary.description}
+                        </p>
+                      </div>
+                      {isReconnectingGoogleDrive && (
+                        <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Reconectando Google Drive
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="mt-5 grid gap-4 md:grid-cols-4">
+                      <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                          Em análise
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                          {pendingAnalysisCount}
+                        </p>
+                      </div>
+                      <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                          Revisão pendente
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                          {reviewPendingCount}
+                        </p>
+                      </div>
+                      <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                          Confirmáveis
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                          {confirmableCount}
+                        </p>
+                      </div>
+                      <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                          Falhas
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                          {failedItemsCount}
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
-                      Revisão pendente
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
-                      {reviewPendingCount}
-                    </p>
-                  </div>
-                  <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
-                      Em aprovação
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
-                      {activeSummary.counts.approvalPending}
-                    </p>
-                  </div>
-                  <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
-                      Falhas
-                    </p>
-                    <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
-                      {failedItemsCount}
-                    </p>
-                  </div>
-                </div>
+                )}
 
                 {activeSession && (
                   <div className="mt-5 rounded-3xl border border-white/8 bg-black/10 p-4">
@@ -782,7 +727,7 @@ export default function UploadsPage() {
                           Progresso da sessão
                         </p>
                         <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                          {progress}% concluído
+                          {sessionProgress}% concluído
                         </p>
                       </div>
                       {activeSession.lastError?.message && (
@@ -794,7 +739,7 @@ export default function UploadsPage() {
                     <div className="mt-3 h-2 rounded-full bg-white/8">
                       <div
                         className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
-                        style={{ width: `${progress}%` }}
+                        style={{ width: `${sessionProgress}%` }}
                       />
                     </div>
                   </div>
@@ -805,7 +750,7 @@ export default function UploadsPage() {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-[var(--color-textMain)]">
-                          Análise do draft
+                          Estado do draft
                         </p>
                         <p className="mt-1 text-xs text-[var(--color-textDim)]">
                           {activeDraft.processing.analyzedCount}/
@@ -813,21 +758,13 @@ export default function UploadsPage() {
                         </p>
                       </div>
                       <p className="text-xs text-[var(--color-textDim)]">
-                        Estado: {activeDraft.processing.state}
+                        workflow.state = {activeDraftWorkflowState}
                       </p>
                     </div>
                     <div className="mt-3 h-2 rounded-full bg-white/8">
                       <div
                         className="h-full rounded-full bg-[var(--color-primary)] transition-all duration-500"
-                        style={{
-                          width: `${
-                            activeDraft.processing.totalReceived > 0
-                              ? (activeDraft.processing.analyzedCount /
-                                  activeDraft.processing.totalReceived) *
-                                100
-                              : 0
-                          }%`,
-                        }}
+                        style={{ width: `${draftProgress}%` }}
                       />
                     </div>
                     {activeDraft.processing.error && (
@@ -838,24 +775,26 @@ export default function UploadsPage() {
                   </div>
                 )}
 
-                {isReviewWorkspace && (
+                {reviewWorkspaceVisible && (
                   <div className="mt-6 rounded-[32px] border border-white/8 bg-black/10 p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
-                          Ações em lote
+                          Ações do draft
                         </p>
                         <p className="mt-1 text-sm text-[var(--color-textDim)]">
-                          Use as mesmas escolhas manuais em vários itens quando o
-                          destino já estiver claro.
+                          As edições são aceitas somente enquanto o backend mantiver
+                          itens em READY_FOR_REVIEW.
                         </p>
                       </div>
                       <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => void skipPendingItems()}
-                          disabled={bulkUpdateDraftMutation.isPending}
-                          className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-[var(--color-textMain)]"
+                          disabled={
+                            bulkUpdateDraftMutation.isPending || !activeDraftCanEdit
+                          }
+                          className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-[var(--color-textMain)] disabled:opacity-50"
                         >
                           Ignorar pendentes
                         </button>
@@ -863,7 +802,7 @@ export default function UploadsPage() {
                           type="button"
                           onClick={() => void cancelDraft()}
                           disabled={cancelDraftMutation.isPending}
-                          className="rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200"
+                          className="rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200 disabled:opacity-50"
                         >
                           Cancelar sessão
                         </button>
@@ -915,7 +854,11 @@ export default function UploadsPage() {
                           <button
                             type="button"
                             onClick={() => void applyBulkExistingSeries()}
-                            disabled={bulkUpdateDraftMutation.isPending || !bulkSeriesId}
+                            disabled={
+                              bulkUpdateDraftMutation.isPending ||
+                              !bulkSeriesId ||
+                              !activeDraftCanEdit
+                            }
                             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
                           >
                             Aplicar série existente
@@ -940,7 +883,8 @@ export default function UploadsPage() {
                             onClick={() => void applyBulkNewSeries()}
                             disabled={
                               bulkUpdateDraftMutation.isPending ||
-                              !bulkNewSeriesTitle.trim()
+                              !bulkNewSeriesTitle.trim() ||
+                              !activeDraftCanEdit
                             }
                             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
                           >
@@ -957,17 +901,16 @@ export default function UploadsPage() {
                             Confirmar sessão
                           </p>
                           <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                            Só confirme quando todo item não ignorado tiver
-                            destino manual validado.
+                            A confirmação é idempotente. Se o backend responder com
+                            itens já tratados ou <code>noOp</code>, a UI avança para
+                            o workflow retornado sem repetir a chamada.
                           </p>
                         </div>
                         <button
                           type="button"
                           onClick={() => void confirmDraft()}
                           disabled={
-                            confirmDraftMutation.isPending ||
-                            reviewPendingCount > 0 ||
-                            activeStatus === "ANALYZING"
+                            confirmDraftMutation.isPending || !activeDraftCanConfirm
                           }
                           className="inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
                         >
@@ -980,17 +923,17 @@ export default function UploadsPage() {
                         </button>
                       </div>
 
-                      {reviewPendingCount > 0 && (
+                      {activeDraftCanEdit && reviewPendingCount > 0 && (
                         <p className="mt-3 text-xs text-amber-200">
-                          Ainda existem {reviewPendingCount} item(ns) sem decisão
-                          manual confirmada.
+                          Ainda existem {reviewPendingCount} item(ns) aguardando
+                          revisão manual.
                         </p>
                       )}
                     </div>
                   </div>
                 )}
 
-                {activeStatus === "APPROVAL_PENDING" && (
+                {workspaceWorkflow?.state === "APPROVAL_PENDING" && (
                   <div className="mt-6 rounded-3xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
                     {isAdmin ? (
                       <span>
@@ -1008,22 +951,44 @@ export default function UploadsPage() {
                     )}
                   </div>
                 )}
+
+                {workspaceWorkflow?.isTerminal && (
+                  <div className="mt-6 rounded-3xl border border-white/8 bg-black/10 p-4 text-sm text-[var(--color-textDim)]">
+                    {workspaceWorkflow.state === "COMPLETED"
+                      ? "A sessão foi concluída. Abra os itens abaixo para ver os resultados finais."
+                      : workspaceWorkflow.state === "PARTIAL_FAILURE"
+                        ? "A sessão terminou com falhas parciais. Use os botões de retry nos itens que falharam."
+                        : workspaceWorkflow.state === "FAILED"
+                          ? "A sessão falhou. Revise os erros e tente novamente apenas os itens aplicáveis."
+                          : workspaceWorkflow.state === "EXPIRED"
+                            ? "O draft expirou antes da confirmação. Inicie um novo stage."
+                            : "A sessão foi cancelada e não aceita novas ações."}
+                  </div>
+                )}
               </>
             )}
           </div>
 
-          {activeSummary && (
+          {resolvedActiveSessionId && (
             <div className="space-y-4">
               {activeSessionQuery.isLoading && (
                 <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4 text-sm text-[var(--color-textDim)]">
                   Carregando detalhes da sessão...
                 </div>
               )}
+
+              {!activeItems.length && !activeSessionQuery.isLoading && (
+                <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4 text-sm text-[var(--color-textDim)]">
+                  Nenhum item disponível para esta sessão no momento.
+                </div>
+              )}
+
               {activeItems.map((item) => (
                 <UploadItemCard
                   key={item.id}
                   item={item}
-                  disabled={!isReviewWorkspace}
+                  disabled={!itemCanBeEdited(item, activeDraft?.workflow || null)}
+                  disabledReason={getItemDisabledReason(item, activeDraft)}
                   onPatch={patchItem}
                   onRetry={retryItem}
                 />
@@ -1040,7 +1005,7 @@ export default function UploadsPage() {
                   Sessões recentes
                 </p>
                 <p className="mt-1 text-sm text-[var(--color-textDim)]">
-                  Sessões persistidas são a fonte de verdade do fluxo.
+                  A seleção ativa fica persistida para retomar o fluxo depois.
                 </p>
               </div>
               <button
@@ -1117,18 +1082,19 @@ export default function UploadsPage() {
             </p>
             <div className="mt-4 space-y-3 text-sm text-[var(--color-textDim)]">
               <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
-                Sugestão forte não é decisão final. O bloqueio real é{" "}
-                <code className="text-[var(--color-textMain)]">
-                  plan.selectionConfirmed
-                </code>
-                .
+                A UI agora lê <code className="text-[var(--color-textMain)]">workflow.state</code>{" "}
+                e <code className="text-[var(--color-textMain)]">workflow.nextAction</code>{" "}
+                como fonte principal.
               </div>
               <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
-                O backend nunca auto-cria série canônica a partir de inferência.
+                Erros <code className="text-[var(--color-textMain)]">409</code>{" "}
+                atualizam o draft; erros{" "}
+                <code className="text-[var(--color-textMain)]">428</code>{" "}
+                reabrem o fluxo de autenticação do Google Drive.
               </div>
               <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
-                Google Drive usa preview e análise metadata-first antes de baixar
-                o arquivo final.
+                O draft só fica editável enquanto o backend mantiver itens em{" "}
+                <code className="text-[var(--color-textMain)]">READY_FOR_REVIEW</code>.
               </div>
             </div>
           </section>

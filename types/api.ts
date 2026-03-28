@@ -184,6 +184,50 @@ export interface CommentVoteResponse {
   updatedAt: string;
 }
 
+export interface CommentReplyItem {
+  id: string;
+  commentId: string;
+  userId: string;
+  user?: CommunityUser;
+  content: string;
+  hasSpoilers: boolean;
+  approved: boolean;
+  moderated?: boolean;
+  helpful: number;
+  unhelpful: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommentRepliesResponse {
+  replies: CommentReplyItem[];
+  total: number;
+}
+
+export interface CreateCommentReplyRequest {
+  content: string;
+  hasSpoilers?: boolean;
+}
+
+export interface UpdateCommentReplyRequest {
+  content?: string;
+  hasSpoilers?: boolean;
+}
+
+export interface ModerateCommentRequest {
+  approved: boolean;
+}
+
+export interface CommentModerationCommentsResponse {
+  comments: Array<CommentItem & { user: { name: string | null } }>;
+  total: number;
+}
+
+export interface CommentModerationRepliesResponse {
+  replies: Array<CommentReplyItem & { user: { name: string | null } }>;
+  total: number;
+}
+
 // ===== Leitor =====
 export interface ChapterInfo {
   id: string;
@@ -568,6 +612,352 @@ export interface AvatarUploadResponse {
 
 export interface AvatarRemoveResponse {
   profile: Pick<Account, "id" | "avatarUrl">;
+}
+
+// ===== Ratings & Reviews =====
+export interface RatingRecord {
+  id: string;
+  userId: string;
+  seriesId: string;
+  score: number;
+  review?: string | null;
+  hasSpoilers?: boolean;
+  helpful: number;
+  verified?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: string;
+    name: string | null;
+  };
+}
+
+export interface RatingQueryParams {
+  sortBy?: string;
+  limit?: number;
+  offset?: number;
+  minScore?: number;
+  maxScore?: number;
+}
+
+export interface RatingListResponse {
+  ratings: RatingRecord[];
+  total: number;
+  count: number;
+}
+
+export interface RatingDistribution {
+  one: number;
+  two: number;
+  three: number;
+  four: number;
+  five: number;
+}
+
+export interface RatingStats {
+  total: number;
+  average: number;
+  distribution: RatingDistribution;
+  mostHelpfulCount: number;
+}
+
+export interface RatingMutationResponse {
+  message: string;
+  rating: RatingRecord;
+}
+
+export interface HelpfulResponse {
+  message: string;
+  helpful: number;
+}
+
+export interface CreateRatingRequest {
+  score: number;
+  review?: string;
+  hasSpoilers?: boolean;
+}
+
+export interface ReviewRecord {
+  id: string;
+  userId: string;
+  seriesId: string;
+  title?: string | null;
+  content: string;
+  rating?: number | null;
+  hasSpoilers?: boolean;
+  helpful: number;
+  approved?: boolean;
+  moderated?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: string;
+    name: string | null;
+  };
+}
+
+export interface ReviewQueryParams {
+  sortBy?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ReviewListResponse {
+  reviews: ReviewRecord[];
+  total: number;
+  count: number;
+}
+
+export interface CreateReviewRequest {
+  title?: string;
+  content: string;
+  rating?: number;
+  hasSpoilers?: boolean;
+}
+
+export interface UpdateReviewRequest {
+  title?: string;
+  content?: string;
+  rating?: number;
+  hasSpoilers?: boolean;
+}
+
+export interface ReviewMutationResponse {
+  message: string;
+  review: ReviewRecord;
+}
+
+// ===== Community =====
+export interface CommunityBadge {
+  id: string;
+  title: string;
+  description: string;
+  rarity: string;
+  category: string;
+  icon: string;
+  target: number;
+  current: number;
+  earned: boolean;
+  progressPercent: number;
+  code?: string;
+  unlockedAt?: string;
+}
+
+export interface CommunityProfileSummary {
+  userId: string;
+  name: string;
+  joinedAt: string;
+  reputation: number;
+  level: number;
+}
+
+export interface CommunityProfileMetrics {
+  chaptersRead: number;
+  totalPagesRead: number;
+  seriesCompleted: number;
+  longestStreak: number;
+  favoritesCount: number;
+  ratingsCount: number;
+  reviewsCount: number;
+  commentsCount: number;
+  repliesCount: number;
+  helpfulReceived: number;
+  unhelpfulReceived: number;
+}
+
+export interface CommunityBadgeProgress {
+  earned: CommunityBadge[];
+  progress: CommunityBadge[];
+  totalEarned: number;
+  totalAvailable: number;
+}
+
+export interface CommunityRank {
+  category: string;
+  rank: number | null;
+  score: number;
+}
+
+export interface CommunityProfileResponse {
+  profile: CommunityProfileSummary;
+  metrics: CommunityProfileMetrics;
+  badges: CommunityBadgeProgress;
+  ranks: CommunityRank[];
+}
+
+export interface CommunityBadgesResponse {
+  badges: CommunityBadge[];
+}
+
+export interface CommunityLeaderboardParams {
+  category?: string;
+  limit?: number;
+}
+
+export interface CommunityLeaderboardCategory {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface CommunityLeaderboardHighlights {
+  chaptersRead: number;
+  totalPagesRead: number;
+  longestStreak: number;
+  reviewsCount: number;
+  commentsCount: number;
+  helpfulReceived: number;
+  [key: string]: number;
+}
+
+export interface CommunityLeaderboardEntry {
+  rank: number;
+  userId: string;
+  name: string;
+  reputation: number;
+  level: number;
+  score: number;
+  category: string;
+  highlights: CommunityLeaderboardHighlights;
+}
+
+export interface CommunityLeaderboardResponse {
+  category: string;
+  availableCategories: CommunityLeaderboardCategory[];
+  entries: CommunityLeaderboardEntry[];
+}
+
+export interface CommunityLeaderboardCategoriesResponse {
+  categories: CommunityLeaderboardCategory[];
+}
+
+export interface CommunityOverviewResponse {
+  totals: {
+    users: number;
+    ratings: number;
+    reviews: number;
+    comments: number;
+    replies: number;
+  };
+  spotlight: CommunityLeaderboardEntry[];
+}
+
+export interface CommunityUserProfileResponse {
+  userId: string;
+  name: string;
+  joinedAt: string;
+  reputation: number;
+  level: number;
+  highlights: {
+    chaptersRead: number;
+    totalPagesRead: number;
+    longestStreak: number;
+    ratingsCount: number;
+    commentsCount: number;
+    helpfulReceived: number;
+  };
+  badges: CommunityBadge[];
+}
+
+// ===== Feed =====
+export interface FeedPostUser {
+  id: string;
+  name: string | null;
+  username: string | null;
+  avatarKey: string | null;
+}
+
+export interface FeedPostSeries {
+  id: string;
+  title: string;
+  coverS3Key: string | null;
+}
+
+export interface FeedPostMedia {
+  id: string;
+  title: string;
+  number: number;
+}
+
+export interface FeedPostReaction {
+  type: string;
+}
+
+export interface FeedPost {
+  id: string;
+  type: string;
+  content: string;
+  excerpt: string | null;
+  pageNumber: number | null;
+  hasSpoilers: boolean;
+  moderationStatus: string;
+  reactionsCount: number;
+  commentsCount: number;
+  createdAt: string;
+  updatedAt: string;
+  user: FeedPostUser;
+  series: FeedPostSeries | null;
+  media: FeedPostMedia | null;
+  reactions?: FeedPostReaction[];
+}
+
+export interface FeedListResponse {
+  posts: FeedPost[];
+  nextCursor: string | null;
+}
+
+export interface FeedQueryParams {
+  cursor?: string;
+  limit?: number;
+  type?: string;
+}
+
+export interface CreateFeedPostRequest {
+  type?: string;
+  content: string;
+  excerpt?: string;
+  pageNumber?: number;
+  seriesId?: string;
+  mediaId?: string;
+  hasSpoilers?: boolean;
+}
+
+export interface UpdateFeedPostRequest {
+  content?: string;
+  hasSpoilers?: boolean;
+}
+
+export interface FeedPostMutationResponse {
+  post: FeedPost;
+  moderated?: boolean;
+  message: string;
+}
+
+export interface FeedReactionRequest {
+  type: string;
+}
+
+export interface FeedReactionResponse {
+  removed?: true;
+  type?: string;
+  message?: string;
+}
+
+export interface FeedModerationPost extends FeedPost {
+  moderationScore: number;
+  moderationReason: string | null;
+  flaggedTerms: string | null;
+  autoModerated: boolean;
+}
+
+export interface FeedModerationListResponse {
+  posts: FeedModerationPost[];
+  total: number;
+}
+
+export interface ModerateFeedPostRequest {
+  status: string;
+  reason?: string;
 }
 
 export interface SeriesProgress {

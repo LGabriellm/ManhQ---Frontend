@@ -199,6 +199,10 @@ api.interceptors.response.use(
       error: responseData.error as string | undefined,
       details: responseData.details as string[] | undefined,
       retryAfter: responseData.retryAfter as number | undefined,
+      data: responseData,
+      authRequired: responseData.authRequired as boolean | undefined,
+      errorCode: responseData.errorCode as string | undefined,
+      googleDrive: responseData.googleDrive as Record<string, unknown> | undefined,
       contentType,
       isUnexpectedPayload:
         typeof parsedPayload === "string" &&

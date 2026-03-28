@@ -1,6 +1,7 @@
 "use client";
 
 import { useDeferredValue, useState } from "react";
+import { FeedbackState } from "@/components/FeedbackState";
 import { useSeriesSearch } from "@/hooks/useApi";
 import { useGoogleDrivePopupAuth } from "@/hooks/useGoogleDrivePopupAuth";
 import { useGoogleDriveReconnectRecovery } from "@/hooks/useGoogleDriveReconnectRecovery";
@@ -126,6 +127,14 @@ export function GoogleDriveImportPanel({
     previewMutation.reset();
   };
 
+  const resetFolderNavigation = () => {
+    setCurrentFolderId(null);
+    setCurrentFolderName(null);
+    setNavigationStack([]);
+    setManualFolderId("");
+    resetPreviewState();
+  };
+
   const openFolder = (folderId: string, folderName: string) => {
     setCurrentFolderId(folderId);
     setCurrentFolderName(folderName);
@@ -185,11 +194,7 @@ export function GoogleDriveImportPanel({
   const disconnect = async () => {
     try {
       await disconnectMutation.mutateAsync();
-      setCurrentFolderId(null);
-      setCurrentFolderName(null);
-      setNavigationStack([]);
-      setManualFolderId("");
-      resetPreviewState();
+      resetFolderNavigation();
       toast.success("Google Drive desconectado.");
     } catch (error) {
       toast.error(
@@ -466,9 +471,30 @@ export function GoogleDriveImportPanel({
     }
   };
 
-  const currentBrowseFolders = currentFolderId
-    ? nodesQuery.data?.folders
-    : rootFoldersQuery.data?.folders;
+  const currentBrowseFolders = effectiveFolderId
+    ? nodesQuery.data?.folders || []
+    : rootFoldersQuery.data?.folders || [];
+  const browseError = effectiveFolderId ? nodesQuery.error : rootFoldersQuery.error;
+  const browseIsLoading = effectiveFolderId
+    ? nodesQuery.isLoading
+    : rootFoldersQuery.isLoading;
+  const browseIsRefreshing = effectiveFolderId
+    ? nodesQuery.isFetching
+    : rootFoldersQuery.isFetching;
+  const browsePathLabel = normalizedManualFolderId
+    ? "Pasta informada manualmente"
+    : navigationStack.length > 0
+      ? navigationStack.map((folder) => folder.name).join(" / ")
+      : "Minha unidade do Google Drive";
+  const canNavigateBack = navigationStack.length > 0 && !normalizedManualFolderId;
+  const canResetBrowser = Boolean(
+    normalizedManualFolderId || currentFolderId || navigationStack.length > 0,
+  );
+  const selectionSummary = selectedFilesCount
+    ? `${selectedFilesCount} arquivo(s) marcado(s) manualmente`
+    : hasSelectionScope
+      ? "A pasta inteira será usada na ação final"
+      : "Nenhuma pasta escolhida ainda";
 
   const isBusy =
     isConnecting ||
@@ -480,7 +506,7 @@ export function GoogleDriveImportPanel({
 
   if (!statusQuery.data?.connected) {
     return (
-      <section className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6">
+      <section className="surface-panel rounded-[32px] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-[var(--color-textDim)]/75">
@@ -499,7 +525,7 @@ export function GoogleDriveImportPanel({
             type="button"
             onClick={() => void connect()}
             disabled={isBusy}
-            className="inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+            className="ui-btn-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
           >
             {isBusy ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -514,7 +540,7 @@ export function GoogleDriveImportPanel({
   }
 
   return (
-    <section className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6">
+    <section className="surface-panel rounded-[32px] p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-[var(--color-textDim)]/75">
@@ -532,16 +558,18 @@ export function GoogleDriveImportPanel({
           <button
             type="button"
             onClick={() => statusQuery.refetch()}
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07]"
+            className="ui-btn-secondary px-4 py-2.5 text-sm font-medium"
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw
+              className={`h-4 w-4 ${browseIsRefreshing ? "animate-spin" : ""}`}
+            />
             Atualizar
           </button>
           <button
             type="button"
             onClick={() => void disconnect()}
             disabled={isBusy}
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07] disabled:opacity-50"
+            className="ui-btn-secondary px-4 py-2.5 text-sm font-medium disabled:opacity-50"
           >
             {disconnectMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -555,125 +583,225 @@ export function GoogleDriveImportPanel({
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.95fr)]">
         <div className="space-y-4">
-          <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
+          <div className="surface-panel-muted rounded-[28px] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
                   Origem do conteúdo
                 </p>
-                <p className="mt-1 text-sm text-[var(--color-textMain)]">
+                <p className="mt-1 text-sm font-medium text-[var(--color-textMain)]">
                   {effectiveFolderLabel || "Escolha uma pasta ou informe o ID manual"}
                 </p>
-                {navigationStack.length > 0 && !normalizedManualFolderId && (
-                  <p className="mt-2 text-xs text-[var(--color-textDim)]">
-                    {navigationStack.map((folder) => folder.name).join(" / ")}
-                  </p>
-                )}
+                <p className="mt-2 text-xs text-[var(--color-textDim)]">
+                  {browsePathLabel}
+                </p>
               </div>
-              {currentFolderId && !normalizedManualFolderId && (
-                <button
-                  type="button"
-                  onClick={goBackOneFolder}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07]"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Voltar
-                </button>
+              <div className="flex flex-wrap gap-2">
+                {hasSelectionScope ? (
+                  <span className="badge-soft text-[var(--color-textMain)]">
+                    {selectionSummary}
+                  </span>
+                ) : null}
+                {previewData ? (
+                  <span className="badge-soft text-[var(--color-textMain)]">
+                    {previewData.supportedCount} compatíveis no preview
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
+          <div className="surface-panel rounded-[30px] p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
+                  Navegador de pastas
+                </p>
+                <p className="mt-1 text-lg font-semibold text-[var(--color-textMain)]">
+                  {normalizedManualFolderId ? "Pasta manual" : currentFolderName || "Minha unidade"}
+                </p>
+                <p className="mt-2 text-sm text-[var(--color-textDim)]">
+                  Navegue em uma lista estruturada, visualize subpastas e confira
+                  os arquivos detectados antes de gerar o preview.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canNavigateBack ? (
+                  <button
+                    type="button"
+                    onClick={goBackOneFolder}
+                    className="ui-btn-secondary px-4 py-2 text-sm font-medium"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Voltar
+                  </button>
+                ) : null}
+                {canResetBrowser ? (
+                  <button
+                    type="button"
+                    onClick={resetFolderNavigation}
+                    className="ui-btn-ghost px-4 py-2 text-sm font-medium text-[var(--color-textMain)]"
+                  >
+                    Ir para raiz
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-5 surface-panel-muted rounded-[26px] p-4">
+              <label className="block">
+                <span className="mb-2 block text-xs text-[var(--color-textDim)]">
+                  ID manual da pasta do Google Drive
+                </span>
+                <input
+                  type="text"
+                  value={manualFolderId}
+                  onChange={(event) => {
+                    setManualFolderId(event.target.value);
+                    setCurrentFolderName(null);
+                    setCurrentFolderId(null);
+                    setNavigationStack([]);
+                    resetPreviewState();
+                  }}
+                  className="field-input rounded-2xl px-4 py-2.5 text-sm"
+                  placeholder="Cole somente o ID da pasta"
+                />
+              </label>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs leading-5 text-[var(--color-textDim)]">
+                  Use este campo quando já souber a pasta exata. Exemplo: a parte
+                  final da URL após <code>/folders/</code>.
+                </p>
+                {normalizedManualFolderId ? (
+                  <button
+                    type="button"
+                    onClick={resetFolderNavigation}
+                    className="text-xs font-medium text-[var(--color-primary)] transition-colors hover:text-[var(--color-primary)]/85"
+                  >
+                    Limpar ID manual
+                  </button>
+                ) : null}
+              </div>
+              {folderIdValidationMessage ? (
+                <p className="mt-2 text-xs text-amber-200">
+                  {folderIdValidationMessage}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="mt-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
+                    Conteúdo disponível
+                  </p>
+                  <p className="mt-1 text-sm text-[var(--color-textDim)]">
+                    {browsePathLabel}
+                  </p>
+                </div>
+                {browseIsRefreshing ? (
+                  <span className="badge-soft text-[var(--color-textMain)]">
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-sky-300" />
+                    Atualizando
+                  </span>
+                ) : null}
+              </div>
+
+              {browseIsLoading ? (
+                <FeedbackState
+                  icon={<Loader2 className="h-6 w-6 animate-spin" />}
+                  title="Carregando conteúdo do Drive"
+                  description="Buscando subpastas e arquivos do contexto atual."
+                  tone="info"
+                />
+              ) : browseError ? (
+                <FeedbackState
+                  icon={<Cloud className="h-6 w-6" />}
+                  title="Falha ao listar o conteúdo"
+                  description={getUploadErrorMessage(
+                    browseError,
+                    "Não foi possível consultar esta pasta do Google Drive.",
+                  )}
+                  tone="danger"
+                />
+              ) : currentBrowseFolders.length === 0 && currentFolderItems.length === 0 ? (
+                <FeedbackState
+                  icon={<FolderOpen className="h-6 w-6" />}
+                  title="Nenhum item encontrado"
+                  description={
+                    normalizedManualFolderId
+                      ? "Esse ID não retornou subpastas nem arquivos compatíveis."
+                      : "Escolha uma pasta para visualizar o conteúdo ou informe um ID manual."
+                  }
+                  tone="default"
+                />
+              ) : (
+                <div className="space-y-4">
+                  <div className="list-panel">
+                    {currentBrowseFolders.map((folder) => (
+                      <button
+                        key={folder.id}
+                        type="button"
+                        onClick={() => openFolder(folder.id, folder.name)}
+                        className="list-row"
+                      >
+                        <div className="rounded-2xl bg-[var(--color-primary)]/10 p-2 text-[var(--color-primary)]">
+                          <FolderOpen className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-[var(--color-textMain)]">
+                            {folder.name}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-[var(--color-textDim)]">
+                            {folder.modifiedTime
+                              ? `Atualizada em ${formatDateTime(folder.modifiedTime)}`
+                              : "Abrir pasta para navegar no conteúdo"}
+                          </p>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-[var(--color-textDim)]" />
+                      </button>
+                    ))}
+                  </div>
+
+                  {currentFolderItems.length > 0 ? (
+                    <div>
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
+                          Arquivos detectados
+                        </p>
+                        <span className="badge-soft text-[var(--color-textMain)]">
+                          {currentFolderItems.length} arquivo(s)
+                        </span>
+                      </div>
+
+                      <div className="list-panel max-h-72 overflow-y-auto">
+                        {currentFolderItems.map((file) => (
+                          <div key={file.id} className="list-row">
+                            <div className="rounded-2xl bg-white/5 p-2 text-[var(--color-textDim)]">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm text-[var(--color-textMain)]">
+                                {file.name}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-[var(--color-textDim)]">
+                                {file.mimeType}
+                              </p>
+                            </div>
+                            <span className="badge-soft text-[var(--color-textMain)]">
+                              {file.supported ? "Compatível" : "Não suportado"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               )}
             </div>
 
-            <label className="mt-4 block">
-              <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                ID manual da pasta do Google Drive
-              </span>
-              <input
-                type="text"
-                value={manualFolderId}
-                onChange={(event) => {
-                  setManualFolderId(event.target.value);
-                  setCurrentFolderName(null);
-                  setCurrentFolderId(null);
-                  setNavigationStack([]);
-                  resetPreviewState();
-                }}
-                className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
-                placeholder="Cole somente o ID da pasta"
-              />
-            </label>
-            <p className="mt-2 text-xs text-[var(--color-textDim)]">
-              Use este campo quando já souber a pasta exata e não quiser navegar.
-              Exemplo: a parte final da URL após <code>/folders/</code>.
-            </p>
-            {folderIdValidationMessage && (
-              <p className="mt-2 text-xs text-amber-200">{folderIdValidationMessage}</p>
-            )}
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              {currentBrowseFolders?.map((folder) => (
-                <button
-                  key={folder.id}
-                  type="button"
-                  onClick={() => openFolder(folder.id, folder.name)}
-                  className="rounded-3xl border border-white/8 bg-white/[0.03] px-4 py-3 text-left transition-colors hover:border-white/15 hover:bg-white/[0.05]"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 rounded-2xl bg-[var(--color-primary)]/10 p-2 text-[var(--color-primary)]">
-                      <FolderOpen className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-[var(--color-textMain)]">
-                        {folder.name}
-                      </p>
-                      {folder.modifiedTime && (
-                        <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                          Atualizada em {formatDateTime(folder.modifiedTime)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {nodesQuery.isError && effectiveFolderId && (
-              <p className="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-                {getUploadErrorMessage(
-                  nodesQuery.error,
-                  "Falha ao listar o conteúdo da pasta selecionada.",
-                )}
-              </p>
-            )}
-
-            {currentFolderItems.length > 0 && (
-              <div className="mt-4 rounded-3xl border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
-                  Arquivos detectados na seleção atual
-                </p>
-                <div className="mt-3 max-h-56 space-y-2 overflow-y-auto">
-                  {currentFolderItems.map((file) => (
-                    <div
-                      key={file.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/10 px-3 py-2"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <FileText className="h-4 w-4 text-[var(--color-textDim)]" />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm text-[var(--color-textMain)]">
-                            {file.name}
-                          </p>
-                          <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                            {file.supported ? "Compatível" : "Não suportado"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <label className="inline-flex items-center gap-2 text-sm text-[var(--color-textMain)]">
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-textMain)]">
                 <input
                   type="checkbox"
                   checked={recursive}
@@ -685,7 +813,7 @@ export function GoogleDriveImportPanel({
                 />
                 Buscar recursivamente
               </label>
-              <label className="inline-flex items-center gap-2 text-sm text-[var(--color-textMain)]">
+              <label className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-[var(--color-textMain)]">
                 Máximo
                 <input
                   type="number"
@@ -696,14 +824,14 @@ export function GoogleDriveImportPanel({
                     setMaxFiles(Number(event.target.value) || 200);
                     resetPreviewState();
                   }}
-                  className="w-24 rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[var(--color-textMain)] outline-none"
+                  className="field-input w-24 rounded-full px-3 py-1.5 text-sm"
                 />
               </label>
               <button
                 type="button"
                 onClick={() => void previewSelection()}
                 disabled={!hasSelectionScope || !manualFolderIdIsValid || isBusy}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+                className="ui-btn-primary px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
               >
                 {previewMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -715,19 +843,19 @@ export function GoogleDriveImportPanel({
             </div>
           </div>
 
-          {previewData && previewFolderId && (
-            <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
+          {previewData && previewFolderId ? (
+            <div className="surface-panel rounded-[30px] p-4 sm:p-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
                     Preview da seleção
                   </p>
-                  <p className="mt-1 text-sm text-[var(--color-textMain)]">
+                  <p className="mt-1 text-sm font-medium text-[var(--color-textMain)]">
                     {previewData.supportedCount} arquivos compatíveis ·{" "}
                     {previewData.unsupportedCount} não compatíveis
                   </p>
                   <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                    Nenhuma marcação selecionada = usar a pasta inteira na ação final.
+                    Sem marcação manual: a ação final usará a pasta inteira.
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -736,32 +864,28 @@ export function GoogleDriveImportPanel({
                     onClick={() =>
                       setSelectedFileIds(previewFiles.map((file) => file.id))
                     }
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-[var(--color-textMain)]"
+                    className="ui-btn-secondary px-4 py-2 text-sm font-medium"
                   >
                     Selecionar todos
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelectedFileIds([])}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-[var(--color-textMain)]"
+                    className="ui-btn-ghost px-4 py-2 text-sm font-medium text-[var(--color-textMain)]"
                   >
                     Limpar
                   </button>
                 </div>
               </div>
 
-              <div className="mt-4 max-h-72 space-y-2 overflow-y-auto">
+              <div className="list-panel mt-4 max-h-80 overflow-y-auto">
                 {previewFiles.map((file) => {
                   const isSelected = selectedFileIds.includes(file.id);
 
                   return (
                     <label
                       key={file.id}
-                      className={`flex items-center gap-3 rounded-2xl border px-3 py-2 transition-colors ${
-                        isSelected
-                          ? "border-[var(--color-primary)]/35 bg-[var(--color-primary)]/10"
-                          : "border-white/8 bg-white/[0.03]"
-                      }`}
+                      className={`list-row cursor-pointer ${isSelected ? "list-row-active" : ""}`}
                     >
                       <input
                         type="checkbox"
@@ -769,11 +893,14 @@ export function GoogleDriveImportPanel({
                         onChange={() => toggleFileSelection(file.id)}
                         className="rounded border-white/15 bg-transparent"
                       />
-                      <div className="min-w-0">
+                      <div className="rounded-2xl bg-white/5 p-2 text-[var(--color-textDim)]">
+                        <FileText className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
                         <p className="truncate text-sm text-[var(--color-textMain)]">
                           {file.name}
                         </p>
-                        <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                        <p className="mt-1 truncate text-xs text-[var(--color-textDim)]">
                           {file.mimeType}
                         </p>
                       </div>
@@ -782,11 +909,11 @@ export function GoogleDriveImportPanel({
                 })}
               </div>
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
+          <div className="surface-panel rounded-[30px] p-4 sm:p-5">
             <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
               Ação
             </p>
@@ -820,7 +947,7 @@ export function GoogleDriveImportPanel({
                   type="text"
                   value={reviewSeriesTitle}
                   onChange={(event) => setReviewSeriesTitle(event.target.value)}
-                  className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                  className="field-input rounded-2xl px-4 py-2.5 text-sm"
                   placeholder="Opcional"
                 />
               </label>
@@ -838,7 +965,7 @@ export function GoogleDriveImportPanel({
                       type="text"
                       value={seriesQuery}
                       onChange={(event) => setSeriesQuery(event.target.value)}
-                      className="w-full rounded-2xl border border-white/8 bg-white/[0.03] py-2.5 pl-10 pr-4 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                      className="field-input rounded-2xl py-2.5 pl-10 pr-4 text-sm"
                       placeholder="Busque o destino..."
                     />
                   </div>
@@ -861,11 +988,23 @@ export function GoogleDriveImportPanel({
                       }`}
                     >
                       <p className="text-sm font-medium">{series.title}</p>
-                      <p className="mt-1 text-xs opacity-80">{series.id}</p>
-                    </button>
+                        <p className="mt-1 text-xs opacity-80">{series.id}</p>
+                      </button>
                   ))}
                 </div>
 
+                {seriesQuery.trim().length >= 2 && searchResults.isLoading ? (
+                  <p className="text-xs text-[var(--color-textDim)]">
+                    Buscando séries existentes...
+                  </p>
+                ) : null}
+                {seriesQuery.trim().length >= 2 &&
+                !searchResults.isLoading &&
+                (searchResults.data?.items.length ?? 0) === 0 ? (
+                  <p className="text-xs text-[var(--color-textDim)]">
+                    Nenhuma série encontrada com esse termo.
+                  </p>
+                ) : null}
                 {selectedSeriesTitle && (
                   <p className="text-xs text-emerald-200">
                     Série selecionada: {selectedSeriesTitle}
@@ -883,13 +1022,13 @@ export function GoogleDriveImportPanel({
                   type="text"
                   value={newSeriesTitle}
                   onChange={(event) => setNewSeriesTitle(event.target.value)}
-                  className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+                  className="field-input rounded-2xl px-4 py-2.5 text-sm"
                   placeholder="Digite o título definitivo..."
                 />
               </label>
             )}
 
-            <div className="mt-5 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm text-[var(--color-textDim)]">
+            <div className="surface-panel-muted mt-5 rounded-2xl p-4 text-sm text-[var(--color-textDim)]">
               {mode === "review"
                 ? "O stage do Drive cria um draft persistido. Depois disso o workspace acompanha callbacks, análise, revisão e confirmação item a item."
                 : mode === "existing"
@@ -902,7 +1041,7 @@ export function GoogleDriveImportPanel({
                 type="button"
                 onClick={() => void runDryRun()}
                 disabled={!hasSelectionScope || !manualFolderIdIsValid || isBusy}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07] disabled:opacity-50"
+                className="ui-btn-secondary w-full px-4 py-2.5 text-sm font-medium disabled:opacity-50"
               >
                 {importMutation.isPending && dryRunResult == null ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -917,7 +1056,7 @@ export function GoogleDriveImportPanel({
                   type="button"
                   onClick={() => void stageForReview()}
                   disabled={!hasSelectionScope || !manualFolderIdIsValid || isBusy}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+                  className="ui-btn-primary w-full px-4 py-3 text-sm font-semibold disabled:opacity-50"
                 >
                   {stageMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -931,7 +1070,7 @@ export function GoogleDriveImportPanel({
                   type="button"
                   onClick={() => void startDirectImport()}
                   disabled={!hasSelectionScope || !manualFolderIdIsValid || isBusy}
-                  className="inline-flex items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
+                  className="ui-btn-primary w-full px-4 py-3 text-sm font-semibold disabled:opacity-50"
                 >
                   {importMutation.isPending ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -944,12 +1083,12 @@ export function GoogleDriveImportPanel({
             </div>
           </div>
 
-          <div className="rounded-3xl border border-white/8 bg-black/10 p-4">
+          <div className="surface-panel rounded-[30px] p-4 sm:p-5">
             <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
               Resumo da seleção
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+              <div className="surface-panel-muted rounded-2xl p-3">
                 <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
                   Escopo
                 </p>
@@ -957,12 +1096,10 @@ export function GoogleDriveImportPanel({
                   {effectiveFolderLabel || "Nenhuma pasta escolhida"}
                 </p>
                 <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                  {selectedFilesCount > 0
-                    ? `${selectedFilesCount} arquivo(s) marcado(s) manualmente`
-                    : "Sem subconjunto fixado: a pasta inteira será usada"}
+                  {selectionSummary}
                 </p>
               </div>
-              <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+              <div className="surface-panel-muted rounded-2xl p-3">
                 <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
                   Preview atual
                 </p>
@@ -979,7 +1116,7 @@ export function GoogleDriveImportPanel({
               </div>
             </div>
 
-            {dryRunResult && (
+            {dryRunResult ? (
               <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
                 <p className="text-sm font-medium text-emerald-200">
                   Dry run pronto
@@ -999,7 +1136,7 @@ export function GoogleDriveImportPanel({
                   ))}
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

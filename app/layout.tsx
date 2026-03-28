@@ -8,7 +8,7 @@ import { LayoutWrapper } from "@/components/LayoutWrapper";
 import { Toaster } from "react-hot-toast";
 
 const GOOGLE_TAG_ID = "G-Q9GSKB1KXP";
-const FACEBOOK_PIXEL_ID = "778199475100100";
+const FACEBOOK_PIXEL_ID = "916347841169736";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 const metadataBase = (() => {
   if (!siteUrl) return undefined;
@@ -109,6 +109,7 @@ export default function RootLayout({
             height={1}
             width={1}
             alt=""
+            style={{ display: "none" }}
             src={`https://www.facebook.com/tr?id=${FACEBOOK_PIXEL_ID}&ev=PageView&noscript=1`}
           />
         </noscript>

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { InfiniteCarousel } from "@/components/InfiniteCarousel";
+import { trackFacebookPixel } from "@/lib/facebookPixel";
 
 const CHECKOUT_URL =
   "https://pay.kirvano.com/fa717258-dae4-4eea-9368-970ee9cee695";
@@ -71,6 +72,17 @@ function GlassCard({
 export default function HomePage() {
   const { isAuthenticated, user } = useAuth();
 
+  const handleStartNowClick = (placement: string) => {
+    trackFacebookPixel("InitiateCheckout", {
+      content_name: "Landing Page CTA",
+      content_category: "subscription",
+      source: "landing_page",
+      placement,
+      cta_label: "Começar agora",
+      destination: CHECKOUT_URL,
+    });
+  };
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-background text-textMain">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -100,6 +112,7 @@ export default function HomePage() {
                 href={CHECKOUT_URL}
                 target="_blank"
                 rel="noreferrer"
+                onClick={() => handleStartNowClick("header")}
                 className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_38px_rgba(229,9,20,0.34)] transition-transform hover:scale-[1.02]"
               >
                 Começar agora
@@ -128,7 +141,12 @@ export default function HomePage() {
                 </p>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <a href={CHECKOUT_URL} target="_blank" rel="noreferrer">
+                  <a
+                    href={CHECKOUT_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => handleStartNowClick("hero")}
+                  >
                     <motion.div
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.95 }}
@@ -277,6 +295,7 @@ export default function HomePage() {
                       href={CHECKOUT_URL}
                       target="_blank"
                       rel="noreferrer"
+                      onClick={() => handleStartNowClick("pricing")}
                       className="flex-1"
                     >
                       <div className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.33)]">
@@ -349,7 +368,12 @@ export default function HomePage() {
                 pronta para quem quer ler sem fricção.
               </p>
               <div className="relative mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-                <a href={CHECKOUT_URL} target="_blank" rel="noreferrer">
+                <a
+                  href={CHECKOUT_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => handleStartNowClick("final_cta")}
+                >
                   <motion.div
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.95 }}

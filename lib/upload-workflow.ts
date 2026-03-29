@@ -1,5 +1,6 @@
 import type {
   UploadDraft,
+  UploadJobState,
   UploadItem,
   UploadItemStatus,
   UploadSessionDetail,
@@ -35,6 +36,7 @@ export const WORKFLOW_STATE_META: Record<
   { label: string; tone: StatusTone }
 > = {
   ANALYZING: { label: "Analisando", tone: "info" },
+  REVIEW_REQUIRED: { label: "Revisão necessária", tone: "warning" },
   READY_FOR_REVIEW: { label: "Revisão necessária", tone: "warning" },
   READY_TO_CONFIRM: { label: "Pronto para confirmar", tone: "info" },
   APPROVAL_PENDING: { label: "Aguardando aprovação", tone: "warning" },
@@ -112,6 +114,23 @@ export const ITEM_STATUS_META: Record<
   SKIPPED: { label: "Ignorado", tone: "neutral" },
   REJECTED: { label: "Rejeitado", tone: "danger" },
   CANCELED: { label: "Cancelado", tone: "neutral" },
+};
+
+export const JOB_STATE_META: Record<
+  UploadJobState,
+  { label: string; tone: StatusTone }
+> = {
+  analyzing: { label: "Analisando", tone: "info" },
+  review_required: { label: "Revisão pendente", tone: "warning" },
+  approval_pending: { label: "Aguardando aprovação", tone: "warning" },
+  queued: { label: "Na fila", tone: "info" },
+  retrying: { label: "Reprocessando", tone: "warning" },
+  running: { label: "Processando", tone: "info" },
+  completed: { label: "Concluído", tone: "success" },
+  failed: { label: "Falhou", tone: "danger" },
+  skipped: { label: "Ignorado", tone: "neutral" },
+  rejected: { label: "Rejeitado", tone: "danger" },
+  canceled: { label: "Cancelado", tone: "neutral" },
 };
 
 export const CONFIDENCE_META: Record<
@@ -201,6 +220,7 @@ function getFallbackNextAction(
   switch (state) {
     case "ANALYZING":
       return "POLL_ANALYSIS";
+    case "REVIEW_REQUIRED":
     case "READY_FOR_REVIEW":
       return "REVIEW_ITEMS";
     case "READY_TO_CONFIRM":
@@ -223,6 +243,10 @@ function getFallbackNextAction(
   }
 }
 
+function normalizeWorkflowState(state: UploadWorkflowState): UploadWorkflowState {
+  return state === "READY_FOR_REVIEW" ? "REVIEW_REQUIRED" : state;
+}
+
 function normalizeWorkflow(args: {
   workflow?: Partial<UploadWorkflow> | null;
   state: UploadWorkflowState;
@@ -242,7 +266,7 @@ function normalizeWorkflow(args: {
     failedHint: args.failedHint,
   });
 
-  const state = args.workflow?.state ?? args.state;
+  const state = normalizeWorkflowState(args.workflow?.state ?? args.state);
   const nextAction = args.workflow?.nextAction ?? getFallbackNextAction(state, counts);
   const isTerminal = args.workflow?.isTerminal ?? TERMINAL_WORKFLOW_STATES.has(state);
   const canEdit = args.workflow?.canEdit ?? nextAction === "REVIEW_ITEMS";
@@ -325,8 +349,15 @@ export function getWorkflowSummary(
 }
 
 export function itemNeedsManualChoice(item: UploadItem): boolean {
-  return (
-    item.status === "READY_FOR_REVIEW" && item.plan.selectionConfirmed !== true
+  const reviewStatus =
+    item.status === "READY_FOR_REVIEW" || item.job.state === "review_required";
+
+  return Boolean(
+    reviewStatus &&
+      (item.job.userActionRequired ||
+        item.parsing.requiresManualReview ||
+        item.parsing.confidence === "low" ||
+        item.plan.selectionConfirmed !== true),
   );
 }
 
@@ -334,11 +365,15 @@ export function itemCanBeEdited(
   item: UploadItem,
   workflow: UploadWorkflow | null | undefined,
 ): boolean {
-  return Boolean(workflow?.canEdit && item.status === "READY_FOR_REVIEW");
+  return Boolean(
+    workflow?.canEdit &&
+      item.status === "READY_FOR_REVIEW" &&
+      item.job.canReview,
+  );
 }
 
 export function itemNeedsRetry(item: UploadItem): boolean {
-  return item.status === "FAILED";
+  return item.job.canRetry || item.job.state === "failed";
 }
 
 export function countItemsNeedingManualChoice(items: UploadItem[]): number {
@@ -384,6 +419,15 @@ export function formatUploadStage(stage: UploadStageName | string | null): strin
     CONFIDENCE_DECISION: "Decisão de confiança",
     OPTIMIZATION: "Otimização",
     PERSISTENCE: "Persistência",
+    confidence_decision: "Decisão de confiança",
+    optimization: "Otimização",
+    persistence: "Persistência",
+    file_validation: "Validação do arquivo",
+    metadata_extraction: "Extração de metadados",
+    archive_inspection: "Inspeção do pacote",
+    evidence_collection: "Coleta de evidências",
+    title_normalization: "Normalização do título",
+    series_matching: "Busca de série",
   };
 
   return map[stage] || stage;
@@ -404,6 +448,7 @@ export function getSourceLabel(source: UploadSource): string {
 export function isReviewPhase(status: UploadSessionStatus): boolean {
   return (
     status === "ANALYZING" ||
+    status === "REVIEW_REQUIRED" ||
     status === "READY_FOR_REVIEW" ||
     status === "READY_TO_CONFIRM"
   );

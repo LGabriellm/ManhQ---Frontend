@@ -25,7 +25,12 @@ import type {
   UploadDraftConfirmResponse,
   UploadDraftItemResponse,
   UploadDraftResponse,
+  UploadJob,
+  UploadJobState,
+  UploadParsing,
+  UploadParsingCandidate,
   UploadRetryItemResponse,
+  UploadItem,
   UploadSessionCreatedResponse,
   UploadSessionDetail,
   UploadSessionDetailResponse,
@@ -47,6 +52,141 @@ function appendFilesToFormData(formData: FormData, files: File[]) {
   files.forEach((file) => formData.append("files[]", file));
 }
 
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+function normalizeParsingCandidate(
+  candidate: unknown,
+): UploadParsingCandidate | null {
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const rawCandidate = candidate as Partial<UploadParsingCandidate>;
+
+  return {
+    raw: typeof rawCandidate.raw === "string" ? rawCandidate.raw : "",
+    value:
+      typeof rawCandidate.value === "number" ? rawCandidate.value : null,
+    score:
+      typeof rawCandidate.score === "number" ? rawCandidate.score : null,
+    strategy:
+      typeof rawCandidate.strategy === "string" ? rawCandidate.strategy : null,
+    reasons: normalizeStringArray(rawCandidate.reasons),
+    rejectedReasons: normalizeStringArray(rawCandidate.rejectedReasons),
+    inParentheses:
+      typeof rawCandidate.inParentheses === "boolean"
+        ? rawCandidate.inParentheses
+        : undefined,
+    context:
+      typeof rawCandidate.context === "string" ? rawCandidate.context : null,
+  };
+}
+
+function mapStatusToJobState(status: UploadItem["status"]): UploadJobState {
+  switch (status) {
+    case "READY_FOR_REVIEW":
+      return "review_required";
+    case "APPROVAL_PENDING":
+      return "approval_pending";
+    case "QUEUED":
+      return "queued";
+    case "PROCESSING":
+      return "running";
+    case "COMPLETED":
+      return "completed";
+    case "FAILED":
+      return "failed";
+    case "SKIPPED":
+      return "skipped";
+    case "REJECTED":
+      return "rejected";
+    case "CANCELED":
+      return "canceled";
+    case "ANALYZING":
+    case "RECEIVED":
+    default:
+      return "analyzing";
+  }
+}
+
+function normalizeItemParsing(item: UploadItem): UploadParsing {
+  const rawIngestion = item.ingestion as
+    | { parsed?: { parsing?: Partial<UploadParsing> } }
+    | undefined;
+  const rawParsing =
+    (item as UploadItem & { parsing?: Partial<UploadParsing> }).parsing ??
+    rawIngestion?.parsed?.parsing;
+
+  return {
+    chapterNumber:
+      typeof rawParsing?.chapterNumber === "number"
+        ? rawParsing.chapterNumber
+        : item.plan.chapterNumber ?? null,
+    confidence:
+      rawParsing?.confidence ?? item.suggestion.confidence ?? "low",
+    requiresManualReview:
+      rawParsing?.requiresManualReview ??
+      item.suggestion.reviewRequired ??
+      false,
+    selectedCandidate:
+      normalizeParsingCandidate(rawParsing?.selectedCandidate) ?? null,
+    ignoredCandidates: Array.isArray(rawParsing?.ignoredCandidates)
+      ? rawParsing.ignoredCandidates
+          .map(normalizeParsingCandidate)
+          .filter(
+            (candidate): candidate is UploadParsingCandidate => candidate !== null,
+          )
+      : [],
+    notes: normalizeStringArray(rawParsing?.notes),
+  };
+}
+
+function normalizeItemJob(item: UploadItem): UploadJob {
+  const rawJob = (item as UploadItem & { job?: Partial<UploadJob> }).job;
+  const queueJobId = rawJob?.queueJobId ?? item.result.queueJobId ?? null;
+
+  return {
+    state: rawJob?.state ?? mapStatusToJobState(item.status),
+    stage:
+      typeof rawJob?.stage === "string"
+        ? rawJob.stage
+        : item.currentStage ?? null,
+    retrying:
+      typeof rawJob?.retrying === "boolean"
+        ? rawJob.retrying
+        : rawJob?.state === "retrying",
+    userActionRequired:
+      typeof rawJob?.userActionRequired === "boolean"
+        ? rawJob.userActionRequired
+        : item.status === "READY_FOR_REVIEW",
+    canRetry:
+      typeof rawJob?.canRetry === "boolean"
+        ? rawJob.canRetry
+        : item.status === "FAILED",
+    canCancel:
+      typeof rawJob?.canCancel === "boolean" ? rawJob.canCancel : false,
+    canReview:
+      typeof rawJob?.canReview === "boolean"
+        ? rawJob.canReview
+        : item.status === "READY_FOR_REVIEW",
+    queueJobId,
+  };
+}
+
+function normalizeUploadItem(item: UploadItem): UploadItem {
+  return {
+    ...item,
+    parsing: normalizeItemParsing(item),
+    job: normalizeItemJob(item),
+  };
+}
+
 function normalizeSessionSummary(
   session: UploadSessionSummary,
 ): UploadSessionSummary {
@@ -59,6 +199,7 @@ function normalizeSessionSummary(
 function normalizeSessionDetail(session: UploadSessionDetail): UploadSessionDetail {
   return {
     ...session,
+    items: session.items.map(normalizeUploadItem),
     workflow: resolveSessionWorkflow(session),
   };
 }
@@ -78,6 +219,7 @@ function normalizeSessionStub<T extends { id: string; status: UploadSessionStatu
 function normalizeDraft(draft: UploadDraft): UploadDraft {
   const normalizedDraft = {
     ...draft,
+    items: draft.items.map(normalizeUploadItem),
     workflow: draft.workflow,
   };
 

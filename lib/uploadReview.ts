@@ -1,10 +1,26 @@
 import type { UploadDraftItem } from "@/types/api";
 
-export function isItemMarkedForManualReview(item: UploadDraftItem): boolean {
-  return Boolean(item.suggestion.reviewRequired ?? item.ingestion?.reviewRequired);
+type UploadReviewItemLike = UploadDraftItem & {
+  parsing?: {
+    requiresManualReview?: boolean;
+    confidence?: "high" | "medium" | "low";
+  };
+  job?: {
+    userActionRequired?: boolean;
+    canReview?: boolean;
+  };
+};
+
+export function isItemMarkedForManualReview(item: UploadReviewItemLike): boolean {
+  return Boolean(
+    item.parsing?.requiresManualReview ??
+      item.job?.userActionRequired ??
+      item.suggestion.reviewRequired ??
+      item.ingestion?.reviewRequired,
+  );
 }
 
-export function isManualReviewResolved(item: UploadDraftItem): boolean {
+export function isManualReviewResolved(item: UploadReviewItemLike): boolean {
   if (!isItemMarkedForManualReview(item)) {
     return true;
   }
@@ -25,11 +41,20 @@ export function isManualReviewResolved(item: UploadDraftItem): boolean {
   return decision === "SKIP";
 }
 
-export function countUnresolvedManualReviews(items: UploadDraftItem[]): number {
+export function countUnresolvedManualReviews(items: UploadReviewItemLike[]): number {
   return items.filter((item) => !isManualReviewResolved(item)).length;
 }
 
-export function getItemConfidenceScore(item: UploadDraftItem): number | null {
+export function getItemConfidenceScore(item: UploadReviewItemLike): number | null {
+  if (item.parsing?.confidence === "high") {
+    return 100;
+  }
+  if (item.parsing?.confidence === "medium") {
+    return 60;
+  }
+  if (item.parsing?.confidence === "low") {
+    return 30;
+  }
   if (typeof item.suggestion.confidenceScore === "number") {
     return item.suggestion.confidenceScore;
   }
@@ -38,4 +63,3 @@ export function getItemConfidenceScore(item: UploadDraftItem): number | null {
   }
   return null;
 }
-

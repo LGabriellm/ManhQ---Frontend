@@ -11,7 +11,7 @@ import {
 import { useSeriesSearch } from "@/hooks/useApi";
 import {
   CONFIDENCE_META,
-  ITEM_STATUS_META,
+  JOB_STATE_META,
   TONE_STYLES,
   formatDateTime,
   formatNumber,
@@ -112,7 +112,11 @@ export function UploadItemCard({
     item.plan.newSeriesTitle || item.suggestion.matchedSeriesTitle || "",
   );
   const [chapterNumber, setChapterNumber] = useState<string>(
-    item.plan.chapterNumber != null ? String(item.plan.chapterNumber) : "",
+    item.plan.chapterNumber != null
+      ? String(item.plan.chapterNumber)
+      : item.parsing.chapterNumber != null
+        ? String(item.parsing.chapterNumber)
+        : "",
   );
   const [volume, setVolume] = useState<string>(
     item.plan.volume != null ? String(item.plan.volume) : "",
@@ -140,7 +144,11 @@ export function UploadItemCard({
       item.plan.newSeriesTitle || item.suggestion.matchedSeriesTitle || "",
     );
     setChapterNumber(
-      item.plan.chapterNumber != null ? String(item.plan.chapterNumber) : "",
+      item.plan.chapterNumber != null
+        ? String(item.plan.chapterNumber)
+        : item.parsing.chapterNumber != null
+          ? String(item.parsing.chapterNumber)
+          : "",
     );
     setVolume(item.plan.volume != null ? String(item.plan.volume) : "");
     setYear(item.plan.year != null ? String(item.plan.year) : "");
@@ -166,10 +174,13 @@ export function UploadItemCard({
   }, [decision, newSeriesTitle, targetSeriesId]);
 
   const primaryStage = getPrimaryStage(item.suggestion.stages);
-  const statusMeta = ITEM_STATUS_META[item.status];
-  const confidenceMeta = CONFIDENCE_META[item.suggestion.confidence];
+  const jobMeta = JOB_STATE_META[item.job.state];
+  const confidenceMeta = CONFIDENCE_META[item.parsing.confidence];
   const needsManualChoice = itemNeedsManualChoice(item);
+  const chapterNeedsReview =
+    item.parsing.requiresManualReview || item.parsing.confidence === "low";
   const destinationSummary = getDestinationSummary(item);
+  const queueJobId = item.job.queueJobId || item.result.queueJobId;
   const topCandidates = useMemo(
     () =>
       item.suggestion.candidates.filter((candidate) => candidate.matchedSeriesId).slice(0, 4),
@@ -237,16 +248,20 @@ export function UploadItemCard({
               {item.originalName}
             </h3>
             <span
-              className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${TONE_STYLES[statusMeta.tone]}`}
+              className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${TONE_STYLES[jobMeta.tone]}`}
             >
-              {statusMeta.label}
+              {jobMeta.label}
             </span>
             <span
               className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${TONE_STYLES[confidenceMeta.tone]}`}
             >
               {confidenceMeta.label}
             </span>
-            {needsManualChoice ? (
+            {item.job.retrying ? (
+              <span className="inline-flex rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300">
+                Reprocessando
+              </span>
+            ) : needsManualChoice ? (
               <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200">
                 Revisão pendente
               </span>
@@ -259,7 +274,7 @@ export function UploadItemCard({
 
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--color-textDim)]">
             <span>Capítulos detectados: {formatNumber(item.pageCount)}</span>
-            <span>Etapa: {formatUploadStage(item.currentStage)}</span>
+            <span>Etapa: {formatUploadStage(item.job.stage || item.currentStage)}</span>
             <span>
               Seleção: {item.plan.selectionConfirmed ? "confirmada" : "pendente"}
             </span>
@@ -274,11 +289,11 @@ export function UploadItemCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {onRetry && item.status === "FAILED" && (
+          {onRetry && item.job.canRetry && (
             <button
               type="button"
               onClick={() => void retryItem()}
-              disabled={retryDisabled || isRetrying}
+              disabled={retryDisabled || isRetrying || !item.job.canRetry}
               className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-xs font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.08] disabled:opacity-50"
             >
               {isRetrying ? (
@@ -304,7 +319,24 @@ export function UploadItemCard({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+      <div className="mt-4 grid gap-3 lg:grid-cols-4">
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
+            Job do item
+          </p>
+          <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
+            {jobMeta.label}
+          </p>
+          <p className="mt-1 text-xs text-[var(--color-textDim)]">
+            {formatUploadStage(item.job.stage || item.currentStage)}
+          </p>
+          {item.job.userActionRequired && (
+            <p className="mt-2 text-xs text-amber-200">
+              O backend ainda exige ação manual neste item.
+            </p>
+          )}
+        </div>
+
         <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
           <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
             Sugestão do sistema
@@ -321,6 +353,22 @@ export function UploadItemCard({
 
         <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
           <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
+            Parsing do capítulo
+          </p>
+          <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
+            {item.parsing.chapterNumber != null
+              ? `Cap. ${item.parsing.chapterNumber}`
+              : "Capítulo não definido"}
+          </p>
+          <p className="mt-1 text-xs text-[var(--color-textDim)]">
+            {item.parsing.requiresManualReview
+              ? "Backend pediu revisão manual do número."
+              : "Número aceito pelo backend."}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
             Destino atual
           </p>
           <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
@@ -330,18 +378,6 @@ export function UploadItemCard({
             {item.plan.decision
               ? `Decisão ${item.plan.decision}`
               : "Ainda sem decisão final"}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
-            Metadados finais
-          </p>
-          <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
-            Cap. {item.plan.chapterNumber ?? "—"} · Vol. {item.plan.volume ?? "—"}
-          </p>
-          <p className="mt-1 text-xs text-[var(--color-textDim)]">
-            Ano {item.plan.year ?? "—"} · {item.plan.isOneShot ? "One-shot" : "Serializado"}
           </p>
         </div>
       </div>
@@ -564,6 +600,7 @@ export function UploadItemCard({
                 <label className="block">
                   <span className="mb-1 block text-xs text-[var(--color-textDim)]">
                     Capítulo
+                    {chapterNeedsReview ? " · revisão recomendada" : ""}
                   </span>
                   <input
                     type="number"
@@ -571,8 +608,19 @@ export function UploadItemCard({
                     value={chapterNumber}
                     onChange={(event) => setChapterNumber(event.target.value)}
                     disabled={disabled}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
+                    className={`w-full rounded-2xl border px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors disabled:opacity-50 ${
+                      chapterNeedsReview
+                        ? "border-amber-500/30 bg-amber-500/10 focus:border-amber-400/40"
+                        : "border-white/8 bg-white/[0.03] focus:border-[var(--color-primary)]/35"
+                    }`}
                   />
+                  {(item.parsing.selectedCandidate || item.parsing.notes.length > 0) && (
+                    <p className="mt-2 text-[11px] text-[var(--color-textDim)]">
+                      {item.parsing.selectedCandidate
+                        ? `Candidato escolhido: ${item.parsing.selectedCandidate.raw}`
+                        : item.parsing.notes[0]}
+                    </p>
+                  )}
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-xs text-[var(--color-textDim)]">
@@ -700,8 +748,62 @@ export function UploadItemCard({
           <aside className="space-y-4">
             <section className="rounded-3xl border border-white/8 bg-black/10 p-4">
               <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/75">
-                Evidência e etapas
+                Parsing e evidência
               </p>
+
+              <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                <p className="text-xs font-medium text-[var(--color-textMain)]">
+                  Resultado do parsing
+                </p>
+                <p className="mt-2 text-sm text-[var(--color-textMain)]">
+                  {item.parsing.chapterNumber != null
+                    ? `Capítulo ${item.parsing.chapterNumber}`
+                    : "Sem capítulo definido"}
+                </p>
+                <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                  Confiança {item.parsing.confidence}
+                </p>
+                {item.parsing.selectedCandidate && (
+                  <p className="mt-2 text-xs text-[var(--color-textDim)]">
+                    Escolhido: {item.parsing.selectedCandidate.raw}
+                    {item.parsing.selectedCandidate.strategy
+                      ? ` · ${item.parsing.selectedCandidate.strategy}`
+                      : ""}
+                  </p>
+                )}
+                {item.parsing.notes.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-xs text-[var(--color-textDim)]">
+                    {item.parsing.notes.slice(0, 3).map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {item.parsing.ignoredCandidates.length > 0 && (
+                <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                  <p className="text-xs font-medium text-[var(--color-textMain)]">
+                    Candidatos ignorados
+                  </p>
+                  <div className="mt-2 space-y-2">
+                    {item.parsing.ignoredCandidates.slice(0, 4).map((candidate) => (
+                      <div
+                        key={`${candidate.raw}-${candidate.strategy || "candidate"}`}
+                        className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2"
+                      >
+                        <p className="text-xs text-[var(--color-textMain)]">
+                          {candidate.raw}
+                        </p>
+                        {candidate.rejectedReasons.length > 0 && (
+                          <p className="mt-1 text-[11px] text-[var(--color-textDim)]">
+                            {candidate.rejectedReasons.join(" · ")}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-4 space-y-2">
                 {item.suggestion.candidates.slice(0, 5).map((candidate) => (
@@ -765,9 +867,15 @@ export function UploadItemCard({
 
             <section className="rounded-3xl border border-white/8 bg-black/10 p-4">
               <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/75">
-                Resultado e histórico
+                Job e resultado
               </p>
               <div className="mt-4 space-y-2 text-sm text-[var(--color-textDim)]">
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                  Job: <span className="text-[var(--color-textMain)]">{jobMeta.label}</span>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                  Etapa: <span className="text-[var(--color-textMain)]">{formatUploadStage(item.job.stage || item.currentStage)}</span>
+                </div>
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
                   Aprovação: <span className="text-[var(--color-textMain)]">{item.approval.status}</span>
                 </div>
@@ -776,16 +884,19 @@ export function UploadItemCard({
                 </div>
                 {item.result.seriesId && (
                   <Link
-                    href={`/series/${item.result.seriesId}`}
+                    href={`/serie/${item.result.seriesId}`}
                     className="block rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 transition-colors hover:bg-emerald-500/15"
                   >
                     Abrir série resultante
                   </Link>
                 )}
-                {item.result.queueJobId && (
-                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs">
-                    Job: {item.result.queueJobId}
-                  </div>
+                {queueJobId && (
+                  <Link
+                    href={`/dashboard/jobs/${queueJobId}`}
+                    className="block rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs transition-colors hover:bg-white/[0.06]"
+                  >
+                    Queue Job: {queueJobId}
+                  </Link>
                 )}
                 {item.approval.reason && (
                   <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">

@@ -2,6 +2,7 @@ export type UploadSource = "LOCAL" | "GOOGLE_DRIVE";
 
 export type UploadSessionStatus =
   | "ANALYZING"
+  | "REVIEW_REQUIRED"
   | "READY_FOR_REVIEW"
   | "READY_TO_CONFIRM"
   | "APPROVAL_PENDING"
@@ -12,7 +13,18 @@ export type UploadSessionStatus =
   | "CANCELED"
   | "EXPIRED";
 
-export type UploadWorkflowState = UploadSessionStatus;
+export type UploadWorkflowState =
+  | "ANALYZING"
+  | "REVIEW_REQUIRED"
+  | "READY_FOR_REVIEW"
+  | "READY_TO_CONFIRM"
+  | "APPROVAL_PENDING"
+  | "PROCESSING"
+  | "COMPLETED"
+  | "PARTIAL_FAILURE"
+  | "FAILED"
+  | "CANCELED"
+  | "EXPIRED";
 
 export type UploadWorkflowNextAction =
   | "POLL_ANALYSIS"
@@ -75,6 +87,52 @@ export type UploadSuggestionDecision =
   | "MANUAL_REVIEW";
 
 export type UploadSuggestionConfidence = "low" | "medium" | "high";
+
+export type UploadParsingConfidence = UploadSuggestionConfidence;
+
+export interface UploadParsingCandidate {
+  raw: string;
+  value: number | null;
+  score: number | null;
+  strategy: string | null;
+  reasons: string[];
+  rejectedReasons: string[];
+  inParentheses?: boolean;
+  context?: string | null;
+}
+
+export interface UploadParsing {
+  chapterNumber: number | null;
+  confidence: UploadParsingConfidence;
+  requiresManualReview: boolean;
+  selectedCandidate: UploadParsingCandidate | null;
+  ignoredCandidates: UploadParsingCandidate[];
+  notes: string[];
+}
+
+export type UploadJobState =
+  | "analyzing"
+  | "review_required"
+  | "approval_pending"
+  | "queued"
+  | "retrying"
+  | "running"
+  | "completed"
+  | "failed"
+  | "skipped"
+  | "rejected"
+  | "canceled";
+
+export interface UploadJob {
+  state: UploadJobState;
+  stage: string | null;
+  retrying: boolean;
+  userActionRequired: boolean;
+  canRetry: boolean;
+  canCancel: boolean;
+  canReview: boolean;
+  queueJobId: string | null;
+}
 
 export type UploadStageName =
   | "UPLOAD_RECEIVED"
@@ -313,6 +371,8 @@ export interface UploadItem {
   embeddedMetadata: Record<string, unknown> | null;
   suggestion: UploadSuggestion;
   ingestion: Record<string, unknown>;
+  parsing: UploadParsing;
+  job: UploadJob;
   plan: UploadPlan;
   approval: UploadApproval;
   optimization: UploadOptimization;

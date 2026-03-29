@@ -103,6 +103,14 @@ function getItemDisabledReason(
     return NEXT_ACTION_META[activeDraft.workflow.nextAction].description;
   }
 
+  if (!item.job.canReview) {
+    if (item.job.userActionRequired) {
+      return "O backend ainda não liberou a revisão deste item. Atualize a sessão para continuar.";
+    }
+
+    return "Este item não aceita mais revisão manual.";
+  }
+
   if (item.status !== "READY_FOR_REVIEW") {
     return "Somente itens em READY_FOR_REVIEW continuam editáveis.";
   }
@@ -119,6 +127,8 @@ export default function UploadsPage() {
   const [bulkSeriesTitle, setBulkSeriesTitle] = useState("");
   const [bulkSeriesQuery, setBulkSeriesQuery] = useState("");
   const [bulkNewSeriesTitle, setBulkNewSeriesTitle] = useState("");
+  const [confirmReplayBlockedSessionId, setConfirmReplayBlockedSessionId] =
+    useState<string | null>(null);
   const handledMissingSelectionRef = useRef<string | null>(null);
   const deferredBulkSeriesQuery = useDeferredValue(bulkSeriesQuery.trim());
 
@@ -178,6 +188,11 @@ export default function UploadsPage() {
   const activeDraftCanEdit = activeDraft?.workflow.canEdit ?? false;
   const activeDraftCanConfirm = activeDraft?.workflow.canConfirm ?? false;
   const activeDraftWorkflowState = activeDraft?.workflow.state ?? null;
+  const confirmReplayBlocked = Boolean(
+    resolvedActiveSessionId &&
+      workspaceWorkflow?.canConfirm &&
+      confirmReplayBlockedSessionId === resolvedActiveSessionId,
+  );
   const roleSummary = isEditor && !isAdmin
     ? "Você pode criar sessões, revisar sugestões, reconectar o Google Drive e acompanhar aprovações pendentes."
     : "Sessões persistidas, revisão manual, callbacks do Google Drive e estados de processamento em um único workspace.";
@@ -200,6 +215,7 @@ export default function UploadsPage() {
 
   const clearActiveSelection = (message?: string) => {
     setActiveSessionId(null);
+    setConfirmReplayBlockedSessionId(null);
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     }
@@ -334,6 +350,7 @@ export default function UploadsPage() {
         itemId,
         data,
       });
+      setConfirmReplayBlockedSessionId(null);
       toast.success("Plano do item atualizado.");
     } catch (error) {
       if (
@@ -384,6 +401,7 @@ export default function UploadsPage() {
           targetSeriesId: bulkSeriesId,
         },
       });
+      setConfirmReplayBlockedSessionId(null);
       toast.success("Série existente aplicada a todos os itens editáveis.");
     } catch (error) {
       if (
@@ -425,6 +443,7 @@ export default function UploadsPage() {
           seriesTitle: bulkNewSeriesTitle.trim(),
         },
       });
+      setConfirmReplayBlockedSessionId(null);
       toast.success("Novo título aplicado ao draft.");
     } catch (error) {
       if (
@@ -452,7 +471,7 @@ export default function UploadsPage() {
     }
 
     const pendingItems = activeDraft.items
-      .filter((item) => item.status === "READY_FOR_REVIEW")
+      .filter((item) => item.status === "READY_FOR_REVIEW" && item.job.canReview)
       .map((item) => ({
         itemId: item.id,
         selected: false,
@@ -477,6 +496,7 @@ export default function UploadsPage() {
           items: pendingItems,
         },
       });
+      setConfirmReplayBlockedSessionId(null);
       toast.success("Itens pendentes marcados como ignorados.");
     } catch (error) {
       if (
@@ -529,6 +549,11 @@ export default function UploadsPage() {
           : segments.join(" · "),
       );
 
+      if (result.noOp || result.alreadyHandled.length > 0) {
+        setConfirmReplayBlockedSessionId(result.session.id);
+      } else {
+        setConfirmReplayBlockedSessionId(null);
+      }
       setActiveSessionId(result.session.id);
     } catch (error) {
       if (
@@ -561,6 +586,7 @@ export default function UploadsPage() {
         draftId: resolvedActiveSessionId,
       });
       toast.success("Sessão cancelada.");
+      setConfirmReplayBlockedSessionId(null);
       clearActiveSelection();
       await sessionsQuery.refetch();
     } catch (error) {
@@ -783,8 +809,9 @@ export default function UploadsPage() {
                           Ações do draft
                         </p>
                         <p className="mt-1 text-sm text-[var(--color-textDim)]">
-                          As edições são aceitas somente enquanto o backend mantiver
-                          itens em READY_FOR_REVIEW.
+                          As edições são aceitas somente enquanto o backend
+                          mantiver <code>workflow.canEdit</code> e
+                          <code> item.job.canReview</code> ativos.
                         </p>
                       </div>
                       <div className="flex gap-2">
@@ -910,7 +937,9 @@ export default function UploadsPage() {
                           type="button"
                           onClick={() => void confirmDraft()}
                           disabled={
-                            confirmDraftMutation.isPending || !activeDraftCanConfirm
+                            confirmDraftMutation.isPending ||
+                            !activeDraftCanConfirm ||
+                            confirmReplayBlocked
                           }
                           className="inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
                         >
@@ -919,7 +948,9 @@ export default function UploadsPage() {
                           ) : (
                             <CheckCircle2 className="h-4 w-4" />
                           )}
-                          Confirmar e enviar
+                          {confirmReplayBlocked
+                            ? "Confirmação já sincronizada"
+                            : "Confirmar e enviar"}
                         </button>
                       </div>
 
@@ -927,6 +958,13 @@ export default function UploadsPage() {
                         <p className="mt-3 text-xs text-amber-200">
                           Ainda existem {reviewPendingCount} item(ns) aguardando
                           revisão manual.
+                        </p>
+                      )}
+                      {confirmReplayBlocked && (
+                        <p className="mt-3 text-xs text-sky-200">
+                          A última confirmação retornou <code>noOp</code> ou itens
+                          já tratados. A UI aguardará uma nova mudança do backend
+                          antes de liberar outra confirmação.
                         </p>
                       )}
                     </div>
@@ -1094,7 +1132,8 @@ export default function UploadsPage() {
               </div>
               <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
                 O draft só fica editável enquanto o backend mantiver itens em{" "}
-                <code className="text-[var(--color-textMain)]">READY_FOR_REVIEW</code>.
+                <code className="text-[var(--color-textMain)]">READY_FOR_REVIEW</code>{" "}
+                com <code className="text-[var(--color-textMain)]">job.canReview</code>.
               </div>
             </div>
           </section>

@@ -100,12 +100,27 @@ function makeDraft(overrides: Partial<UploadDraft> = {}): UploadDraft {
 test("resolveSessionWorkflow preserves the backend next action contract", () => {
   const workflow = resolveSessionWorkflow(makeSession());
 
-  assert.equal(workflow.state, "READY_FOR_REVIEW");
+  assert.equal(workflow.state, "REVIEW_REQUIRED");
   assert.equal(workflow.nextAction, "REVIEW_ITEMS");
   assert.equal(workflow.canEdit, true);
   assert.equal(shouldPollWorkflow(workflow), false);
   assert.equal(workflowNeedsDraft(workflow), true);
   assert.equal(getWorkflowSummary(workflow)?.label, "Revisar itens");
+});
+
+test("resolveSessionWorkflow accepts REVIEW_REQUIRED directly from the backend", () => {
+  const workflow = resolveSessionWorkflow(
+    makeSession({
+      status: "REVIEW_REQUIRED",
+      workflow: {
+        ...makeSession().workflow,
+        state: "REVIEW_REQUIRED",
+      },
+    }),
+  );
+
+  assert.equal(workflow.state, "REVIEW_REQUIRED");
+  assert.equal(workflow.nextAction, "REVIEW_ITEMS");
 });
 
 test("resolveDraftWorkflow keeps analysis drafts in poll mode", () => {

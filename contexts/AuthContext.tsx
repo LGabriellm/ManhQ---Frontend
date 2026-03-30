@@ -1,9 +1,21 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  getDefaultAuthenticatedPath,
+  hasSubscriptionAccess,
+} from "@/lib/subscription";
 import { getStoredUser, setStoredUser, clearStoredUser } from "@/services/api";
 import { authService } from "@/services/auth.service";
-import type { User, LoginRequest, RegisterRequest } from "@/types/api";
+import type {
+  AuthResponse,
+  LoginRequest,
+  RegisterRequest,
+  SubscriptionState,
+  SubscriptionView,
+  User,
+} from "@/types/api";
 
 interface AuthContextType {
   user: User | null;
@@ -12,10 +24,14 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   isEditor: boolean;
-  login: (credentials: LoginRequest) => Promise<void>;
+  accessGranted: boolean;
+  subscription: SubscriptionView | null;
+  subscriptionState: SubscriptionState;
+  defaultAuthenticatedPath: string;
+  login: (credentials: LoginRequest) => Promise<AuthResponse>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,11 +40,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   const isAuthenticated = !!user;
   const isAdmin = isAuthenticated && user?.role === "ADMIN";
   const isEditor =
     isAuthenticated && (user?.role === "EDITOR" || user?.role === "ADMIN");
+  const accessGranted = hasSubscriptionAccess(user);
+  const subscription = user?.subscription ?? null;
+  const subscriptionState =
+    subscription?.state ?? user?.subscriptionState ?? "inactive";
+  const defaultAuthenticatedPath = getDefaultAuthenticatedPath(user);
 
   // Carregar sessão na inicialização
   useEffect(() => {
@@ -62,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const response = await authService.login(credentials);
     setUser(response.user);
     setStoredUser(response.user);
+    return response;
   };
 
   const register = async (data: RegisterRequest) => {
@@ -79,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Limpar estado local independentemente do resultado
       clearStoredUser();
       setUser(null);
+      queryClient.clear();
     }
   };
 
@@ -87,8 +111,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const freshUser = await authService.me();
       setUser(freshUser);
       setStoredUser(freshUser);
+      return freshUser;
     } catch (error) {
       console.error("Erro ao atualizar usuário:", error);
+      const apiError = error as { statusCode?: number };
+      if (apiError.statusCode === 401) {
+        clearStoredUser();
+        setUser(null);
+        queryClient.clear();
+      }
+      return null;
     }
   };
 
@@ -101,6 +133,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated,
         isAdmin,
         isEditor,
+        accessGranted,
+        subscription,
+        subscriptionState,
+        defaultAuthenticatedPath,
         login,
         register,
         logout,

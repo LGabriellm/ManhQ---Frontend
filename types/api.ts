@@ -3,11 +3,83 @@ import type { MetadataSourceRecord } from "@/types/metadata-review";
 import type { UploadApprovalListItem } from "@/types/upload-workflow";
 
 // ===== Autenticação =====
+export type SubscriptionStatus =
+  | "ACTIVE"
+  | "SETUP_PENDING"
+  | "PAST_DUE"
+  | "CANCELLATION_REQUESTED"
+  | "CANCELED"
+  | "REFUNDED"
+  | "EXPIRED";
+
+export type SubscriptionState =
+  | "inactive"
+  | "setup_pending"
+  | "active"
+  | "nearing_expiration"
+  | "renewal_pending"
+  | "past_due"
+  | "cancelled"
+  | "expired"
+  | "refunded";
+
+export interface SubscriptionReminder {
+  lastSentAt: string | null;
+  lastSentDays: number | null;
+  nextReminderWindowDays: number | null;
+}
+
+export interface SubscriptionActions {
+  canCancel: boolean;
+  canRenew: boolean;
+}
+
+export interface SubscriptionView {
+  id?: string;
+  provider?: string;
+  plan?: string;
+  status?: SubscriptionStatus;
+  state: SubscriptionState;
+  accessGranted: boolean;
+  paymentMethod?: string | null;
+  isRecurring?: boolean | null;
+  buyerEmail?: string;
+  buyerName?: string | null;
+  startsAt?: string | null;
+  currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd?: boolean;
+  cancellationRequestedAt?: string | null;
+  cancellationEffectiveAt?: string | null;
+  canceledAt?: string | null;
+  cancelReason?: string | null;
+  lastPaymentConfirmedAt?: string | null;
+  setupCompletedAt?: string | null;
+  renewalUrl?: string | null;
+  reminder?: SubscriptionReminder;
+  actions: SubscriptionActions;
+  user?: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: string;
+    subStatus?: string | null;
+  };
+  amount?: number | null;
+}
+
 export interface User {
   id: string;
   email: string;
   name: string | null;
   role: string;
+  username?: string | null;
+  subStatus?: string | null;
+  subExpiresAt?: string | null;
+  maxDevices?: number;
+  createdAt?: string;
+  subscription?: SubscriptionView;
+  subscriptionState?: SubscriptionState;
+  accessGranted?: boolean;
 }
 
 export interface LoginRequest {
@@ -24,7 +96,9 @@ export interface RegisterRequest {
 export interface AuthResponse {
   message: string;
   user: User;
-  token?: string;
+  subscription?: SubscriptionView;
+  subscriptionState?: SubscriptionState;
+  accessGranted?: boolean;
 }
 
 export interface RegisterResponse {
@@ -37,19 +111,31 @@ export interface ValidateTokenResponse {
   valid: boolean;
   email?: string;
   name?: string;
+  expiresAt?: string;
+  suggestedUsername?: string;
+  subscription?: SubscriptionView;
   error?: string;
 }
 
 export interface ActivateAccountRequest {
   token: string;
   password: string;
+  username?: string;
+  name?: string;
+}
+
+export interface ActivatedUser {
+  id: string;
+  email: string;
+  name?: string | null;
+  username?: string | null;
 }
 
 export interface ActivateAccountResponse {
   success: boolean;
   message: string;
-  user: User;
-  token?: string;
+  user: ActivatedUser;
+  alreadyActivated?: boolean;
 }
 
 // ===== Recuperação de Senha =====
@@ -2330,19 +2416,35 @@ export interface SubmissionsListResponse {
 
 // ===== Admin — Gerenciamento de Assinaturas =====
 export interface SubscriptionItem {
-  id: string;
-  provider: string;
-  plan: string;
-  status: "ACTIVE" | "PAST_DUE" | "CANCELED" | "REFUNDED" | "EXPIRED";
-  startsAt: string;
-  currentPeriodEnd: string;
-  amount: number;
-  user: {
+  id?: string;
+  provider?: string;
+  plan?: string;
+  status?: SubscriptionStatus;
+  state: SubscriptionState;
+  accessGranted: boolean;
+  paymentMethod?: string | null;
+  isRecurring?: boolean | null;
+  buyerEmail?: string;
+  buyerName?: string | null;
+  startsAt?: string | null;
+  currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd?: boolean;
+  cancellationRequestedAt?: string | null;
+  cancellationEffectiveAt?: string | null;
+  canceledAt?: string | null;
+  cancelReason?: string | null;
+  lastPaymentConfirmedAt?: string | null;
+  setupCompletedAt?: string | null;
+  renewalUrl?: string | null;
+  reminder?: SubscriptionReminder;
+  actions: SubscriptionActions;
+  amount?: number | null;
+  user?: {
     id: string;
     email: string;
-    name: string;
+    name: string | null;
     role: string;
-    subStatus: string;
+    subStatus?: string | null;
   };
 }
 
@@ -2366,9 +2468,12 @@ export interface SubscriptionsParams {
 export interface SubscriptionsStatsResponse {
   totalSubscriptions: number;
   active: number;
+  setupPending: number;
+  cancellationRequested: number;
   canceled: number;
   pastDue: number;
   refunded: number;
+  expired: number;
   pendingActivations: number;
   recentEvents: {
     id: string;
@@ -2427,6 +2532,13 @@ export interface CreateManualSubscriptionResponse {
 
 export interface CancelSubscriptionRequest {
   reason?: string;
+  immediate?: boolean;
+}
+
+export interface CancelSubscriptionResponse {
+  success: boolean;
+  message: string;
+  subscription: SubscriptionView;
 }
 
 export interface CheckExpiredResponse {

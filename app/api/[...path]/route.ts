@@ -10,6 +10,7 @@ const ALLOWED_PREFIXES = [
   "logout",
   "logout-all",
   "me",
+  "subscription",
   "sessions",
   "activate",
   "forgot-password",

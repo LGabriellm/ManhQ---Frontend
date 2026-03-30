@@ -5,33 +5,46 @@ import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
 import { useAuth } from "@/contexts/AuthContext";
-
-const PUBLIC_ROUTES = [
-  "/auth/login",
-  "/auth/activate",
-  "/auth/forgot-password",
-  "/auth/reset-password",
-  "/termos-de-servico",
-  "/politica-de-privacidade",
-];
+import {
+  isPublicAppPath,
+  requiresActiveSubscription,
+  SUBSCRIPTION_MANAGEMENT_ROUTE,
+} from "@/lib/subscription";
 
 export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { accessGranted, isAuthenticated, isLoading } = useAuth();
 
-  const isPublicRoute =
-    pathname === "/" || PUBLIC_ROUTES.some((r) => pathname?.startsWith(r));
+  const isPublicRoute = isPublicAppPath(pathname);
+  const needsActiveSubscription = requiresActiveSubscription(pathname);
   const shouldHideNav =
     pathname?.includes("/reader") ||
     pathname?.startsWith("/dashboard") ||
+    pathname?.startsWith("/subscription") ||
     isPublicRoute;
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !isPublicRoute) {
       router.replace("/auth/login");
     }
-  }, [isLoading, isAuthenticated, isPublicRoute, router]);
+
+    if (
+      !isLoading &&
+      isAuthenticated &&
+      !accessGranted &&
+      needsActiveSubscription
+    ) {
+      router.replace(SUBSCRIPTION_MANAGEMENT_ROUTE);
+    }
+  }, [
+    accessGranted,
+    isLoading,
+    isAuthenticated,
+    isPublicRoute,
+    needsActiveSubscription,
+    router,
+  ]);
 
   if (isLoading) {
     return (
@@ -42,6 +55,10 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAuthenticated && !isPublicRoute) {
+    return null;
+  }
+
+  if (isAuthenticated && !accessGranted && needsActiveSubscription) {
     return null;
   }
 

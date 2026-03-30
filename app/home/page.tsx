@@ -9,6 +9,7 @@ import { MangaCard } from "@/components/MangaCard";
 import { ContinueReadingCard } from "@/components/ContinueReadingCard";
 import { HorizontalScroll } from "@/components/HorizontalScroll";
 import { AuthCover } from "@/components/AuthCover";
+import { SubscriptionAlertBanner } from "@/components/subscription/SubscriptionAlertBanner";
 import { useDiscover } from "@/hooks/useDiscover";
 import { useContinueReading } from "@/hooks/useApi";
 import { useAuth } from "@/contexts/AuthContext";
@@ -71,7 +72,8 @@ function RowTitle({ label, href, accentColor = "#e50914" }: RowTitleProps) {
 // ─── Página ──────────────────────────────────────────────────────────────────
 export default function HomePage() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isLoading: authLoading, subscription, user } =
+    useAuth();
   const {
     data: discover,
     isLoading: discoverLoading,
@@ -150,6 +152,10 @@ export default function HomePage() {
             <br />
             ler hoje?
           </h1>
+        </div>
+
+        <div className="px-4">
+          <SubscriptionAlertBanner subscription={subscription} />
         </div>
 
         {discoverError && (

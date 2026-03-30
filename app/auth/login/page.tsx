@@ -5,12 +5,18 @@ import { motion } from "framer-motion";
 import type { FormEvent } from "react";
 import { Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck, WifiOff } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { getDefaultAuthenticatedPath } from "@/lib/subscription";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ApiError } from "@/types/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated, isLoading: authLoading } = useAuth();
+  const {
+    defaultAuthenticatedPath,
+    isAuthenticated,
+    isLoading: authLoading,
+    login,
+  } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,9 +29,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      router.replace("/home");
+      router.replace(defaultAuthenticatedPath);
     }
-  }, [authLoading, isAuthenticated, router]);
+  }, [authLoading, defaultAuthenticatedPath, isAuthenticated, router]);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -55,7 +61,8 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      await login({ email, password });
+      const response = await login({ email, password });
+      router.replace(getDefaultAuthenticatedPath(response.user));
     } catch (rawError) {
       const apiError = rawError as ApiError;
 
@@ -110,7 +117,8 @@ export default function LoginPage() {
             </h1>
             <p className="mt-2 text-sm leading-6 text-[var(--color-textDim)]">
               Área exclusiva para assinantes com biblioteca, progresso e
-              dashboard administrativo.
+              dashboard administrativo. Se sua assinatura precisar de renovação,
+              você continuará com acesso à área da conta para regularizar.
             </p>
           </div>
           <div className="rounded-2xl bg-[var(--color-primary)]/12 p-3 text-[var(--color-primary)]">

@@ -108,9 +108,12 @@ export function useDeleteNotification() {
 
 // ===== ESTATÍSTICAS DO USUÁRIO =====
 export function useUserStats() {
+  const { accessGranted, isAuthenticated } = useAuth();
+
   return useQuery({
     queryKey: ["user-stats"],
     queryFn: () => statsService.getAll(),
+    enabled: isAuthenticated && accessGranted,
     staleTime: 1000 * 60 * 5,
   });
 }

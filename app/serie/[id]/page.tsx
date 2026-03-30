@@ -30,7 +30,7 @@ export default function MangaDetailsPage() {
   const seriesId = params.id as string;
 
   const handleBack = () => {
-    router.push("/library");
+    router.push("/home");
   };
 
   const { data: series, isLoading, error } = useSeriesById(seriesId);

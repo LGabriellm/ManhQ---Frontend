@@ -1,4 +1,5 @@
 import api from "./api";
+import { normalizeSubscriptionView } from "@/lib/subscription";
 import type {
   LoginRequest,
   RegisterRequest,
@@ -13,7 +14,36 @@ import type {
   ForgotPasswordResponse,
   ResetPasswordRequest,
   ResetPasswordResponse,
+  SubscriptionState,
 } from "@/types/api";
+
+function normalizeAuthUser(
+  user: User,
+  extras?: {
+    subscription?: unknown;
+    subscriptionState?: unknown;
+    accessGranted?: unknown;
+  },
+): User {
+  const subscription = normalizeSubscriptionView(
+    extras?.subscription ?? user.subscription,
+  );
+  const subscriptionState =
+    (typeof extras?.subscriptionState === "string"
+      ? extras.subscriptionState
+      : user.subscriptionState) ?? subscription?.state;
+  const accessGranted =
+    typeof extras?.accessGranted === "boolean"
+      ? extras.accessGranted
+      : subscription?.accessGranted ?? user.accessGranted;
+
+  return {
+    ...user,
+    subscription,
+    subscriptionState: subscriptionState as SubscriptionState | undefined,
+    accessGranted,
+  };
+}
 
 export const authService = {
   // Registrar novo usuário
@@ -25,13 +55,29 @@ export const authService = {
   // Login
   async login(data: LoginRequest): Promise<AuthResponse> {
     const response = await api.post<AuthResponse>("/login", data);
-    return response.data;
+    const normalizedUser = normalizeAuthUser(response.data.user, {
+      subscription: response.data.subscription,
+      subscriptionState: response.data.subscriptionState,
+      accessGranted: response.data.accessGranted,
+    });
+
+    return {
+      ...response.data,
+      user: normalizedUser,
+      subscription: normalizedUser.subscription,
+      subscriptionState: normalizedUser.subscriptionState,
+      accessGranted: normalizedUser.accessGranted,
+    };
   },
 
   // Obter dados do usuário logado
   async me(): Promise<User> {
     const response = await api.get<User>("/me");
-    return response.data;
+    return normalizeAuthUser(response.data, {
+      subscription: response.data.subscription,
+      subscriptionState: response.data.subscriptionState,
+      accessGranted: response.data.subscription?.accessGranted,
+    });
   },
 
   // Logout da sessão atual
@@ -67,7 +113,10 @@ export const authService = {
     const response = await api.get<ValidateTokenResponse>(
       `/activate/validate/${token}`,
     );
-    return response.data;
+    return {
+      ...response.data,
+      subscription: normalizeSubscriptionView(response.data.subscription),
+    };
   },
 
   // Ativar conta (definir senha)

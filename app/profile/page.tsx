@@ -22,14 +22,23 @@ import {
   WifiOff,
   Info,
   Heart,
+  CreditCard,
 } from "lucide-react";
 import { motion, type Easing } from "framer-motion";
+import {
+  formatSubscriptionDate,
+  getRenewalHref,
+  getSubscriptionStateMeta,
+  isExternalHref,
+} from "@/lib/subscription";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserStats } from "@/hooks/useApi";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AuthCover } from "@/components/AuthCover";
 import { UserAvatar } from "@/components/community/UserAvatar";
+import { SubscriptionAlertBanner } from "@/components/subscription/SubscriptionAlertBanner";
+import { SubscriptionStateBadge } from "@/components/subscription/SubscriptionStateBadge";
 import type { Milestone, TopSeriesStats } from "@/types/api";
 import { useState } from "react";
 
@@ -73,7 +82,7 @@ function ProfileSkeleton() {
 // ─── Componente principal ───────────────────────────────────────────────────
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { accessGranted, logout, subscription, user } = useAuth();
   const {
     data: stats,
     isLoading,
@@ -82,6 +91,9 @@ export default function ProfilePage() {
   } = useUserStats();
   const router = useRouter();
   const [showAllMilestones, setShowAllMilestones] = useState(false);
+  const subscriptionMeta = getSubscriptionStateMeta(subscription);
+  const renewalHref = getRenewalHref(subscription);
+  const renewalHrefIsExternal = isExternalHref(renewalHref);
 
   const handleLogout = async () => {
     await logout();
@@ -231,7 +243,80 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {isLoading ? (
+      <div className="px-4">
+        <SubscriptionAlertBanner subscription={subscription} />
+      </div>
+
+      {!accessGranted ? (
+        <div className="px-4 space-y-4">
+          <div className="surface-panel rounded-[28px] p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="section-kicker">Assinatura</p>
+                <h2 className="mt-2 text-xl font-semibold text-textMain">
+                  {subscriptionMeta.title}
+                </h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-textDim">
+                  {subscriptionMeta.description}
+                </p>
+              </div>
+              <SubscriptionStateBadge state={subscription?.state} />
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="surface-panel-muted rounded-[22px] p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-textDim/70">
+                  Próximo marco
+                </p>
+                <p className="mt-2 text-sm font-semibold text-textMain">
+                  {subscription?.status === "CANCELLATION_REQUESTED"
+                    ? "Acesso termina em"
+                    : "Renovar até"}
+                </p>
+                <p className="mt-1 text-sm text-textDim">
+                  {formatSubscriptionDate(
+                    subscription?.cancellationEffectiveAt ||
+                      subscription?.currentPeriodEnd,
+                  )}
+                </p>
+              </div>
+
+              <div className="surface-panel-muted rounded-[22px] p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-textDim/70">
+                  O que ainda funciona
+                </p>
+                <p className="mt-2 text-sm font-semibold text-textMain">
+                  Conta e segurança
+                </p>
+                <p className="mt-1 text-sm text-textDim">
+                  Você ainda pode atualizar perfil, senha, sessões e acompanhar o
+                  status da assinatura normalmente.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <Link
+                href="/subscription"
+                className="ui-btn-primary px-5 py-3 text-sm font-semibold"
+              >
+                <CreditCard className="h-4 w-4" />
+                Gerenciar assinatura
+              </Link>
+              {subscription?.actions.canRenew ? (
+                <a
+                  href={renewalHref}
+                  target={renewalHrefIsExternal ? "_blank" : undefined}
+                  rel={renewalHrefIsExternal ? "noreferrer" : undefined}
+                  className="ui-btn-secondary px-5 py-3 text-sm font-semibold"
+                >
+                  Renovar acesso
+                </a>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : isLoading ? (
         <ProfileSkeleton />
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-20 text-center px-4">

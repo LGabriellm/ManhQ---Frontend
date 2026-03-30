@@ -39,7 +39,9 @@ import {
 
 const SUB_STATUSES = [
   "ACTIVE",
+  "SETUP_PENDING",
   "PAST_DUE",
+  "CANCELLATION_REQUESTED",
   "CANCELED",
   "REFUNDED",
   "EXPIRED",
@@ -49,7 +51,9 @@ const TOKEN_STATUSES = ["PENDING", "USED", "EXPIRED", "REVOKED"] as const;
 function subStatusBadge(status: string) {
   const map: Record<string, string> = {
     ACTIVE: "bg-green-500/15 text-green-400",
+    SETUP_PENDING: "bg-sky-500/15 text-sky-400",
     PAST_DUE: "bg-yellow-500/15 text-yellow-400",
+    CANCELLATION_REQUESTED: "bg-amber-500/15 text-amber-400",
     CANCELED: "bg-red-500/15 text-red-400",
     REFUNDED: "bg-orange-500/15 text-orange-400",
     EXPIRED: "bg-zinc-500/15 text-zinc-400",
@@ -93,6 +97,7 @@ function tokenStatusBadge(status: string) {
 }
 
 function formatDate(dateStr: string) {
+  if (!dateStr) return "Sem data";
   return new Date(dateStr).toLocaleDateString("pt-BR", {
     day: "2-digit",
     month: "short",
@@ -100,7 +105,8 @@ function formatDate(dateStr: string) {
   });
 }
 
-function formatCurrency(amount: number) {
+function formatCurrency(amount?: number | null) {
+  if (typeof amount !== "number") return "N/A";
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
     currency: "BRL",
@@ -130,6 +136,7 @@ export default function SubscriptionsPage() {
     null,
   );
   const [cancelReason, setCancelReason] = useState("");
+  const [cancelImmediately, setCancelImmediately] = useState(false);
 
   // Queries
   const { data: stats, isLoading: statsLoading } = useSubscriptionsStats();
@@ -164,15 +171,22 @@ export default function SubscriptionsPage() {
   };
 
   const handleCancel = async () => {
-    if (!cancelTarget) return;
+    if (!cancelTarget?.user?.id) return;
     try {
       await cancelSub.mutateAsync({
-        userId: cancelTarget.user.id,
-        data: cancelReason ? { reason: cancelReason } : undefined,
+        userId: cancelTarget.user!.id,
+        data:
+          cancelReason || cancelImmediately
+            ? {
+                ...(cancelReason ? { reason: cancelReason } : {}),
+                immediate: cancelImmediately,
+              }
+            : undefined,
       });
       toast.success("Assinatura cancelada");
       setCancelTarget(null);
       setCancelReason("");
+      setCancelImmediately(false);
     } catch {
       toast.error("Erro ao cancelar assinatura");
     }
@@ -238,7 +252,7 @@ export default function SubscriptionsPage() {
           <Loader2 className="h-6 w-6 animate-spin text-[var(--color-primary)]" />
         </div>
       ) : stats ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
           <StatCard
             label="Total"
             value={stats.totalSubscriptions}
@@ -251,10 +265,16 @@ export default function SubscriptionsPage() {
             color="green"
           />
           <StatCard
-            label="Canceladas"
-            value={stats.canceled}
-            icon={<XCircle className="h-5 w-5" />}
-            color="red"
+            label="Setup"
+            value={stats.setupPending}
+            icon={<Clock className="h-5 w-5" />}
+            color="blue"
+          />
+          <StatCard
+            label="Cancel. agendado"
+            value={stats.cancellationRequested}
+            icon={<Timer className="h-5 w-5" />}
+            color="yellow"
           />
           <StatCard
             label="Em Atraso"
@@ -263,13 +283,25 @@ export default function SubscriptionsPage() {
             color="yellow"
           />
           <StatCard
+            label="Canceladas"
+            value={stats.canceled}
+            icon={<XCircle className="h-5 w-5" />}
+            color="red"
+          />
+          <StatCard
+            label="Expiradas"
+            value={stats.expired}
+            icon={<Ban className="h-5 w-5" />}
+            color="orange"
+          />
+          <StatCard
             label="Reembolsadas"
             value={stats.refunded}
             icon={<RotateCcw className="h-5 w-5" />}
             color="orange"
           />
           <StatCard
-            label="Pendentes"
+            label="Tokens"
             value={stats.pendingActivations}
             icon={<Clock className="h-5 w-5" />}
             color="blue"
@@ -343,10 +375,21 @@ export default function SubscriptionsPage() {
             <p className="text-sm text-[var(--color-textDim)] mb-4">
               Cancelar assinatura de{" "}
               <strong className="text-[var(--color-textMain)]">
-                {cancelTarget.user.name || cancelTarget.user.email}
+                {cancelTarget.user?.name ||
+                  cancelTarget.user?.email ||
+                  cancelTarget.buyerName ||
+                  cancelTarget.buyerEmail}
               </strong>
               ?
             </p>
+            <label className="mb-4 flex items-center gap-2 text-sm text-[var(--color-textDim)]">
+              <input
+                type="checkbox"
+                checked={cancelImmediately}
+                onChange={(event) => setCancelImmediately(event.target.checked)}
+              />
+              Cancelar imediatamente
+            </label>
             <textarea
               value={cancelReason}
               onChange={(e) => setCancelReason(e.target.value)}
@@ -358,6 +401,7 @@ export default function SubscriptionsPage() {
                 onClick={() => {
                   setCancelTarget(null);
                   setCancelReason("");
+                  setCancelImmediately(false);
                 }}
                 className="px-4 py-2 text-sm text-[var(--color-textDim)] hover:text-[var(--color-textMain)] transition-colors"
               >
@@ -517,7 +561,7 @@ function SubscriptionsTab({
                     Status
                   </th>
                   <th className="text-left py-3 px-3 text-[var(--color-textDim)] font-medium">
-                    Valor
+                    Cobrança
                   </th>
                   <th className="text-left py-3 px-3 text-[var(--color-textDim)] font-medium">
                     Expira em
@@ -535,26 +579,34 @@ function SubscriptionsTab({
                   >
                     <td className="py-3 px-3">
                       <p className="text-[var(--color-textMain)] font-medium">
-                        {sub.user.name}
+                        {sub.user?.name || sub.buyerName || "Sem vínculo"}
                       </p>
                       <p className="text-[var(--color-textDim)] text-xs">
-                        {sub.user.email}
+                        {sub.user?.email || sub.buyerEmail || "Sem email"}
                       </p>
                     </td>
                     <td className="py-3 px-3 text-[var(--color-textMain)] capitalize">
-                      {sub.plan}
+                      {sub.plan || "premium"}
                     </td>
-                    <td className="py-3 px-3">{subStatusBadge(sub.status)}</td>
+                    <td className="py-3 px-3">
+                      {subStatusBadge(sub.status || "EXPIRED")}
+                    </td>
                     <td className="py-3 px-3 text-[var(--color-textMain)]">
-                      {formatCurrency(sub.amount)}
+                      <p>{sub.paymentMethod || "Não informado"}</p>
+                      <p className="text-xs text-[var(--color-textDim)]">
+                        {sub.isRecurring ? "Recorrente" : "Manual"}
+                      </p>
                     </td>
                     <td className="py-3 px-3 text-[var(--color-textDim)]">
-                      {formatDate(sub.currentPeriodEnd)}
+                      {formatDate(sub.currentPeriodEnd || "")}
                     </td>
                     <td className="py-3 px-3">
                       <div className="flex justify-end gap-1">
-                        {sub.status === "ACTIVE" ||
-                        sub.status === "PAST_DUE" ? (
+                        {(sub.actions.canCancel && sub.user?.id) ||
+                        ((sub.status === "ACTIVE" ||
+                          sub.status === "PAST_DUE" ||
+                          sub.status === "CANCELLATION_REQUESTED") &&
+                          sub.user?.id) ? (
                           <button
                             onClick={() => onCancel(sub)}
                             title="Cancelar"
@@ -563,10 +615,12 @@ function SubscriptionsTab({
                             <Ban className="h-4 w-4" />
                           </button>
                         ) : null}
-                        {sub.status === "CANCELED" ||
-                        sub.status === "EXPIRED" ? (
+                        {(sub.status === "CANCELED" ||
+                          sub.status === "EXPIRED" ||
+                          sub.status === "CANCELLATION_REQUESTED") &&
+                        sub.user?.id ? (
                           <button
-                            onClick={() => onReactivate(sub.user.id)}
+                            onClick={() => onReactivate(sub.user!.id)}
                             disabled={reactivateLoading}
                             title="Reativar"
                             className="p-1.5 rounded-lg text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-50"

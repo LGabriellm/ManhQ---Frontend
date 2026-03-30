@@ -12,12 +12,13 @@ import {
   Sparkles,
   Zap,
 } from "lucide-react";
+import {
+  SUBSCRIPTION_CHECKOUT_URL,
+  getDefaultAuthenticatedPath,
+} from "@/lib/subscription";
 import { useAuth } from "@/contexts/AuthContext";
 import { InfiniteCarousel } from "@/components/InfiniteCarousel";
 import { trackFacebookPixel } from "@/lib/facebookPixel";
-
-const CHECKOUT_URL =
-  "https://pay.kirvano.com/fa717258-dae4-4eea-9368-970ee9cee695";
 
 const benefits = [
   {
@@ -71,6 +72,7 @@ function GlassCard({
 
 export default function HomePage() {
   const { isAuthenticated, user } = useAuth();
+  const authenticatedPath = getDefaultAuthenticatedPath(user);
 
   const handleStartNowClick = (placement: string) => {
     trackFacebookPixel("InitiateCheckout", {
@@ -79,7 +81,7 @@ export default function HomePage() {
       source: "landing_page",
       placement,
       cta_label: "Começar agora",
-      destination: CHECKOUT_URL,
+      destination: SUBSCRIPTION_CHECKOUT_URL,
     });
   };
 
@@ -109,7 +111,7 @@ export default function HomePage() {
                 ManHQ
               </p>
               <a
-                href={CHECKOUT_URL}
+                href={SUBSCRIPTION_CHECKOUT_URL}
                 target="_blank"
                 rel="noreferrer"
                 onClick={() => handleStartNowClick("header")}
@@ -142,7 +144,7 @@ export default function HomePage() {
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <a
-                    href={CHECKOUT_URL}
+                    href={SUBSCRIPTION_CHECKOUT_URL}
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => handleStartNowClick("hero")}
@@ -157,7 +159,7 @@ export default function HomePage() {
                     </motion.div>
                   </a>
 
-                  <Link href={isAuthenticated ? "/search" : "/auth/login"}>
+                  <Link href={isAuthenticated ? authenticatedPath : "/auth/login"}>
                     <motion.div
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.95 }}
@@ -292,7 +294,7 @@ export default function HomePage() {
 
                   <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                     <a
-                      href={CHECKOUT_URL}
+                      href={SUBSCRIPTION_CHECKOUT_URL}
                       target="_blank"
                       rel="noreferrer"
                       onClick={() => handleStartNowClick("pricing")}
@@ -303,12 +305,12 @@ export default function HomePage() {
                       </div>
                     </a>
                     <Link
-                      href={isAuthenticated ? "/profile" : "/auth/login"}
+                      href={isAuthenticated ? authenticatedPath : "/auth/login"}
                       className="flex-1"
                     >
                       <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/8 bg-white/4 px-5 py-3.5 text-sm font-semibold text-textMain">
                         {isAuthenticated
-                          ? "Ir para meu perfil"
+                          ? "Abrir minha área"
                           : "Já tenho acesso"}
                       </div>
                     </Link>
@@ -369,7 +371,7 @@ export default function HomePage() {
               </p>
               <div className="relative mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                 <a
-                  href={CHECKOUT_URL}
+                  href={SUBSCRIPTION_CHECKOUT_URL}
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => handleStartNowClick("final_cta")}
@@ -383,13 +385,13 @@ export default function HomePage() {
                     Começar agora
                   </motion.div>
                 </a>
-                <Link href={isAuthenticated ? "/search" : "/auth/login"}>
+                <Link href={isAuthenticated ? authenticatedPath : "/auth/login"}>
                   <motion.div
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.95 }}
                     className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm font-semibold text-textMain backdrop-blur-xl"
                   >
-                    {isAuthenticated ? "Explorar catálogo" : "Já sou assinante"}
+                    {isAuthenticated ? "Abrir minha área" : "Já sou assinante"}
                     <ChevronRight className="h-4 w-4" />
                   </motion.div>
                 </Link>

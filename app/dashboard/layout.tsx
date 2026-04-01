@@ -17,6 +17,7 @@ import {
   X,
   Loader2,
   History,
+  Workflow,
 } from "lucide-react";
 
 type DashboardRole = "ADMIN" | "EDITOR";
@@ -49,6 +50,12 @@ const navItems: Array<{
     href: "/dashboard/submissions",
     label: "Minhas Submissões",
     icon: History,
+    roles: ["ADMIN", "EDITOR"],
+  },
+  {
+    href: "/dashboard/jobs",
+    label: "Jobs",
+    icon: Workflow,
     roles: ["ADMIN", "EDITOR"],
   },
   {
@@ -88,6 +95,8 @@ function canAccessDashboardPath(
   if (
     pathname === "/dashboard/uploads" ||
     pathname.startsWith("/dashboard/uploads/") ||
+    pathname === "/dashboard/jobs" ||
+    pathname.startsWith("/dashboard/jobs/") ||
     pathname === "/dashboard/submissions" ||
     pathname.startsWith("/dashboard/submissions/")
   ) {

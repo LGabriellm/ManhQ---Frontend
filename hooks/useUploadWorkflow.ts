@@ -2,9 +2,8 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  resolveDraftWorkflow,
-  resolveSessionWorkflow,
-  shouldPollWorkflow,
+  shouldPollDraft,
+  shouldPollSession,
 } from "@/lib/upload-workflow";
 import { uploadWorkflowService } from "@/services/upload-workflow.service";
 import type {
@@ -15,6 +14,7 @@ import type {
   GoogleDriveStageRequest,
   UpdateUploadDraftItemRequest,
   UploadDraft,
+  UploadItemCancellationResponse,
   UploadSessionDetail,
   UploadSessionStatus,
   UploadSource,
@@ -50,21 +50,15 @@ const uploadWorkflowKeys = {
 function shouldPollSessionList(
   sessions:
     | Array<{
+        items?: UploadSessionDetail["items"];
+        operational?: UploadSessionDetail["operational"];
         workflow?: UploadSessionDetail["workflow"];
+        counts?: UploadSessionDetail["counts"];
         status: UploadSessionStatus;
       }>
     | undefined,
 ): boolean {
-  return Boolean(
-    sessions?.some((session) =>
-      shouldPollWorkflow(
-        resolveSessionWorkflow({
-          status: session.status,
-          workflow: session.workflow,
-        }),
-      ),
-    ),
-  );
+  return Boolean(sessions?.some((session) => shouldPollSession(session)));
 }
 
 function hydrateDraft(
@@ -138,7 +132,7 @@ export function useUploadSession(sessionId: string, enabled = true) {
         return false;
       }
 
-      return shouldPollWorkflow(resolveSessionWorkflow(session))
+      return shouldPollSession(session)
         ? ACTIVE_WORKFLOW_POLL_INTERVAL_MS
         : false;
     },
@@ -161,7 +155,7 @@ export function useUploadDraft(
         return false;
       }
 
-      return shouldPollWorkflow(resolveDraftWorkflow(draft))
+      return shouldPollDraft(draft)
         ? ACTIVE_WORKFLOW_POLL_INTERVAL_MS
         : false;
     },
@@ -314,11 +308,31 @@ export function useCancelUploadDraft() {
       source: UploadSource;
       draftId: string;
     }) => uploadWorkflowService.cancelDraft(source, draftId),
-    onSuccess: async (_result, variables) => {
+    onSuccess: async (result, variables) => {
+      if (result.session) {
+        hydrateSession(queryClient, result.session);
+      }
       await invalidateWorkflowQueries(
         queryClient,
         variables.draftId,
         variables.source,
+      );
+    },
+  });
+}
+
+export function useCancelUploadItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (itemId: string): Promise<UploadItemCancellationResponse> =>
+      uploadWorkflowService.cancelItem(itemId),
+    onSuccess: async (result) => {
+      hydrateSession(queryClient, result.cancellation.session);
+      await invalidateWorkflowQueries(
+        queryClient,
+        result.cancellation.session.id,
+        result.cancellation.session.source,
       );
     },
   });

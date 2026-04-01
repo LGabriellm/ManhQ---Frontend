@@ -2,9 +2,7 @@ export type UploadSource = "LOCAL" | "GOOGLE_DRIVE";
 
 export type UploadSessionStatus =
   | "ANALYZING"
-  | "REVIEW_REQUIRED"
   | "READY_FOR_REVIEW"
-  | "READY_TO_CONFIRM"
   | "APPROVAL_PENDING"
   | "PROCESSING"
   | "COMPLETED"
@@ -16,7 +14,6 @@ export type UploadSessionStatus =
 export type UploadWorkflowState =
   | "ANALYZING"
   | "REVIEW_REQUIRED"
-  | "READY_FOR_REVIEW"
   | "READY_TO_CONFIRM"
   | "APPROVAL_PENDING"
   | "PROCESSING"
@@ -37,10 +34,16 @@ export type UploadWorkflowNextAction =
   | "DONE";
 
 export interface UploadWorkflowCounts {
+  total: number;
   pendingAnalysis: number;
   reviewRequired: number;
   confirmable: number;
+  approvalPending: number;
+  queued: number;
+  processing: number;
+  completed: number;
   failed: number;
+  skipped: number;
   alreadyHandled: number;
 }
 
@@ -88,7 +91,23 @@ export type UploadSuggestionDecision =
 
 export type UploadSuggestionConfidence = "low" | "medium" | "high";
 
-export type UploadParsingConfidence = UploadSuggestionConfidence;
+export type UploadParsingConfidence = UploadSuggestionConfidence | null;
+
+export type UploadOperationalState =
+  | "analyzing"
+  | "review_required"
+  | "approval_pending"
+  | "queued"
+  | "retrying"
+  | "running"
+  | "cancel_requested"
+  | "stuck"
+  | "completed"
+  | "failed"
+  | "skipped"
+  | "rejected"
+  | "canceled"
+  | "unknown";
 
 export interface UploadParsingCandidate {
   raw: string;
@@ -97,6 +116,7 @@ export interface UploadParsingCandidate {
   strategy: string | null;
   reasons: string[];
   rejectedReasons: string[];
+  accepted?: boolean;
   inParentheses?: boolean;
   context?: string | null;
 }
@@ -106,22 +126,12 @@ export interface UploadParsing {
   confidence: UploadParsingConfidence;
   requiresManualReview: boolean;
   selectedCandidate: UploadParsingCandidate | null;
+  candidateOptions: UploadParsingCandidate[];
   ignoredCandidates: UploadParsingCandidate[];
   notes: string[];
 }
 
-export type UploadJobState =
-  | "analyzing"
-  | "review_required"
-  | "approval_pending"
-  | "queued"
-  | "retrying"
-  | "running"
-  | "completed"
-  | "failed"
-  | "skipped"
-  | "rejected"
-  | "canceled";
+export type UploadJobState = UploadOperationalState;
 
 export interface UploadJob {
   state: UploadJobState;
@@ -131,7 +141,41 @@ export interface UploadJob {
   canRetry: boolean;
   canCancel: boolean;
   canReview: boolean;
+  isTerminal: boolean;
+  isCancelRequested: boolean;
+  isStuck: boolean;
   queueJobId: string | null;
+  queuedAt: string | null;
+  processedAt: string | null;
+  completedAt: string | null;
+  cancelRequestedAt: string | null;
+  cancelReason: string | null;
+  canceledAt: string | null;
+  lastHeartbeatAt: string | null;
+  lastProgressPercent: number | null;
+  lastActivityAt: string | null;
+  heartbeatAgeMs: number | null;
+  staleAfterMs: number | null;
+}
+
+export interface UploadSessionOperational {
+  state: Exclude<
+    UploadOperationalState,
+    "retrying" | "skipped" | "rejected"
+  >;
+  canCancel: boolean;
+  counts: {
+    total: number;
+    active: number;
+    cancelRequested: number;
+    stuck: number;
+    failed: number;
+    completed: number;
+  };
+  cancelRequestedAt: string | null;
+  cancelReason: string | null;
+  lastActivityAt: string | null;
+  heartbeatTimeoutMs: number | null;
 }
 
 export type UploadStageName =
@@ -169,6 +213,7 @@ export interface UploadSessionSummary {
   source: UploadSource;
   status: UploadSessionStatus;
   workflow: UploadWorkflow;
+  operational: UploadSessionOperational;
   inputName: string | null;
   metadata: UploadSessionMetadata;
   expiresAt: string | null;
@@ -176,6 +221,7 @@ export interface UploadSessionSummary {
   updatedAt: string;
   submittedAt: string | null;
   finalizedAt: string | null;
+  cancelRequestedAt: string | null;
   canceledAt: string | null;
   counts: {
     total: number;
@@ -383,6 +429,9 @@ export interface UploadItem {
   queuedAt: string | null;
   processedAt: string | null;
   completedAt: string | null;
+  cancelRequestedAt: string | null;
+  canceledAt: string | null;
+  lastHeartbeatAt: string | null;
 }
 
 export interface UpdateUploadDraftItemRequest {
@@ -423,9 +472,38 @@ export interface UploadDraftBulkResponse {
   draft: UploadDraft;
 }
 
+export type UploadItemCancelOutcome =
+  | "canceled"
+  | "requested"
+  | "already_terminal";
+
+export interface UploadCancelResult {
+  itemId: string;
+  outcome: UploadItemCancelOutcome;
+  status?: UploadItemStatus;
+}
+
+export interface UploadCancelTotals {
+  canceled: number;
+  requested: number;
+  alreadyTerminal: number;
+}
+
 export interface UploadDraftCancelResponse {
   success: true;
   canceled: true;
+  session?: UploadSessionDetail;
+  results?: UploadCancelResult[];
+  totals?: UploadCancelTotals;
+}
+
+export interface UploadItemCancellationResponse {
+  success: true;
+  cancellation: {
+    itemId: string;
+    outcome: UploadItemCancelOutcome;
+    session: UploadSessionDetail;
+  };
 }
 
 export interface UploadDraftConfirmResponse {
@@ -434,7 +512,7 @@ export interface UploadDraftConfirmResponse {
     itemId: string;
     filename: string;
     jobId?: string;
-    queueState: "APPROVAL_PENDING" | "QUEUED";
+    queueState?: "APPROVAL_PENDING" | "QUEUED";
   }>;
   rejected: Array<{
     itemId: string;
@@ -444,7 +522,7 @@ export interface UploadDraftConfirmResponse {
   alreadyHandled: Array<{
     itemId: string;
     filename: string;
-    queueState?:
+    status?:
       | "APPROVAL_PENDING"
       | "QUEUED"
       | "PROCESSING"
@@ -453,6 +531,7 @@ export interface UploadDraftConfirmResponse {
       | "SKIPPED"
       | "REJECTED"
       | "CANCELED";
+    reason?: string;
   }>;
   skipped: Array<{
     itemId: string;
@@ -478,7 +557,10 @@ export interface StageLocalUploadResponse {
   draftId: string;
   status: UploadSessionStatus;
   expiresAt: string | null;
-  session: Pick<UploadSessionSummary, "id" | "status" | "workflow">;
+  session: Pick<
+    UploadSessionSummary,
+    "id" | "source" | "status" | "workflow" | "operational"
+  >;
   nextStep: string;
 }
 
@@ -486,7 +568,10 @@ export interface UploadSessionCreatedResponse {
   success: true;
   message: string;
   sessionId: string;
-  session: Pick<UploadSessionSummary, "id" | "status" | "workflow">;
+  session: Pick<
+    UploadSessionSummary,
+    "id" | "source" | "status" | "workflow" | "operational"
+  >;
 }
 
 export interface GoogleDriveAccount {

@@ -5,10 +5,13 @@ import { useDeferredValue, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
   ArrowRight,
+  BellRing,
   CheckCircle2,
   Clock,
   Loader2,
   Search,
+  ShieldAlert,
+  Workflow,
 } from "lucide-react";
 import { GoogleDriveImportPanel } from "@/components/upload/GoogleDriveImportPanel";
 import { LocalUploadEntryPanel } from "@/components/upload/LocalUploadEntryPanel";
@@ -21,6 +24,7 @@ import { useGoogleDriveReconnectRecovery } from "@/hooks/useGoogleDriveReconnect
 import {
   useBulkUpdateUploadDraft,
   useCancelUploadDraft,
+  useCancelUploadItem,
   useConfirmUploadDraft,
   useRetryUploadItem,
   useUpdateUploadDraftItem,
@@ -30,12 +34,14 @@ import {
 } from "@/hooks/useUploadWorkflow";
 import {
   NEXT_ACTION_META,
+  OPERATIONAL_STATE_META,
   SESSION_STATUS_META,
   TONE_STYLES,
   WORKFLOW_STATE_META,
   countItemsFailed,
   countItemsNeedingManualChoice,
   formatDateTime,
+  formatDurationMs,
   getSessionProgress,
   getSourceLabel,
   getWorkflowSummary,
@@ -87,6 +93,10 @@ function getItemDisabledReason(
   item: UploadItem,
   activeDraft: UploadDraft | null,
 ): string | null {
+  if (item.job.isCancelRequested) {
+    return "Este item já está cancelando no backend. Aguarde a sincronização do worker.";
+  }
+
   if (!activeDraft) {
     return "Este item está em modo de acompanhamento. Carregue um draft editável para revisar.";
   }
@@ -168,11 +178,14 @@ export default function UploadsPage() {
   const bulkUpdateDraftMutation = useBulkUpdateUploadDraft();
   const confirmDraftMutation = useConfirmUploadDraft();
   const cancelDraftMutation = useCancelUploadDraft();
+  const cancelItemMutation = useCancelUploadItem();
   const retryItemMutation = useRetryUploadItem();
   const submissionsQuery = useMySubmissions({ page: 1, limit: 5 });
 
   const bulkSeriesSearch = useSeriesSearch(deferredBulkSeriesQuery, 1, 6);
   const activeItems = activeDraft?.items || activeSession?.items || [];
+  const activeOperational =
+    activeSession?.operational || activeSummary?.operational || null;
   const reviewPendingCount =
     activeDraft?.workflow.counts.reviewRequired ||
     workspaceWorkflow?.counts.reviewRequired ||
@@ -185,17 +198,29 @@ export default function UploadsPage() {
     activeSession && activeSession.items.length > 0 ? getSessionProgress(activeSession) : 0;
   const draftProgress = activeDraft ? getDraftAnalysisProgress(activeDraft) : 0;
   const workflowSummary = getWorkflowSummary(workspaceWorkflow);
-  const activeDraftCanEdit = activeDraft?.workflow.canEdit ?? false;
+  const activeDraftCanEdit =
+    (activeDraft?.workflow.canEdit ?? false) &&
+    activeOperational?.state !== "cancel_requested";
   const activeDraftCanConfirm = activeDraft?.workflow.canConfirm ?? false;
   const activeDraftWorkflowState = activeDraft?.workflow.state ?? null;
+  const runtimeMeta = activeOperational
+    ? OPERATIONAL_STATE_META[activeOperational.state]
+    : null;
   const confirmReplayBlocked = Boolean(
     resolvedActiveSessionId &&
       workspaceWorkflow?.canConfirm &&
       confirmReplayBlockedSessionId === resolvedActiveSessionId,
   );
+  const sessionCancelInFlight = activeOperational?.state === "cancel_requested";
+  const canCancelSession = Boolean(
+    activeSource &&
+      resolvedActiveSessionId &&
+      activeOperational?.canCancel &&
+      !sessionCancelInFlight,
+  );
   const roleSummary = isEditor && !isAdmin
     ? "Você pode criar sessões, revisar sugestões, reconectar o Google Drive e acompanhar aprovações pendentes."
-    : "Sessões persistidas, revisão manual, callbacks do Google Drive e estados de processamento em um único workspace.";
+    : "Sessões persistidas, revisão manual, estados operacionais da pipeline e acompanhamento de jobs em um único workspace.";
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -378,6 +403,22 @@ export default function UploadsPage() {
       toast.success("Item reenfileirado para nova tentativa.");
     } catch (error) {
       toast.error(getUploadErrorMessage(error, "Falha ao reenfileirar o item."));
+    }
+  };
+
+  const cancelItem = async (itemId: string) => {
+    try {
+      const result = await cancelItemMutation.mutateAsync(itemId);
+      const message =
+        result.cancellation.outcome === "requested"
+          ? "Cancelamento solicitado. O worker vai encerrar no próximo checkpoint."
+          : result.cancellation.outcome === "canceled"
+            ? "Item cancelado."
+            : "O item já estava em estado terminal.";
+      toast.success(message);
+      setActiveSessionId(result.cancellation.session.id);
+    } catch (error) {
+      toast.error(getUploadErrorMessage(error, "Falha ao cancelar o item."));
     }
   };
 
@@ -581,14 +622,24 @@ export default function UploadsPage() {
     }
 
     try {
-      await cancelDraftMutation.mutateAsync({
+      const result = await cancelDraftMutation.mutateAsync({
         source: activeSource,
         draftId: resolvedActiveSessionId,
       });
-      toast.success("Sessão cancelada.");
+      if (result.totals) {
+        toast.success(
+          `${result.totals.canceled} cancelados · ${result.totals.requested} em cancelamento · ${result.totals.alreadyTerminal} já terminais`,
+        );
+      } else {
+        toast.success("Sessão cancelada.");
+      }
       setConfirmReplayBlockedSessionId(null);
-      clearActiveSelection();
-      await sessionsQuery.refetch();
+      if (result.session) {
+        setActiveSessionId(result.session.id);
+      } else {
+        clearActiveSelection();
+      }
+      await refreshActiveWorkspace();
     } catch (error) {
       toast.error(getUploadErrorMessage(error, "Falha ao cancelar a sessão."));
     }
@@ -603,6 +654,7 @@ export default function UploadsPage() {
     activeDraft &&
       workspaceWorkflow &&
       !workspaceWorkflow.isTerminal &&
+      activeOperational?.state !== "cancel_requested" &&
       (workspaceWorkflow.canEdit || workspaceWorkflow.canConfirm),
   );
 
@@ -631,6 +683,13 @@ export default function UploadsPage() {
               Fila de aprovações
             </Link>
           )}
+          <Link
+            href="/dashboard/jobs"
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07]"
+          >
+            <Workflow className="h-4 w-4" />
+            Jobs
+          </Link>
           <Link
             href="/dashboard/submissions"
             className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm font-medium text-[var(--color-textMain)] transition-colors hover:bg-white/[0.07]"
@@ -671,11 +730,20 @@ export default function UploadsPage() {
               </div>
 
               {stateMeta && (
-                <span
-                  className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-medium ${TONE_STYLES[stateMeta.tone]}`}
-                >
-                  {stateMeta.label}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-medium ${TONE_STYLES[stateMeta.tone]}`}
+                  >
+                    {stateMeta.label}
+                  </span>
+                  {runtimeMeta && (
+                    <span
+                      className={`inline-flex rounded-full border px-3 py-1.5 text-xs font-medium ${TONE_STYLES[runtimeMeta.tone]}`}
+                    >
+                      {runtimeMeta.label}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
 
@@ -742,6 +810,98 @@ export default function UploadsPage() {
                         </p>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {activeOperational && runtimeMeta && (
+                  <div
+                    className={`mt-5 rounded-[28px] border p-5 ${
+                      activeOperational.state === "stuck"
+                        ? "border-rose-500/20 bg-rose-500/10"
+                        : activeOperational.state === "cancel_requested"
+                          ? "border-amber-500/20 bg-amber-500/10"
+                          : "border-white/8 bg-black/10"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
+                          Pipeline operacional
+                        </p>
+                        <p className="mt-2 text-lg font-semibold text-[var(--color-textMain)]">
+                          {runtimeMeta.label}
+                        </p>
+                        <p className="mt-2 max-w-2xl text-sm text-[var(--color-textDim)]">
+                          {runtimeMeta.description}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {isReconnectingGoogleDrive && (
+                          <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-300">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            Reconectando Google Drive
+                          </div>
+                        )}
+                        {canCancelSession && (
+                          <button
+                            type="button"
+                            onClick={() => void cancelDraft()}
+                            disabled={cancelDraftMutation.isPending}
+                            className="rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200 disabled:opacity-50"
+                          >
+                            {cancelDraftMutation.isPending ? "Cancelando..." : "Cancelar sessão"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-4 md:grid-cols-4">
+                      <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                          Ativos
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                          {activeOperational.counts.active}
+                        </p>
+                      </div>
+                      <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                          Cancelando
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                          {activeOperational.counts.cancelRequested}
+                        </p>
+                      </div>
+                      <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                          Travados
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold text-[var(--color-textMain)]">
+                          {activeOperational.counts.stuck}
+                        </p>
+                      </div>
+                      <div className="rounded-3xl border border-white/8 bg-white/[0.03] p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--color-textDim)]/70">
+                          Última atividade
+                        </p>
+                        <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
+                          {formatDateTime(activeOperational.lastActivityAt)}
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                          Heartbeat {formatDurationMs(activeOperational.heartbeatTimeoutMs)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {(activeOperational.cancelReason || activeOperational.cancelRequestedAt) && (
+                      <p className="mt-4 text-xs text-[var(--color-textDim)]">
+                        {activeOperational.cancelReason || "Cancelamento solicitado"}{" "}
+                        {activeOperational.cancelRequestedAt
+                          ? `· ${formatDateTime(activeOperational.cancelRequestedAt)}`
+                          : ""}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -819,20 +979,24 @@ export default function UploadsPage() {
                           type="button"
                           onClick={() => void skipPendingItems()}
                           disabled={
-                            bulkUpdateDraftMutation.isPending || !activeDraftCanEdit
+                            bulkUpdateDraftMutation.isPending ||
+                            !activeDraftCanEdit ||
+                            sessionCancelInFlight
                           }
                           className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-[var(--color-textMain)] disabled:opacity-50"
                         >
                           Ignorar pendentes
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => void cancelDraft()}
-                          disabled={cancelDraftMutation.isPending}
-                          className="rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200 disabled:opacity-50"
-                        >
-                          Cancelar sessão
-                        </button>
+                        {canCancelSession && (
+                          <button
+                            type="button"
+                            onClick={() => void cancelDraft()}
+                            disabled={cancelDraftMutation.isPending}
+                            className="rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200 disabled:opacity-50"
+                          >
+                            Cancelar sessão
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -884,7 +1048,8 @@ export default function UploadsPage() {
                             disabled={
                               bulkUpdateDraftMutation.isPending ||
                               !bulkSeriesId ||
-                              !activeDraftCanEdit
+                              !activeDraftCanEdit ||
+                              sessionCancelInFlight
                             }
                             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
                           >
@@ -911,7 +1076,8 @@ export default function UploadsPage() {
                             disabled={
                               bulkUpdateDraftMutation.isPending ||
                               !bulkNewSeriesTitle.trim() ||
-                              !activeDraftCanEdit
+                              !activeDraftCanEdit ||
+                              sessionCancelInFlight
                             }
                             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
                           >
@@ -939,7 +1105,8 @@ export default function UploadsPage() {
                           disabled={
                             confirmDraftMutation.isPending ||
                             !activeDraftCanConfirm ||
-                            confirmReplayBlocked
+                            confirmReplayBlocked ||
+                            sessionCancelInFlight
                           }
                           className="inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
                         >
@@ -973,6 +1140,10 @@ export default function UploadsPage() {
 
                 {workspaceWorkflow?.state === "APPROVAL_PENDING" && (
                   <div className="mt-6 rounded-3xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+                    <p className="mb-2 flex items-center gap-2 font-medium">
+                      <BellRing className="h-4 w-4" />
+                      Aprovação pendente
+                    </p>
                     {isAdmin ? (
                       <span>
                         Há itens aguardando aprovação administrativa.{" "}
@@ -987,6 +1158,30 @@ export default function UploadsPage() {
                     ) : (
                       "Seu envio foi aceito, mas ainda depende de aprovação administrativa antes do processamento."
                     )}
+                  </div>
+                )}
+
+                {activeOperational?.state === "stuck" && (
+                  <div className="mt-6 rounded-3xl border border-rose-500/20 bg-rose-500/10 p-4 text-sm text-rose-100">
+                    <p className="mb-2 flex items-center gap-2 font-medium">
+                      <ShieldAlert className="h-4 w-4" />
+                      A sessão exige atenção operacional
+                    </p>
+                    Alguns itens excederam a janela de heartbeat. Revise os cards
+                    abaixo para reenfileirar o que falhou ou cancelar somente os
+                    itens problemáticos sem abortar o lote inteiro.
+                  </div>
+                )}
+
+                {activeOperational?.state === "cancel_requested" && (
+                  <div className="mt-6 rounded-3xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+                    <p className="mb-2 flex items-center gap-2 font-medium">
+                      <ShieldAlert className="h-4 w-4" />
+                      Cancelamento em andamento
+                    </p>
+                    O backend já aceitou o cancelamento da sessão. A interface foi
+                    bloqueada para evitar ações duplicadas até a pipeline concluir
+                    o unwind.
                   </div>
                 )}
 
@@ -1027,8 +1222,11 @@ export default function UploadsPage() {
                   item={item}
                   disabled={!itemCanBeEdited(item, activeDraft?.workflow || null)}
                   disabledReason={getItemDisabledReason(item, activeDraft)}
+                  retryDisabled={sessionCancelInFlight}
+                  cancelDisabled={sessionCancelInFlight}
                   onPatch={patchItem}
                   onRetry={retryItem}
+                  onCancel={cancelItem}
                 />
               ))}
             </div>
@@ -1122,7 +1320,10 @@ export default function UploadsPage() {
               <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
                 A UI agora lê <code className="text-[var(--color-textMain)]">workflow.state</code>{" "}
                 e <code className="text-[var(--color-textMain)]">workflow.nextAction</code>{" "}
-                como fonte principal.
+                para fluxo de produto, mas usa{" "}
+                <code className="text-[var(--color-textMain)]">session.operational</code>{" "}
+                e <code className="text-[var(--color-textMain)]">item.job</code>{" "}
+                para saúde da pipeline.
               </div>
               <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
                 Erros <code className="text-[var(--color-textMain)]">409</code>{" "}
@@ -1133,7 +1334,8 @@ export default function UploadsPage() {
               <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
                 O draft só fica editável enquanto o backend mantiver itens em{" "}
                 <code className="text-[var(--color-textMain)]">READY_FOR_REVIEW</code>{" "}
-                com <code className="text-[var(--color-textMain)]">job.canReview</code>.
+                com <code className="text-[var(--color-textMain)]">job.canReview</code> e
+                sem <code className="text-[var(--color-textMain)]">cancel_requested</code>.
               </div>
             </div>
           </section>

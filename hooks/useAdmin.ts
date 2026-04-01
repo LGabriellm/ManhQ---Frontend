@@ -575,7 +575,7 @@ export function useClearCompletedJobs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => adminService.clearCompletedJobs(),
-    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs(), adminKeys.jobsStats()]),
   });
 }
 
@@ -583,7 +583,7 @@ export function useRetryJob() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (jobId: string) => adminService.retryJob(jobId),
-    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs(), adminKeys.jobsStats()]),
   });
 }
 
@@ -776,7 +776,7 @@ export function useDeleteJob() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (jobId: string) => adminService.deleteJob(jobId),
-    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs()]),
+    onSuccess: () => syncAdminQueries(qc, [adminKeys.jobs(), adminKeys.jobsStats()]),
   });
 }
 

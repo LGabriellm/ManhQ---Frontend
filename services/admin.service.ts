@@ -1,4 +1,5 @@
 import api from "./api";
+import type { UploadSessionDetail } from "@/types/upload-workflow";
 import type {
   AdminDashboardResponse,
   AdminSeriesListResponse,
@@ -9,6 +10,7 @@ import type {
   EnrichSeriesRequest,
   EnrichSeriesResponse,
   AdminJob,
+  JobQueueStats,
   JobsResponse,
   JobsStats,
   JobDetailResponse,
@@ -113,7 +115,110 @@ function flattenJobs(data: JobsResponse): AdminJob[] {
   if (jobs.delayed) all.push(...jobs.delayed);
   if (jobs.completed) all.push(...jobs.completed);
   if (jobs.failed) all.push(...jobs.failed);
-  return all;
+  return all.sort((left, right) => (right.createdAt || 0) - (left.createdAt || 0));
+}
+
+function normalizeJobQueueStats(value: unknown, queue?: JobQueueStats["queue"]): JobQueueStats {
+  const rawValue = value as Partial<JobQueueStats> | null | undefined;
+
+  return {
+    queue,
+    waiting: typeof rawValue?.waiting === "number" ? rawValue.waiting : 0,
+    active: typeof rawValue?.active === "number" ? rawValue.active : 0,
+    completed: typeof rawValue?.completed === "number" ? rawValue.completed : 0,
+    failed: typeof rawValue?.failed === "number" ? rawValue.failed : 0,
+    delayed: typeof rawValue?.delayed === "number" ? rawValue.delayed : 0,
+    total: typeof rawValue?.total === "number" ? rawValue.total : 0,
+    paused: typeof rawValue?.paused === "boolean" ? rawValue.paused : undefined,
+  };
+}
+
+function normalizeJobsStats(payload: unknown): JobsStats {
+  const rawPayload = payload as
+    | (Partial<JobsStats> & { stats?: Partial<JobsStats> })
+    | null
+    | undefined;
+  const source =
+    rawPayload?.uploads || rawPayload?.uploadIntake || rawPayload?.uploadPipeline
+      ? rawPayload
+      : rawPayload?.stats;
+
+  const uploads = normalizeJobQueueStats(source?.uploads, "uploads");
+  const uploadIntake = normalizeJobQueueStats(source?.uploadIntake, "upload-intake");
+  const scans = normalizeJobQueueStats(source?.scans, "scans");
+
+  return {
+    uploads,
+    uploadIntake,
+    scans,
+    global: {
+      totalActive:
+        typeof source?.global?.totalActive === "number"
+          ? source.global.totalActive
+          : uploads.active + uploadIntake.active + scans.active,
+      totalWaiting:
+        typeof source?.global?.totalWaiting === "number"
+          ? source.global.totalWaiting
+          : uploads.waiting + uploadIntake.waiting + scans.waiting,
+      totalFailed:
+        typeof source?.global?.totalFailed === "number"
+          ? source.global.totalFailed
+          : uploads.failed + uploadIntake.failed + scans.failed,
+      totalCompleted:
+        typeof source?.global?.totalCompleted === "number"
+          ? source.global.totalCompleted
+          : uploads.completed + uploadIntake.completed + scans.completed,
+    },
+    uploadPipeline: {
+      sessions: {
+        total:
+          typeof source?.uploadPipeline?.sessions?.total === "number"
+            ? source.uploadPipeline.sessions.total
+            : 0,
+        inFlight:
+          typeof source?.uploadPipeline?.sessions?.inFlight === "number"
+            ? source.uploadPipeline.sessions.inFlight
+            : 0,
+      },
+      items: {
+        active:
+          typeof source?.uploadPipeline?.items?.active === "number"
+            ? source.uploadPipeline.items.active
+            : 0,
+        cancelRequested:
+          typeof source?.uploadPipeline?.items?.cancelRequested === "number"
+            ? source.uploadPipeline.items.cancelRequested
+            : 0,
+        stuck:
+          typeof source?.uploadPipeline?.items?.stuck === "number"
+            ? source.uploadPipeline.items.stuck
+            : 0,
+      },
+      thresholds: {
+        heartbeatTimeoutMs:
+          typeof source?.uploadPipeline?.thresholds?.heartbeatTimeoutMs === "number"
+            ? source.uploadPipeline.thresholds.heartbeatTimeoutMs
+            : 0,
+        staleBefore:
+          typeof source?.uploadPipeline?.thresholds?.staleBefore === "string"
+            ? source.uploadPipeline.thresholds.staleBefore
+            : "",
+      },
+      generatedAt:
+        typeof source?.uploadPipeline?.generatedAt === "string"
+          ? source.uploadPipeline.generatedAt
+          : "",
+    },
+  };
+}
+
+export interface DeleteJobResponse {
+  success: boolean;
+  message: string;
+  cancellation?: {
+    outcome: "canceled" | "requested" | "already_terminal";
+    session: UploadSessionDetail;
+  };
 }
 
 function normalizeFileExists(value: unknown): boolean {
@@ -165,7 +270,7 @@ function normalizeMediaItem<T extends object>(item: T): T {
 }
 
 export interface JobsFullResponse {
-  stats: JobsStats;
+  stats: JobQueueStats;
   jobs: AdminJob[];
 }
 
@@ -655,10 +760,8 @@ export const adminService = {
 
   async deleteJob(
     jobId: string,
-  ): Promise<{ success: boolean; message: string }> {
-    const response = await api.delete<{ success: boolean; message: string }>(
-      `/jobs/${jobId}`,
-    );
+  ): Promise<DeleteJobResponse> {
+    const response = await api.delete<DeleteJobResponse>(`/jobs/${jobId}`);
     return response.data;
   },
 
@@ -685,8 +788,8 @@ export const adminService = {
   },
 
   async getJobsStats(): Promise<JobsStats> {
-    const response = await api.get<{ stats: JobsStats }>("/jobs/stats");
-    return response.data.stats;
+    const response = await api.get<JobsStats | { stats?: JobsStats }>("/jobs/stats");
+    return normalizeJobsStats(response.data);
   },
 
   // ===== Scan =====

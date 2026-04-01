@@ -21,19 +21,41 @@ function makeSession(
     source: "LOCAL",
     status: "READY_FOR_REVIEW",
     workflow: {
-      state: "READY_FOR_REVIEW",
+      state: "REVIEW_REQUIRED",
       nextAction: "REVIEW_ITEMS",
       canEdit: true,
       canConfirm: false,
       isTerminal: false,
       submitted: false,
       counts: {
+        total: 2,
         pendingAnalysis: 0,
         reviewRequired: 2,
         confirmable: 0,
+        approvalPending: 0,
+        queued: 0,
+        processing: 0,
+        completed: 0,
         failed: 0,
+        skipped: 0,
         alreadyHandled: 0,
       },
+    },
+    operational: {
+      state: "review_required",
+      canCancel: true,
+      counts: {
+        total: 2,
+        active: 0,
+        cancelRequested: 0,
+        stuck: 0,
+        failed: 0,
+        completed: 0,
+      },
+      cancelRequestedAt: null,
+      cancelReason: null,
+      lastActivityAt: "2026-03-28T10:05:00.000Z",
+      heartbeatTimeoutMs: 30_000,
     },
     inputName: "Series Folder",
     metadata: {},
@@ -42,6 +64,7 @@ function makeSession(
     updatedAt: "2026-03-28T10:05:00.000Z",
     submittedAt: null,
     finalizedAt: null,
+    cancelRequestedAt: null,
     canceledAt: null,
     counts: {
       total: 2,
@@ -76,10 +99,16 @@ function makeDraft(overrides: Partial<UploadDraft> = {}): UploadDraft {
       isTerminal: false,
       submitted: false,
       counts: {
+        total: 2,
         pendingAnalysis: 2,
         reviewRequired: 0,
         confirmable: 0,
+        approvalPending: 0,
+        queued: 0,
+        processing: 0,
+        completed: 0,
         failed: 0,
+        skipped: 0,
         alreadyHandled: 0,
       },
     },
@@ -108,10 +137,9 @@ test("resolveSessionWorkflow preserves the backend next action contract", () => 
   assert.equal(getWorkflowSummary(workflow)?.label, "Revisar itens");
 });
 
-test("resolveSessionWorkflow accepts REVIEW_REQUIRED directly from the backend", () => {
+test("resolveSessionWorkflow accepts REVIEW_REQUIRED from workflow even with coarse session status", () => {
   const workflow = resolveSessionWorkflow(
     makeSession({
-      status: "REVIEW_REQUIRED",
       workflow: {
         ...makeSession().workflow,
         state: "REVIEW_REQUIRED",

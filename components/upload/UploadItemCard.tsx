@@ -14,7 +14,9 @@ import {
   JOB_STATE_META,
   TONE_STYLES,
   formatDateTime,
+  formatDurationMs,
   formatNumber,
+  formatPercent,
   formatUploadStage,
   getPrimaryStage,
   itemNeedsManualChoice,
@@ -34,6 +36,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  XCircle,
 } from "lucide-react";
 
 function parseTags(value: string): string[] {
@@ -65,7 +68,11 @@ function getInitialDecision(item: UploadItem): UploadDecision {
 
 function getDestinationSummary(item: UploadItem): string {
   if (item.plan.decision === "EXISTING_SERIES") {
-    return item.suggestion.matchedSeriesTitle || item.plan.targetSeriesId || "Série existente";
+    return (
+      item.suggestion.matchedSeriesTitle ||
+      item.plan.targetSeriesId ||
+      "Série existente"
+    );
   }
 
   if (item.plan.decision === "NEW_SERIES") {
@@ -88,8 +95,10 @@ interface UploadItemCardProps {
   disabled?: boolean;
   disabledReason?: string | null;
   retryDisabled?: boolean;
+  cancelDisabled?: boolean;
   onPatch: (itemId: string, data: UpdateUploadDraftItemRequest) => Promise<void>;
   onRetry?: (itemId: string) => Promise<void>;
+  onCancel?: (itemId: string) => Promise<void>;
 }
 
 export function UploadItemCard({
@@ -97,8 +106,10 @@ export function UploadItemCard({
   disabled = false,
   disabledReason = null,
   retryDisabled = false,
+  cancelDisabled = false,
   onPatch,
   onRetry,
+  onCancel,
 }: UploadItemCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [decision, setDecision] = useState<UploadDecision>(getInitialDecision(item));
@@ -135,6 +146,7 @@ export function UploadItemCard({
   const { data: seriesSearch } = useSeriesSearch(deferredSeriesQuery, 1, 8);
   const [isSaving, setIsSaving] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
     setDecision(getInitialDecision(item));
@@ -175,7 +187,7 @@ export function UploadItemCard({
 
   const primaryStage = getPrimaryStage(item.suggestion.stages);
   const jobMeta = JOB_STATE_META[item.job.state];
-  const confidenceMeta = CONFIDENCE_META[item.parsing.confidence];
+  const confidenceMeta = CONFIDENCE_META[item.parsing.confidence ?? "unknown"];
   const needsManualChoice = itemNeedsManualChoice(item);
   const chapterNeedsReview =
     item.parsing.requiresManualReview || item.parsing.confidence === "low";
@@ -183,8 +195,20 @@ export function UploadItemCard({
   const queueJobId = item.job.queueJobId || item.result.queueJobId;
   const topCandidates = useMemo(
     () =>
-      item.suggestion.candidates.filter((candidate) => candidate.matchedSeriesId).slice(0, 4),
+      item.suggestion.candidates
+        .filter((candidate) => candidate.matchedSeriesId)
+        .slice(0, 4),
     [item.suggestion.candidates],
+  );
+  const parsingOptions = useMemo(
+    () =>
+      item.parsing.candidateOptions.filter(
+        (candidate) => candidate.value != null,
+      ),
+    [item.parsing.candidateOptions],
+  );
+  const canCancel = Boolean(
+    onCancel && item.job.canCancel && !item.job.isCancelRequested && !cancelDisabled,
   );
 
   const saveChanges = async (event?: FormEvent) => {
@@ -216,7 +240,7 @@ export function UploadItemCard({
   };
 
   const retryItem = async () => {
-    if (!onRetry || retryDisabled) {
+    if (!onRetry || retryDisabled || item.job.isCancelRequested) {
       return;
     }
 
@@ -225,6 +249,19 @@ export function UploadItemCard({
       await onRetry(item.id);
     } finally {
       setIsRetrying(false);
+    }
+  };
+
+  const cancelItem = async () => {
+    if (!onCancel || !canCancel) {
+      return;
+    }
+
+    setIsCancelling(true);
+    try {
+      await onCancel(item.id);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -240,7 +277,15 @@ export function UploadItemCard({
   };
 
   return (
-    <article className="rounded-[28px] border border-white/8 bg-white/[0.035] p-5 shadow-[0_20px_80px_-40px_rgba(0,0,0,0.65)]">
+    <article
+      className={`rounded-[28px] border p-5 shadow-[0_20px_80px_-40px_rgba(0,0,0,0.65)] ${
+        item.job.isStuck
+          ? "border-rose-500/20 bg-rose-500/[0.06]"
+          : item.job.isCancelRequested
+            ? "border-amber-500/20 bg-amber-500/[0.06]"
+            : "border-white/8 bg-white/[0.035]"
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -260,6 +305,14 @@ export function UploadItemCard({
             {item.job.retrying ? (
               <span className="inline-flex rounded-full border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-[11px] font-medium text-sky-300">
                 Reprocessando
+              </span>
+            ) : item.job.isCancelRequested ? (
+              <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200">
+                Cancelando...
+              </span>
+            ) : item.job.isStuck ? (
+              <span className="inline-flex rounded-full border border-rose-500/20 bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-200">
+                Atenção operacional
               </span>
             ) : needsManualChoice ? (
               <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-200">
@@ -289,7 +342,7 @@ export function UploadItemCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {onRetry && item.job.canRetry && (
+          {onRetry && item.job.canRetry && !item.job.isCancelRequested && (
             <button
               type="button"
               onClick={() => void retryItem()}
@@ -304,6 +357,25 @@ export function UploadItemCard({
               Tentar novamente
             </button>
           )}
+
+          {onCancel && (
+            <button
+              type="button"
+              onClick={() => void cancelItem()}
+              disabled={!canCancel || isCancelling}
+              className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-4 py-2 text-xs font-medium text-rose-200 transition-colors hover:bg-rose-500/15 disabled:opacity-50"
+            >
+              {isCancelling ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5" />
+              )}
+              {item.job.isCancelRequested || isCancelling
+                ? "Cancelando..."
+                : "Cancelar item"}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setExpanded((current) => !current)}
@@ -363,7 +435,9 @@ export function UploadItemCard({
           <p className="mt-1 text-xs text-[var(--color-textDim)]">
             {item.parsing.requiresManualReview
               ? "Backend pediu revisão manual do número."
-              : "Número aceito pelo backend."}
+              : item.parsing.candidateOptions.length > 1
+                ? "Há múltiplos candidatos aceitos pelo parser."
+                : "Número aceito pelo backend."}
           </p>
         </div>
 
@@ -381,6 +455,28 @@ export function UploadItemCard({
           </p>
         </div>
       </div>
+
+      {(item.job.isStuck || item.job.isCancelRequested) && (
+        <div
+          className={`mt-4 rounded-2xl border p-3 text-sm ${
+            item.job.isStuck
+              ? "border-rose-500/20 bg-rose-500/10 text-rose-100"
+              : "border-amber-500/20 bg-amber-500/10 text-amber-100"
+          }`}
+        >
+          <p className="flex items-center gap-2 font-medium">
+            <AlertTriangle className="h-4 w-4" />
+            {item.job.isStuck
+              ? "Item sem heartbeat recente"
+              : "Cancelamento em andamento"}
+          </p>
+          <p className="mt-2 text-xs">
+            {item.job.isStuck
+              ? `Último heartbeat ${formatDateTime(item.job.lastHeartbeatAt || item.job.lastActivityAt)} · janela ${formatDurationMs(item.job.staleAfterMs)}.`
+              : item.job.cancelReason || "O worker encerrará no próximo checkpoint seguro."}
+          </p>
+        </div>
+      )}
 
       {(item.suggestion.warnings.length > 0 || item.suggestion.conflicts.length > 0) && (
         <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -596,6 +692,32 @@ export function UploadItemCard({
                 Ajustes finais
               </p>
 
+              {parsingOptions.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-xs text-[var(--color-textDim)]">
+                    Candidatos de capítulo sugeridos pelo parser
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {parsingOptions.map((candidate) => (
+                      <button
+                        key={`${candidate.raw}-${candidate.strategy || "candidate"}`}
+                        type="button"
+                        onClick={() => setChapterNumber(String(candidate.value))}
+                        disabled={disabled}
+                        className={`rounded-full border px-3 py-2 text-xs transition-colors ${
+                          chapterNumber === String(candidate.value)
+                            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+                            : "border-white/10 bg-white/[0.04] text-[var(--color-textMain)] hover:bg-white/[0.07]"
+                        } disabled:opacity-50`}
+                      >
+                        {candidate.value}
+                        {candidate.strategy ? ` · ${candidate.strategy}` : ""}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-4 grid gap-3 md:grid-cols-4">
                 <label className="block">
                   <span className="mb-1 block text-xs text-[var(--color-textDim)]">
@@ -659,6 +781,19 @@ export function UploadItemCard({
                   </span>
                 </label>
               </div>
+
+              {item.parsing.notes.length > 0 && (
+                <div className="mt-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                  <p className="text-xs font-medium text-[var(--color-textMain)]">
+                    Notas do parser
+                  </p>
+                  <ul className="mt-2 space-y-1 text-[11px] text-[var(--color-textDim)]">
+                    {item.parsing.notes.slice(0, 4).map((note) => (
+                      <li key={note}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <label className="block">
@@ -761,7 +896,7 @@ export function UploadItemCard({
                     : "Sem capítulo definido"}
                 </p>
                 <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                  Confiança {item.parsing.confidence}
+                  Confiança {item.parsing.confidence || "não informada"}
                 </p>
                 {item.parsing.selectedCandidate && (
                   <p className="mt-2 text-xs text-[var(--color-textDim)]">
@@ -799,6 +934,29 @@ export function UploadItemCard({
                             {candidate.rejectedReasons.join(" · ")}
                           </p>
                         )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {item.parsing.candidateOptions.length > 0 && (
+                <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                  <p className="text-xs font-medium text-[var(--color-textMain)]">
+                    Opções aceitas pelo parser
+                  </p>
+                  <div className="mt-2 space-y-2">
+                    {item.parsing.candidateOptions.slice(0, 5).map((candidate) => (
+                      <div
+                        key={`${candidate.raw}-${candidate.strategy || "candidate-option"}`}
+                        className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2"
+                      >
+                        <p className="text-xs text-[var(--color-textMain)]">
+                          {candidate.raw}
+                        </p>
+                        <p className="mt-1 text-[11px] text-[var(--color-textDim)]">
+                          Valor {candidate.value ?? "—"} · score {candidate.score ?? "—"}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -871,16 +1029,34 @@ export function UploadItemCard({
               </p>
               <div className="mt-4 space-y-2 text-sm text-[var(--color-textDim)]">
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
-                  Job: <span className="text-[var(--color-textMain)]">{jobMeta.label}</span>
+                  Runtime: <span className="text-[var(--color-textMain)]">{jobMeta.label}</span>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
-                  Etapa: <span className="text-[var(--color-textMain)]">{formatUploadStage(item.job.stage || item.currentStage)}</span>
+                  Etapa:{" "}
+                  <span className="text-[var(--color-textMain)]">
+                    {formatUploadStage(item.job.stage || item.currentStage)}
+                  </span>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
                   Aprovação: <span className="text-[var(--color-textMain)]">{item.approval.status}</span>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
-                  Processado em {formatDateTime(item.processedAt || item.completedAt || item.updatedAt)}
+                  Progresso do worker:{" "}
+                  <span className="text-[var(--color-textMain)]">
+                    {formatPercent(item.job.lastProgressPercent)}
+                  </span>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                  Última atividade{" "}
+                  <span className="text-[var(--color-textMain)]">
+                    {formatDateTime(item.job.lastActivityAt || item.processedAt || item.updatedAt)}
+                  </span>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                  Idade do heartbeat:{" "}
+                  <span className="text-[var(--color-textMain)]">
+                    {formatDurationMs(item.job.heartbeatAgeMs)}
+                  </span>
                 </div>
                 {item.result.seriesId && (
                   <Link
@@ -895,7 +1071,7 @@ export function UploadItemCard({
                     href={`/dashboard/jobs/${queueJobId}`}
                     className="block rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs transition-colors hover:bg-white/[0.06]"
                   >
-                    Queue Job: {queueJobId}
+                    Abrir job técnico: {queueJobId}
                   </Link>
                 )}
                 {item.approval.reason && (

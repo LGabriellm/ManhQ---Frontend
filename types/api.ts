@@ -1,6 +1,10 @@
 // Tipos da API ManhQ
 import type { MetadataSourceRecord } from "@/types/metadata-review";
-import type { UploadApprovalListItem } from "@/types/upload-workflow";
+import type {
+  UploadApprovalListItem,
+  UploadJob,
+  UploadSessionStatus,
+} from "@/types/upload-workflow";
 
 // ===== Autenticação =====
 export type SubscriptionStatus =
@@ -1291,15 +1295,46 @@ export type JobState =
   | "failed"
   | "delayed";
 
+export interface JobLifecycle {
+  state:
+    | "queued"
+    | "scheduled"
+    | "running"
+    | "retrying"
+    | "stalled"
+    | "failed"
+    | "completed";
+  retrying: boolean;
+  stalled: boolean;
+  terminal: boolean;
+  canRetry: boolean;
+  canCancel: boolean;
+}
+
+export interface AdminJobUploadRuntime {
+  itemId: string;
+  sessionId: string;
+  sessionStatus: UploadSessionStatus;
+  userId: string;
+  originalName: string;
+  operational: UploadJob;
+}
+
 export interface AdminJob {
   id: string;
   name: string;
+  queue?: "uploads" | "upload-intake" | "scans";
   data?: {
+    uploadItemId?: string;
+    userId?: string;
     tempPath?: string;
     safeName?: string;
     originalName?: string;
   };
   state: JobState;
+  lifecycle?: JobLifecycle;
+  dashboardState?: string;
+  upload?: AdminJobUploadRuntime;
   progress?: number | Record<string, unknown>;
   priority?: number;
   result?: {
@@ -1331,27 +1366,62 @@ export interface AdminJob {
   error?: string;
   logs?: string[];
   attempts?: number;
+  attemptsStarted?: number;
   maxAttempts?: number;
+  stalledCount?: number;
   createdAt?: number;
   startedAt?: number;
   processedAt?: number;
   finishedAt?: number;
   failedAt?: number;
   duration?: number;
+  stacktrace?: string[];
 }
 
-export interface JobsStats {
+export interface JobQueueStats {
+  queue?: "uploads" | "upload-intake" | "scans";
   waiting: number;
   active: number;
   completed: number;
   failed: number;
   delayed: number;
   total: number;
+  paused?: boolean;
+}
+
+export interface UploadPipelineStats {
+  sessions: {
+    total: number;
+    inFlight: number;
+  };
+  items: {
+    active: number;
+    cancelRequested: number;
+    stuck: number;
+  };
+  thresholds: {
+    heartbeatTimeoutMs: number;
+    staleBefore: string;
+  };
+  generatedAt: string;
+}
+
+export interface JobsStats {
+  uploads: JobQueueStats;
+  uploadIntake: JobQueueStats;
+  scans: Omit<JobQueueStats, "delayed"> & { delayed?: number };
+  global: {
+    totalActive: number;
+    totalWaiting: number;
+    totalFailed: number;
+    totalCompleted: number;
+  };
+  uploadPipeline: UploadPipelineStats;
 }
 
 export interface JobsResponse {
   success: boolean;
-  stats: JobsStats;
+  stats: JobQueueStats;
   jobs:
     | {
         waiting: AdminJob[];

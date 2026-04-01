@@ -3,6 +3,7 @@
 import type { UploadSessionSummary } from "@/types/upload-workflow";
 import {
   NEXT_ACTION_META,
+  OPERATIONAL_STATE_META,
   TONE_STYLES,
   WORKFLOW_STATE_META,
   formatDateTime,
@@ -41,7 +42,8 @@ export function UploadSessionList({
   return (
     <div className="grid gap-3">
       {sessions.map((session) => {
-        const stateMeta = WORKFLOW_STATE_META[session.workflow.state];
+        const workflowMeta = WORKFLOW_STATE_META[session.workflow.state];
+        const runtimeMeta = OPERATIONAL_STATE_META[session.operational.state];
         const nextActionMeta = NEXT_ACTION_META[session.workflow.nextAction];
         const isActive = activeSessionId === session.id;
         const total = session.counts.total || 0;
@@ -72,9 +74,14 @@ export function UploadSessionList({
 
               <div className="flex flex-wrap items-center gap-2">
                 <span
-                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${TONE_STYLES[stateMeta.tone]}`}
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${TONE_STYLES[workflowMeta.tone]}`}
                 >
-                  {stateMeta.label}
+                  {workflowMeta.label}
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${TONE_STYLES[runtimeMeta.tone]}`}
+                >
+                  {runtimeMeta.label}
                 </span>
                 {isActive && (
                   <span className="inline-flex items-center rounded-full border border-[var(--color-primary)]/25 bg-[var(--color-primary)]/12 px-2.5 py-1 text-[11px] font-medium text-[var(--color-primary)]">
@@ -84,16 +91,40 @@ export function UploadSessionList({
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-white/8 bg-black/10 p-3">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
-                Próxima ação
-              </p>
-              <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
-                {nextActionMeta.label}
-              </p>
-              <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                {nextActionMeta.description}
-              </p>
+            <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(220px,0.9fr)]">
+              <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+                <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
+                  Próxima ação
+                </p>
+                <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
+                  {nextActionMeta.label}
+                </p>
+                <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                  {nextActionMeta.description}
+                </p>
+              </div>
+
+              <div
+                className={`rounded-2xl border p-3 ${
+                  session.operational.state === "stuck"
+                    ? "border-rose-500/20 bg-rose-500/10"
+                    : session.operational.state === "cancel_requested"
+                      ? "border-amber-500/20 bg-amber-500/10"
+                      : "border-white/8 bg-black/10"
+                }`}
+              >
+                <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
+                  Saúde operacional
+                </p>
+                <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
+                  {runtimeMeta.description}
+                </p>
+                <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                  Ativos {session.operational.counts.active} · cancelando{" "}
+                  {session.operational.counts.cancelRequested} · travados{" "}
+                  {session.operational.counts.stuck}
+                </p>
+              </div>
             </div>
 
             <div className="mt-4 grid gap-2 text-xs text-[var(--color-textDim)] sm:grid-cols-4">
@@ -144,10 +175,17 @@ export function UploadSessionList({
               </div>
             </div>
 
-            {session.expiresAt && !session.workflow.isTerminal && (
-              <p className="mt-3 text-xs text-[var(--color-textDim)]">
-                Expira em {formatDateTime(session.expiresAt)}
-              </p>
+            {(session.expiresAt || session.operational.lastActivityAt) && (
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--color-textDim)]">
+                {session.expiresAt && !session.workflow.isTerminal && (
+                  <span>Expira em {formatDateTime(session.expiresAt)}</span>
+                )}
+                {session.operational.lastActivityAt && (
+                  <span>
+                    Última atividade {formatDateTime(session.operational.lastActivityAt)}
+                  </span>
+                )}
+              </div>
             )}
 
             {session.lastError?.message && (

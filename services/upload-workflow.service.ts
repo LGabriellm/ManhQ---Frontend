@@ -1,4 +1,8 @@
-import { resolveDraftWorkflow, resolveSessionWorkflow } from "@/lib/upload-workflow";
+import {
+  resolveDraftWorkflow,
+  resolveSessionOperational,
+  resolveSessionWorkflow,
+} from "@/lib/upload-workflow";
 import api from "@/services/api";
 import type {
   BulkUpdateUploadDraftRequest,
@@ -25,16 +29,18 @@ import type {
   UploadDraftConfirmResponse,
   UploadDraftItemResponse,
   UploadDraftResponse,
+  UploadItem,
+  UploadItemCancellationResponse,
   UploadJob,
   UploadJobState,
   UploadParsing,
   UploadParsingCandidate,
   UploadRetryItemResponse,
-  UploadItem,
   UploadSessionCreatedResponse,
   UploadSessionDetail,
   UploadSessionDetailResponse,
   UploadSessionListResponse,
+  UploadSessionOperational,
   UploadSessionSummary,
   UploadSource,
   UploadSessionStatus,
@@ -60,6 +66,18 @@ function normalizeStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === "string");
 }
 
+function normalizeDateString(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+
+  return value;
+}
+
+function normalizeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function normalizeParsingCandidate(
   candidate: unknown,
 ): UploadParsingCandidate | null {
@@ -71,14 +89,16 @@ function normalizeParsingCandidate(
 
   return {
     raw: typeof rawCandidate.raw === "string" ? rawCandidate.raw : "",
-    value:
-      typeof rawCandidate.value === "number" ? rawCandidate.value : null,
-    score:
-      typeof rawCandidate.score === "number" ? rawCandidate.score : null,
+    value: normalizeNumber(rawCandidate.value),
+    score: normalizeNumber(rawCandidate.score),
     strategy:
       typeof rawCandidate.strategy === "string" ? rawCandidate.strategy : null,
     reasons: normalizeStringArray(rawCandidate.reasons),
     rejectedReasons: normalizeStringArray(rawCandidate.rejectedReasons),
+    accepted:
+      typeof rawCandidate.accepted === "boolean"
+        ? rawCandidate.accepted
+        : undefined,
     inParentheses:
       typeof rawCandidate.inParentheses === "boolean"
         ? rawCandidate.inParentheses
@@ -123,26 +143,39 @@ function normalizeItemParsing(item: UploadItem): UploadParsing {
     (item as UploadItem & { parsing?: Partial<UploadParsing> }).parsing ??
     rawIngestion?.parsed?.parsing;
 
+  const candidateOptions = Array.isArray(rawParsing?.candidateOptions)
+    ? rawParsing.candidateOptions
+        .map(normalizeParsingCandidate)
+        .filter(
+          (candidate): candidate is UploadParsingCandidate => candidate !== null,
+        )
+    : [];
+
+  const ignoredCandidates = Array.isArray(rawParsing?.ignoredCandidates)
+    ? rawParsing.ignoredCandidates
+        .map(normalizeParsingCandidate)
+        .filter(
+          (candidate): candidate is UploadParsingCandidate => candidate !== null,
+        )
+    : [];
+
   return {
     chapterNumber:
       typeof rawParsing?.chapterNumber === "number"
         ? rawParsing.chapterNumber
         : item.plan.chapterNumber ?? null,
     confidence:
-      rawParsing?.confidence ?? item.suggestion.confidence ?? "low",
+      rawParsing?.confidence ??
+      item.suggestion.confidence ??
+      null,
     requiresManualReview:
       rawParsing?.requiresManualReview ??
       item.suggestion.reviewRequired ??
       false,
     selectedCandidate:
       normalizeParsingCandidate(rawParsing?.selectedCandidate) ?? null,
-    ignoredCandidates: Array.isArray(rawParsing?.ignoredCandidates)
-      ? rawParsing.ignoredCandidates
-          .map(normalizeParsingCandidate)
-          .filter(
-            (candidate): candidate is UploadParsingCandidate => candidate !== null,
-          )
-      : [],
+    candidateOptions,
+    ignoredCandidates,
     notes: normalizeStringArray(rawParsing?.notes),
   };
 }
@@ -150,9 +183,22 @@ function normalizeItemParsing(item: UploadItem): UploadParsing {
 function normalizeItemJob(item: UploadItem): UploadJob {
   const rawJob = (item as UploadItem & { job?: Partial<UploadJob> }).job;
   const queueJobId = rawJob?.queueJobId ?? item.result.queueJobId ?? null;
+  const state = rawJob?.state ?? mapStatusToJobState(item.status);
+  const isTerminal =
+    typeof rawJob?.isTerminal === "boolean"
+      ? rawJob.isTerminal
+      : ["completed", "failed", "skipped", "rejected", "canceled"].includes(
+          state,
+        );
+  const isCancelRequested =
+    typeof rawJob?.isCancelRequested === "boolean"
+      ? rawJob.isCancelRequested
+      : state === "cancel_requested";
+  const isStuck =
+    typeof rawJob?.isStuck === "boolean" ? rawJob.isStuck : state === "stuck";
 
   return {
-    state: rawJob?.state ?? mapStatusToJobState(item.status),
+    state,
     stage:
       typeof rawJob?.stage === "string"
         ? rawJob.stage
@@ -160,11 +206,12 @@ function normalizeItemJob(item: UploadItem): UploadJob {
     retrying:
       typeof rawJob?.retrying === "boolean"
         ? rawJob.retrying
-        : rawJob?.state === "retrying",
+        : state === "retrying",
     userActionRequired:
       typeof rawJob?.userActionRequired === "boolean"
         ? rawJob.userActionRequired
-        : item.status === "READY_FOR_REVIEW",
+        : item.status === "READY_FOR_REVIEW" ||
+          item.status === "APPROVAL_PENDING",
     canRetry:
       typeof rawJob?.canRetry === "boolean"
         ? rawJob.canRetry
@@ -175,43 +222,95 @@ function normalizeItemJob(item: UploadItem): UploadJob {
       typeof rawJob?.canReview === "boolean"
         ? rawJob.canReview
         : item.status === "READY_FOR_REVIEW",
+    isTerminal,
+    isCancelRequested,
+    isStuck,
     queueJobId,
+    queuedAt: normalizeDateString(rawJob?.queuedAt ?? item.queuedAt),
+    processedAt: normalizeDateString(rawJob?.processedAt ?? item.processedAt),
+    completedAt: normalizeDateString(rawJob?.completedAt ?? item.completedAt),
+    cancelRequestedAt: normalizeDateString(
+      rawJob?.cancelRequestedAt ?? item.cancelRequestedAt,
+    ),
+    cancelReason:
+      typeof rawJob?.cancelReason === "string" ? rawJob.cancelReason : null,
+    canceledAt: normalizeDateString(rawJob?.canceledAt ?? item.canceledAt),
+    lastHeartbeatAt: normalizeDateString(
+      rawJob?.lastHeartbeatAt ?? item.lastHeartbeatAt,
+    ),
+    lastProgressPercent: normalizeNumber(rawJob?.lastProgressPercent),
+    lastActivityAt: normalizeDateString(rawJob?.lastActivityAt),
+    heartbeatAgeMs: normalizeNumber(rawJob?.heartbeatAgeMs),
+    staleAfterMs: normalizeNumber(rawJob?.staleAfterMs),
   };
 }
 
 function normalizeUploadItem(item: UploadItem): UploadItem {
+  const parsing = normalizeItemParsing(item);
+  const job = normalizeItemJob(item);
+
   return {
     ...item,
-    parsing: normalizeItemParsing(item),
-    job: normalizeItemJob(item),
+    parsing,
+    job,
+    cancelRequestedAt: normalizeDateString(item.cancelRequestedAt),
+    canceledAt: normalizeDateString(item.canceledAt),
+    lastHeartbeatAt: normalizeDateString(item.lastHeartbeatAt),
   };
 }
 
 function normalizeSessionSummary(
   session: UploadSessionSummary,
 ): UploadSessionSummary {
-  return {
+  const normalized = {
     ...session,
-    workflow: resolveSessionWorkflow(session),
+    cancelRequestedAt: normalizeDateString(session.cancelRequestedAt),
+    canceledAt: normalizeDateString(session.canceledAt),
+  };
+
+  return {
+    ...normalized,
+    workflow: resolveSessionWorkflow(normalized),
+    operational: resolveSessionOperational(normalized),
   };
 }
 
 function normalizeSessionDetail(session: UploadSessionDetail): UploadSessionDetail {
-  return {
+  const normalized = {
     ...session,
     items: session.items.map(normalizeUploadItem),
-    workflow: resolveSessionWorkflow(session),
+    cancelRequestedAt: normalizeDateString(session.cancelRequestedAt),
+    canceledAt: normalizeDateString(session.canceledAt),
+  };
+
+  return {
+    ...normalized,
+    workflow: resolveSessionWorkflow(normalized),
+    operational: resolveSessionOperational(normalized),
   };
 }
 
-function normalizeSessionStub<T extends { id: string; status: UploadSessionStatus }>(
-  session: T & { workflow?: UploadSessionSummary["workflow"] },
-): T & { workflow: UploadSessionSummary["workflow"] } {
+function normalizeSessionStub<
+  T extends {
+    id: string;
+    source: UploadSource;
+    status: UploadSessionStatus;
+    workflow?: Partial<UploadSessionSummary["workflow"]>;
+    operational?: Partial<UploadSessionOperational> | null;
+  },
+>(session: T): T & {
+  workflow: UploadSessionSummary["workflow"];
+  operational: UploadSessionSummary["operational"];
+} {
   return {
     ...session,
     workflow: resolveSessionWorkflow({
       status: session.status,
       workflow: session.workflow,
+    }),
+    operational: resolveSessionOperational({
+      status: session.status,
+      operational: session.operational,
     }),
   };
 }
@@ -258,18 +357,36 @@ function normalizeConfirmResponse(
   };
 }
 
+function normalizeCancelDraftResponse(
+  response: UploadDraftCancelResponse,
+): UploadDraftCancelResponse {
+  return {
+    ...response,
+    session: response.session ? normalizeSessionDetail(response.session) : undefined,
+  };
+}
+
+function normalizeItemCancellationResponse(
+  response: UploadItemCancellationResponse,
+): UploadItemCancellationResponse {
+  return {
+    ...response,
+    cancellation: {
+      ...response.cancellation,
+      session: normalizeSessionDetail(response.cancellation.session),
+    },
+  };
+}
+
 export const uploadWorkflowService = {
   async getSessions(params?: {
     page?: number;
     limit?: number;
     status?: UploadSessionStatus;
   }): Promise<UploadSessionListResponse> {
-    const response = await api.get<UploadSessionListResponse>(
-      "/upload/sessions",
-      {
-        params,
-      },
-    );
+    const response = await api.get<UploadSessionListResponse>("/upload/sessions", {
+      params,
+    });
 
     return {
       ...response.data,
@@ -371,7 +488,11 @@ export const uploadWorkflowService = {
       `${buildDraftRoute(source, draftId)}/items/${itemId}`,
       data,
     );
-    return response.data;
+
+    return {
+      ...response.data,
+      item: normalizeUploadItem(response.data.item),
+    };
   },
 
   async bulkUpdateDraft(
@@ -417,7 +538,16 @@ export const uploadWorkflowService = {
     const response = await api.delete<UploadDraftCancelResponse>(
       buildDraftRoute(source, draftId),
     );
-    return response.data;
+
+    return normalizeCancelDraftResponse(response.data);
+  },
+
+  async cancelItem(itemId: string): Promise<UploadItemCancellationResponse> {
+    const response = await api.delete<UploadItemCancellationResponse>(
+      `/upload/items/${itemId}`,
+    );
+
+    return normalizeItemCancellationResponse(response.data);
   },
 
   async retryItem(itemId: string): Promise<UploadRetryItemResponse> {

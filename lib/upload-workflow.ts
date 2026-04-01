@@ -3,7 +3,9 @@ import type {
   UploadJobState,
   UploadItem,
   UploadItemStatus,
+  UploadOperationalState,
   UploadSessionDetail,
+  UploadSessionOperational,
   UploadSessionStatus,
   UploadSessionSummary,
   UploadSource,
@@ -31,27 +33,122 @@ const POLLING_WORKFLOW_ACTIONS = new Set<UploadWorkflowNextAction>([
   "POLL_PROCESSING",
 ]);
 
+const POLLING_OPERATIONAL_STATES = new Set<UploadOperationalState>([
+  "analyzing",
+  "approval_pending",
+  "queued",
+  "retrying",
+  "running",
+  "cancel_requested",
+  "stuck",
+]);
+
 export const WORKFLOW_STATE_META: Record<
   UploadWorkflowState,
   { label: string; tone: StatusTone }
 > = {
   ANALYZING: { label: "Analisando", tone: "info" },
   REVIEW_REQUIRED: { label: "Revisão necessária", tone: "warning" },
-  READY_FOR_REVIEW: { label: "Revisão necessária", tone: "warning" },
   READY_TO_CONFIRM: { label: "Pronto para confirmar", tone: "info" },
   APPROVAL_PENDING: { label: "Aguardando aprovação", tone: "warning" },
   PROCESSING: { label: "Processando", tone: "info" },
   COMPLETED: { label: "Concluído", tone: "success" },
-  PARTIAL_FAILURE: { label: "Parcialmente concluído", tone: "warning" },
+  PARTIAL_FAILURE: { label: "Concluído com falhas", tone: "warning" },
   FAILED: { label: "Falhou", tone: "danger" },
   CANCELED: { label: "Cancelado", tone: "neutral" },
   EXPIRED: { label: "Expirado", tone: "neutral" },
 };
 
-export const SESSION_STATUS_META = WORKFLOW_STATE_META as Record<
+export const SESSION_STATUS_META: Record<
   UploadSessionStatus,
   { label: string; tone: StatusTone }
->;
+> = {
+  ANALYZING: { label: "Analisando", tone: "info" },
+  READY_FOR_REVIEW: { label: "Pronto para revisão", tone: "warning" },
+  APPROVAL_PENDING: { label: "Aguardando aprovação", tone: "warning" },
+  PROCESSING: { label: "Processando", tone: "info" },
+  COMPLETED: { label: "Concluído", tone: "success" },
+  PARTIAL_FAILURE: { label: "Concluído com falhas", tone: "warning" },
+  FAILED: { label: "Falhou", tone: "danger" },
+  CANCELED: { label: "Cancelado", tone: "neutral" },
+  EXPIRED: { label: "Expirado", tone: "neutral" },
+};
+
+export const OPERATIONAL_STATE_META: Record<
+  UploadOperationalState,
+  { label: string; tone: StatusTone; description: string }
+> = {
+  analyzing: {
+    label: "Analisando",
+    tone: "info",
+    description: "O intake ainda está montando sugestões e diagnósticos.",
+  },
+  review_required: {
+    label: "Revisão pendente",
+    tone: "warning",
+    description: "Há ação manual pendente antes de continuar.",
+  },
+  approval_pending: {
+    label: "Aguardando aprovação",
+    tone: "warning",
+    description: "O item ou a sessão dependem de aprovação administrativa.",
+  },
+  queued: {
+    label: "Na fila",
+    tone: "info",
+    description: "A pipeline já aceitou o item e aguarda execução.",
+  },
+  retrying: {
+    label: "Reprocessando",
+    tone: "warning",
+    description: "O item foi reenfileirado e está em uma nova tentativa.",
+  },
+  running: {
+    label: "Processando",
+    tone: "info",
+    description: "A pipeline está processando o arquivo neste momento.",
+  },
+  cancel_requested: {
+    label: "Cancelando",
+    tone: "warning",
+    description: "O cancelamento foi aceito e será concluído no próximo checkpoint.",
+  },
+  stuck: {
+    label: "Travado",
+    tone: "danger",
+    description: "A pipeline não reporta atividade dentro da janela de heartbeat.",
+  },
+  completed: {
+    label: "Concluído",
+    tone: "success",
+    description: "O processamento terminou com sucesso.",
+  },
+  failed: {
+    label: "Falhou",
+    tone: "danger",
+    description: "A pipeline terminou com erro e pode exigir retry.",
+  },
+  skipped: {
+    label: "Ignorado",
+    tone: "neutral",
+    description: "O item foi ignorado pelo fluxo.",
+  },
+  rejected: {
+    label: "Rejeitado",
+    tone: "danger",
+    description: "O item foi rejeitado durante o processamento.",
+  },
+  canceled: {
+    label: "Cancelado",
+    tone: "neutral",
+    description: "O item ou a sessão foram cancelados.",
+  },
+  unknown: {
+    label: "Estado indefinido",
+    tone: "neutral",
+    description: "A API não devolveu um estado operacional reconhecido.",
+  },
+};
 
 export const NEXT_ACTION_META: Record<
   UploadWorkflowNextAction,
@@ -90,7 +187,7 @@ export const NEXT_ACTION_META: Record<
   START_NEW_UPLOAD: {
     label: "Iniciar novo upload",
     description:
-      "Este draft não pode mais continuar. É preciso iniciar um novo envio.",
+      "Este fluxo terminou. Use um novo envio para continuar operando arquivos.",
   },
   DONE: {
     label: "Fluxo concluído",
@@ -116,30 +213,19 @@ export const ITEM_STATUS_META: Record<
   CANCELED: { label: "Cancelado", tone: "neutral" },
 };
 
-export const JOB_STATE_META: Record<
+export const JOB_STATE_META = OPERATIONAL_STATE_META as Record<
   UploadJobState,
-  { label: string; tone: StatusTone }
-> = {
-  analyzing: { label: "Analisando", tone: "info" },
-  review_required: { label: "Revisão pendente", tone: "warning" },
-  approval_pending: { label: "Aguardando aprovação", tone: "warning" },
-  queued: { label: "Na fila", tone: "info" },
-  retrying: { label: "Reprocessando", tone: "warning" },
-  running: { label: "Processando", tone: "info" },
-  completed: { label: "Concluído", tone: "success" },
-  failed: { label: "Falhou", tone: "danger" },
-  skipped: { label: "Ignorado", tone: "neutral" },
-  rejected: { label: "Rejeitado", tone: "danger" },
-  canceled: { label: "Cancelado", tone: "neutral" },
-};
+  { label: string; tone: StatusTone; description: string }
+>;
 
 export const CONFIDENCE_META: Record<
-  UploadItem["suggestion"]["confidence"],
+  NonNullable<UploadItem["suggestion"]["confidence"]> | "unknown",
   { label: string; tone: StatusTone }
 > = {
   high: { label: "Alta confiança", tone: "success" },
   medium: { label: "Confiança média", tone: "warning" },
   low: { label: "Baixa confiança", tone: "danger" },
+  unknown: { label: "Sem confiança", tone: "neutral" },
 };
 
 export const TONE_STYLES: Record<StatusTone, string> = {
@@ -190,6 +276,27 @@ function buildFallbackWorkflowCounts(args: {
     reviewRequiredHint ??
     countItemsByStatus(items, ["READY_FOR_REVIEW"]);
 
+  const approvalPending =
+    workflowCounts?.approvalPending ??
+    countItemsByStatus(items, ["APPROVAL_PENDING"]);
+
+  const queued = workflowCounts?.queued ?? countItemsByStatus(items, ["QUEUED"]);
+
+  const processingCount =
+    workflowCounts?.processing ?? countItemsByStatus(items, ["PROCESSING"]);
+
+  const completed =
+    workflowCounts?.completed ?? countItemsByStatus(items, ["COMPLETED"]);
+
+  const skipped =
+    workflowCounts?.skipped ??
+    countItemsByStatus(items, ["SKIPPED", "CANCELED"]);
+
+  const failed =
+    workflowCounts?.failed ??
+    failedHint ??
+    countItemsByStatus(items, ["FAILED", "REJECTED"]);
+
   const confirmable =
     workflowCounts?.confirmable ??
     items?.filter(
@@ -197,19 +304,37 @@ function buildFallbackWorkflowCounts(args: {
         item.status === "READY_FOR_REVIEW" &&
         item.plan.selectionConfirmed === true,
     ).length ??
-    Math.max(totalItems - pendingAnalysis - reviewRequired, 0);
-
-  const failed =
-    workflowCounts?.failed ??
-    failedHint ??
-    countItemsByStatus(items, ["FAILED", "REJECTED"]);
+    Math.max(
+      totalItems -
+        pendingAnalysis -
+        reviewRequired -
+        approvalPending -
+        queued -
+        processingCount -
+        completed -
+        skipped -
+        failed,
+      0,
+    );
 
   return {
+    total: workflowCounts?.total ?? totalItems,
     pendingAnalysis,
     reviewRequired,
     confirmable,
+    approvalPending,
+    queued,
+    processing: processingCount,
+    completed,
     failed,
-    alreadyHandled: workflowCounts?.alreadyHandled ?? 0,
+    skipped,
+    alreadyHandled:
+      workflowCounts?.alreadyHandled ??
+      approvalPending +
+        queued +
+        processingCount +
+        completed +
+        skipped,
   };
 }
 
@@ -221,7 +346,6 @@ function getFallbackNextAction(
     case "ANALYZING":
       return "POLL_ANALYSIS";
     case "REVIEW_REQUIRED":
-    case "READY_FOR_REVIEW":
       return "REVIEW_ITEMS";
     case "READY_TO_CONFIRM":
       return "CONFIRM_UPLOAD";
@@ -230,7 +354,6 @@ function getFallbackNextAction(
     case "PROCESSING":
       return "POLL_PROCESSING";
     case "PARTIAL_FAILURE":
-      return counts.failed > 0 ? "RETRY_FAILED_ITEMS" : "DONE";
     case "FAILED":
       return counts.failed > 0 ? "RETRY_FAILED_ITEMS" : "START_NEW_UPLOAD";
     case "COMPLETED":
@@ -243,13 +366,19 @@ function getFallbackNextAction(
   }
 }
 
-function normalizeWorkflowState(state: UploadWorkflowState): UploadWorkflowState {
-  return state === "READY_FOR_REVIEW" ? "REVIEW_REQUIRED" : state;
+function normalizeWorkflowState(
+  state: UploadWorkflowState | UploadSessionStatus,
+): UploadWorkflowState {
+  if (state === "READY_FOR_REVIEW") {
+    return "REVIEW_REQUIRED";
+  }
+
+  return state;
 }
 
 function normalizeWorkflow(args: {
   workflow?: Partial<UploadWorkflow> | null;
-  state: UploadWorkflowState;
+  state: UploadWorkflowState | UploadSessionStatus;
   items?: UploadItem[];
   totalItems?: number;
   processing?: UploadDraft["processing"] | null;
@@ -269,8 +398,11 @@ function normalizeWorkflow(args: {
   const state = normalizeWorkflowState(args.workflow?.state ?? args.state);
   const nextAction = args.workflow?.nextAction ?? getFallbackNextAction(state, counts);
   const isTerminal = args.workflow?.isTerminal ?? TERMINAL_WORKFLOW_STATES.has(state);
-  const canEdit = args.workflow?.canEdit ?? nextAction === "REVIEW_ITEMS";
-  const canConfirm = args.workflow?.canConfirm ?? nextAction === "CONFIRM_UPLOAD";
+  const canEdit =
+    args.workflow?.canEdit ?? (state === "REVIEW_REQUIRED" || state === "READY_TO_CONFIRM");
+  const canConfirm =
+    args.workflow?.canConfirm ??
+    (counts.pendingAnalysis === 0 && counts.confirmable > 0);
 
   return {
     state,
@@ -287,6 +419,31 @@ function normalizeWorkflow(args: {
         state === "PARTIAL_FAILURE"),
     counts,
   };
+}
+
+function mapSessionStatusToOperationalState(
+  status: UploadSessionStatus,
+): UploadSessionOperational["state"] {
+  switch (status) {
+    case "ANALYZING":
+      return "analyzing";
+    case "READY_FOR_REVIEW":
+      return "review_required";
+    case "APPROVAL_PENDING":
+      return "approval_pending";
+    case "PROCESSING":
+      return "running";
+    case "COMPLETED":
+      return "completed";
+    case "PARTIAL_FAILURE":
+    case "FAILED":
+      return "failed";
+    case "CANCELED":
+    case "EXPIRED":
+      return "canceled";
+    default:
+      return "unknown";
+  }
 }
 
 export function resolveSessionWorkflow(
@@ -322,8 +479,105 @@ export function resolveDraftWorkflow(draft: UploadDraft): UploadWorkflow {
   });
 }
 
+export function resolveSessionOperational(
+  session: {
+    status: UploadSessionStatus;
+    operational?: Partial<UploadSessionOperational> | null;
+    items?: UploadItem[];
+    counts?: Partial<UploadSessionSummary["counts"]>;
+  },
+): UploadSessionOperational {
+  const items = session.items ?? [];
+  const active =
+    session.operational?.counts?.active ??
+    items.filter((item) =>
+      ["analyzing", "queued", "retrying", "running"].includes(item.job.state),
+    ).length;
+  const cancelRequested =
+    session.operational?.counts?.cancelRequested ??
+    items.filter((item) => item.job.isCancelRequested).length;
+  const stuck =
+    session.operational?.counts?.stuck ??
+    items.filter((item) => item.job.isStuck).length;
+  const failed =
+    session.operational?.counts?.failed ??
+    items.filter((item) => item.job.state === "failed").length;
+  const completed =
+    session.operational?.counts?.completed ??
+    items.filter((item) => item.job.state === "completed").length;
+  const total =
+    session.operational?.counts?.total ?? session.counts?.total ?? items.length;
+  const fallbackState =
+    cancelRequested > 0
+      ? "cancel_requested"
+      : stuck > 0
+        ? "stuck"
+        : mapSessionStatusToOperationalState(session.status);
+
+  return {
+    state: session.operational?.state ?? fallbackState,
+    canCancel:
+      session.operational?.canCancel ??
+      items.some((item) => item.job.canCancel || item.job.isCancelRequested),
+    counts: {
+      total,
+      active,
+      cancelRequested,
+      stuck,
+      failed,
+      completed,
+    },
+    cancelRequestedAt: session.operational?.cancelRequestedAt ?? null,
+    cancelReason: session.operational?.cancelReason ?? null,
+    lastActivityAt: session.operational?.lastActivityAt ?? null,
+    heartbeatTimeoutMs: session.operational?.heartbeatTimeoutMs ?? null,
+  };
+}
+
+export function shouldPollOperationalState(
+  operationalState: UploadOperationalState | null | undefined,
+): boolean {
+  return Boolean(
+    operationalState && POLLING_OPERATIONAL_STATES.has(operationalState),
+  );
+}
+
 export function shouldPollWorkflow(workflow: UploadWorkflow | null | undefined): boolean {
   return Boolean(workflow && POLLING_WORKFLOW_ACTIONS.has(workflow.nextAction));
+}
+
+export function shouldPollSession(
+  session:
+    | {
+        status: UploadSessionStatus;
+        workflow?: Partial<UploadWorkflow> | null;
+        operational?: Partial<UploadSessionOperational> | null;
+        items?: UploadItem[];
+        counts?: Partial<UploadSessionSummary["counts"]>;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!session) {
+    return false;
+  }
+
+  return (
+    shouldPollWorkflow(resolveSessionWorkflow(session)) ||
+    shouldPollOperationalState(resolveSessionOperational(session).state)
+  );
+}
+
+export function shouldPollDraft(draft: UploadDraft | null | undefined): boolean {
+  if (!draft) {
+    return false;
+  }
+
+  if (shouldPollWorkflow(resolveDraftWorkflow(draft))) {
+    return true;
+  }
+
+  return draft.items.some((item) => shouldPollOperationalState(item.job.state));
 }
 
 export function workflowNeedsDraft(workflow: UploadWorkflow | null | undefined): boolean {
@@ -368,12 +622,17 @@ export function itemCanBeEdited(
   return Boolean(
     workflow?.canEdit &&
       item.status === "READY_FOR_REVIEW" &&
-      item.job.canReview,
+      item.job.canReview &&
+      !item.job.isCancelRequested,
   );
 }
 
 export function itemNeedsRetry(item: UploadItem): boolean {
-  return item.job.canRetry || item.job.state === "failed";
+  return item.job.canRetry && !item.job.isCancelRequested;
+}
+
+export function itemCanBeCanceled(item: UploadItem): boolean {
+  return item.job.canCancel && !item.job.isCancelRequested;
 }
 
 export function countItemsNeedingManualChoice(items: UploadItem[]): number {
@@ -381,7 +640,9 @@ export function countItemsNeedingManualChoice(items: UploadItem[]): number {
 }
 
 export function countItemsFailed(items: UploadItem[]): number {
-  return items.filter((item) => item.status === "FAILED").length;
+  return items.filter((item) =>
+    item.status === "FAILED" || item.status === "REJECTED"
+  ).length;
 }
 
 export function getSessionProgress(session: UploadSessionDetail): number {
@@ -446,16 +707,15 @@ export function getSourceLabel(source: UploadSource): string {
 }
 
 export function isReviewPhase(status: UploadSessionStatus): boolean {
-  return (
-    status === "ANALYZING" ||
-    status === "REVIEW_REQUIRED" ||
-    status === "READY_FOR_REVIEW" ||
-    status === "READY_TO_CONFIRM"
-  );
+  return status === "ANALYZING" || status === "READY_FOR_REVIEW";
 }
 
 export function isTerminalSession(status: UploadSessionStatus): boolean {
-  return TERMINAL_WORKFLOW_STATES.has(status);
+  return status === "COMPLETED" ||
+    status === "PARTIAL_FAILURE" ||
+    status === "FAILED" ||
+    status === "CANCELED" ||
+    status === "EXPIRED";
 }
 
 export function formatNumber(value: number | null | undefined): string {
@@ -466,10 +726,43 @@ export function formatNumber(value: number | null | undefined): string {
   return new Intl.NumberFormat("pt-BR").format(value);
 }
 
-export function formatDateTime(value: string | null | undefined): string {
+export function formatPercent(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) {
+    return "—";
+  }
+
+  return `${Math.round(value)}%`;
+}
+
+export function formatDateTime(value: string | number | Date | null | undefined): string {
   if (!value) {
     return "—";
   }
 
   return new Date(value).toLocaleString("pt-BR");
+}
+
+export function formatDurationMs(value: number | null | undefined): string {
+  if (value == null || Number.isNaN(value)) {
+    return "—";
+  }
+
+  if (value < 1000) {
+    return `${value} ms`;
+  }
+
+  const totalSeconds = Math.round(value / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) {
+    return seconds > 0 ? `${minutes}min ${seconds}s` : `${minutes}min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}min` : `${hours}h`;
 }

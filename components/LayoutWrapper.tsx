@@ -64,7 +64,13 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <div className={shouldHideNav ? "" : "pb-20"}>{children}</div>
+      <div
+        id="main-content"
+        tabIndex={-1}
+        className={shouldHideNav ? "" : "pb-20"}
+      >
+        {children}
+      </div>
       {!shouldHideNav && <BottomNav />}
     </>
   );

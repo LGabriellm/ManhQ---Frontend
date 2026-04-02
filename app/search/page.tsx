@@ -60,7 +60,10 @@ export default function SearchPage() {
             <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--color-textDim)]" />
             <input
               type="text"
-              placeholder="Buscar mangás, HQs, autores ou títulos alternativos..."
+              name="search"
+              aria-label="Buscar mangás e HQs"
+              autoComplete="off"
+              placeholder="Buscar mangás, HQs, autores ou títulos alternativos…"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               className="field-input rounded-[24px] py-4 pl-12 pr-12 text-sm"
@@ -69,6 +72,7 @@ export default function SearchPage() {
               <button
                 type="button"
                 onClick={() => setSearchQuery("")}
+                aria-label="Limpar busca"
                 className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-[var(--color-textDim)] transition-colors hover:bg-white/5 hover:text-[var(--color-textMain)]"
               >
                 <X className="h-4 w-4" />

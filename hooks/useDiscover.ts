@@ -6,6 +6,7 @@ import {
 
 interface UseDiscoverOptions {
   enabled?: boolean;
+  limit?: number;
 }
 
 /**
@@ -13,37 +14,39 @@ interface UseDiscoverOptions {
  * Ideal para a home page — uma única request em vez de três.
  */
 export function useDiscover(options: UseDiscoverOptions = {}) {
+  const limit = options.limit;
+
   return useQuery<DiscoverResponse>({
-    queryKey: ["discover"],
-    queryFn: () => discoverService.getAll(),
+    queryKey: ["discover", "home", limit ?? null],
+    queryFn: () => discoverService.getAll(limit),
     enabled: options.enabled ?? true,
     staleTime: 1000 * 60 * 5, // 5 minutos
   });
 }
 
 /** Séries adicionadas recentemente */
-export function useDiscoverRecent() {
+export function useDiscoverRecent(limit?: number) {
   return useQuery({
-    queryKey: ["discover", "recent"],
-    queryFn: () => discoverService.getRecent(),
+    queryKey: ["discover", "recent", limit ?? null],
+    queryFn: () => discoverService.getRecent(limit),
     staleTime: 1000 * 60 * 5,
   });
 }
 
 /** Séries atualizadas recentemente */
-export function useDiscoverUpdated() {
+export function useDiscoverUpdated(limit?: number) {
   return useQuery({
-    queryKey: ["discover", "updated"],
-    queryFn: () => discoverService.getUpdated(),
+    queryKey: ["discover", "updated", limit ?? null],
+    queryFn: () => discoverService.getUpdated(limit),
     staleTime: 1000 * 60 * 5,
   });
 }
 
 /** Séries mais populares */
-export function useDiscoverPopular() {
+export function useDiscoverPopular(limit?: number) {
   return useQuery({
-    queryKey: ["discover", "popular"],
-    queryFn: () => discoverService.getPopular(),
+    queryKey: ["discover", "popular", limit ?? null],
+    queryFn: () => discoverService.getPopular(limit),
     staleTime: 1000 * 60 * 5,
   });
 }

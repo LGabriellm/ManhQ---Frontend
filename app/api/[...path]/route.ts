@@ -53,6 +53,9 @@ const ALLOWED_PREFIXES = [
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;
+const PUBLIC_CACHE_CONTROL =
+  "public, max-age=60, s-maxage=300, stale-while-revalidate=1800";
+
 function matchesAllowedPrefix(targetPath: string, prefix: string): boolean {
   if (prefix.endsWith("/")) {
     return targetPath.startsWith(prefix);
@@ -79,6 +82,75 @@ function buildForwardedCookieHeader(req: NextRequest): string | null {
 
   if (cookies.length === 0) return null;
   return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+}
+
+function normalizeBoundedInteger(value: string | null, min: number, max: number, fallback: number): string {
+  if (value === null || value === "") {
+    return String(fallback);
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return String(fallback);
+  }
+
+  return String(Math.min(max, Math.max(min, parsed)));
+}
+
+function applyQueryGuards(targetPath: string, searchParams: URLSearchParams): void {
+  if (targetPath.startsWith("carousel/covers")) {
+    const sort = searchParams.get("sort");
+    if (sort !== "recent" && sort !== "popular" && sort !== "random") {
+      searchParams.set("sort", "recent");
+    }
+    searchParams.set(
+      "limit",
+      normalizeBoundedInteger(searchParams.get("limit"), 1, 48, 24),
+    );
+    return;
+  }
+
+  if (targetPath === "search") {
+    searchParams.set(
+      "limit",
+      normalizeBoundedInteger(searchParams.get("limit"), 1, 50, 24),
+    );
+    searchParams.set(
+      "page",
+      normalizeBoundedInteger(searchParams.get("page"), 1, 500, 1),
+    );
+    return;
+  }
+
+  if (targetPath.startsWith("search/suggestions")) {
+    searchParams.set(
+      "limit",
+      normalizeBoundedInteger(searchParams.get("limit"), 1, 12, 6),
+    );
+    return;
+  }
+
+  if (targetPath.startsWith("discover")) {
+    searchParams.set(
+      "limit",
+      normalizeBoundedInteger(searchParams.get("limit"), 1, 36, 18),
+    );
+  }
+}
+
+function shouldApplyPublicCacheHeader(
+  req: NextRequest,
+  targetPath: string,
+  hasForwardedCookie: boolean,
+): boolean {
+  if (req.method !== "GET" || hasForwardedCookie) {
+    return false;
+  }
+
+  return (
+    targetPath.startsWith("carousel/covers") ||
+    targetPath.startsWith("public/series/")
+  );
 }
 
 function rewriteSetCookieHeader(
@@ -132,7 +204,9 @@ async function handler(
   }
 
   const url = new URL(targetPath, BACKEND_URL);
-  url.search = req.nextUrl.search;
+  const guardedSearchParams = new URLSearchParams(req.nextUrl.search);
+  applyQueryGuards(targetPath, guardedSearchParams);
+  url.search = guardedSearchParams.toString();
 
   const headers = new Headers(req.headers);
   const forwardedHost = req.headers.get("host") || req.nextUrl.host;
@@ -151,9 +225,9 @@ async function handler(
   headers.delete("origin");
   headers.delete("referer");
 
-  const forwardedCookie = buildForwardedCookieHeader(req);
-  if (forwardedCookie) {
-    headers.set("cookie", forwardedCookie);
+  const forwardedCookieHeader = buildForwardedCookieHeader(req);
+  if (forwardedCookieHeader) {
+    headers.set("cookie", forwardedCookieHeader);
   }
 
   headers.set("accept-encoding", "identity");
@@ -190,6 +264,16 @@ async function handler(
         "set-cookie",
         rewriteSetCookieHeader(cookie, req),
       );
+    }
+
+    if (
+      shouldApplyPublicCacheHeader(
+        req,
+        targetPath,
+        Boolean(forwardedCookieHeader),
+      )
+    ) {
+      responseHeaders.set("cache-control", PUBLIC_CACHE_CONTROL);
     }
 
     return new Response(response.body, {

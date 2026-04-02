@@ -11,6 +11,29 @@ export interface CarouselCoversQueryParams {
   limit?: number;
 }
 
+const DEFAULT_CAROUSEL_SORT: CarouselCoversQueryParams["sort"] = "recent";
+const DEFAULT_CAROUSEL_LIMIT = 24;
+const MAX_CAROUSEL_LIMIT = 48;
+
+function normalizeCarouselLimit(limit: number | undefined): number {
+  if (!Number.isFinite(limit)) {
+    return DEFAULT_CAROUSEL_LIMIT;
+  }
+
+  const safeLimit = limit as number;
+  return Math.min(MAX_CAROUSEL_LIMIT, Math.max(1, Math.trunc(safeLimit)));
+}
+
+function normalizeCarouselSort(
+  sort: CarouselCoversQueryParams["sort"],
+): CarouselCoversQueryParams["sort"] {
+  if (sort === "popular" || sort === "random" || sort === "recent") {
+    return sort;
+  }
+
+  return DEFAULT_CAROUSEL_SORT;
+}
+
 function normalizeCoverUrl(rawUrl: string): string {
   if (!rawUrl) {
     return rawUrl;
@@ -66,8 +89,13 @@ export const carouselService = {
     params: CarouselCoversQueryParams,
     signal?: AbortSignal,
   ): Promise<CarouselCover[]> {
+    const normalizedParams = {
+      sort: normalizeCarouselSort(params.sort),
+      limit: normalizeCarouselLimit(params.limit),
+    };
+
     const response = await api.get<CarouselCover[]>("/carousel/covers", {
-      params,
+      params: normalizedParams,
       signal,
     });
 

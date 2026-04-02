@@ -38,7 +38,7 @@ export function MangaCard({
         {/* Cover Image */}
         <div
           className={cn(
-            "relative overflow-hidden rounded-2xl bg-surface ring-1 ring-white/5 shadow-lg shadow-black/20 group-hover:shadow-xl group-hover:ring-white/10 transition-all duration-300",
+            "relative overflow-hidden rounded-2xl bg-surface ring-1 ring-white/5 shadow-lg shadow-black/20 group-hover:shadow-xl group-hover:ring-white/10 transition-[box-shadow,transform,ring-color] duration-300",
             variant === "portrait" ? "aspect-2/3" : "w-24 h-32 shrink-0",
           )}
         >

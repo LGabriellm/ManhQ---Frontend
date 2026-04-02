@@ -1,6 +1,13 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getDefaultAuthenticatedPath,
@@ -38,7 +45,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token] = useState<string | null>(null);
+  const token: string | null = null;
   const [isLoading, setIsLoading] = useState(true);
   const queryClient = useQueryClient();
 
@@ -54,46 +61,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Carregar sessão na inicialização
   useEffect(() => {
+    let isMounted = true;
+
     const loadUser = async () => {
       try {
         const storedUser = getStoredUser();
 
-        if (storedUser) {
+        if (storedUser && isMounted) {
           setUser(storedUser);
         }
 
         try {
           const freshUser = await authService.me();
-          setUser(freshUser);
-          setStoredUser(freshUser);
+          if (isMounted) {
+            setUser(freshUser);
+            setStoredUser(freshUser);
+          }
         } catch {
-          clearStoredUser();
-          setUser(null);
+          if (isMounted) {
+            clearStoredUser();
+            setUser(null);
+          }
         }
       } catch (error) {
         console.error("Erro ao carregar usuário:", error);
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
-    loadUser();
+    void loadUser();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const login = async (credentials: LoginRequest) => {
+  const login = useCallback(async (credentials: LoginRequest) => {
     const response = await authService.login(credentials);
     setUser(response.user);
     setStoredUser(response.user);
     return response;
-  };
+  }, []);
 
-  const register = async (data: RegisterRequest) => {
-    await authService.register(data);
-    // Após registro, fazer login automaticamente
-    await login({ email: data.email, password: data.password });
-  };
+  const register = useCallback(
+    async (data: RegisterRequest) => {
+      await authService.register(data);
+      // Após registro, fazer login automaticamente
+      await login({ email: data.email, password: data.password });
+    },
+    [login],
+  );
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await authService.logout();
     } catch (error) {
@@ -104,9 +126,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       queryClient.clear();
     }
-  };
+  }, [queryClient]);
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     try {
       const freshUser = await authService.me();
       setUser(freshUser);
@@ -122,27 +144,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return null;
     }
-  };
+  }, [queryClient]);
+
+  const contextValue = useMemo<AuthContextType>(
+    () => ({
+      user,
+      token,
+      isLoading,
+      isAuthenticated,
+      isAdmin,
+      isEditor,
+      accessGranted,
+      subscription,
+      subscriptionState,
+      defaultAuthenticatedPath,
+      login,
+      register,
+      logout,
+      refreshUser,
+    }),
+    [
+      accessGranted,
+      defaultAuthenticatedPath,
+      isAdmin,
+      isAuthenticated,
+      isEditor,
+      isLoading,
+      login,
+      logout,
+      refreshUser,
+      register,
+      subscription,
+      subscriptionState,
+      token,
+      user,
+    ],
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isLoading,
-        isAuthenticated,
-        isAdmin,
-        isEditor,
-        accessGranted,
-        subscription,
-        subscriptionState,
-        defaultAuthenticatedPath,
-        login,
-        register,
-        logout,
-        refreshUser,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

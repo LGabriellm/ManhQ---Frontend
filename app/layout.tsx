@@ -59,8 +59,6 @@ const spaceGrotesk = Space_Grotesk({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
   themeColor: "#0f0f0f",
 };
 
@@ -103,6 +101,9 @@ export default function RootLayout({
       <body
         className={`${manrope.variable} ${spaceGrotesk.variable} bg-background font-sans text-textMain antialiased`}
       >
+        <a href="#main-content" className="skip-link">
+          Pular para o conteúdo principal
+        </a>
         <noscript>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

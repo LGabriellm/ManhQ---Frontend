@@ -8,6 +8,18 @@ export interface DiscoverResponse {
   mostViewed: Series[];
 }
 
+const DEFAULT_DISCOVER_LIMIT = 18;
+const MAX_DISCOVER_LIMIT = 36;
+
+function normalizeLimit(limit: number | undefined): number {
+  if (!Number.isFinite(limit)) {
+    return DEFAULT_DISCOVER_LIMIT;
+  }
+
+  const safeLimit = limit as number;
+  return Math.min(MAX_DISCOVER_LIMIT, Math.max(1, Math.trunc(safeLimit)));
+}
+
 function normalizeDiscoverPayload(payload: unknown): DiscoverResponse {
   if (!payload || typeof payload !== "object") {
     return {
@@ -45,26 +57,34 @@ function normalizeDiscoverPayload(payload: unknown): DiscoverResponse {
 
 export const discoverService = {
   /** Retorna todos os carrosséis de uma vez */
-  async getAll(): Promise<DiscoverResponse> {
-    const response = await api.get<unknown>("/discover");
+  async getAll(limit?: number): Promise<DiscoverResponse> {
+    const response = await api.get<unknown>("/discover", {
+      params: { limit: normalizeLimit(limit) },
+    });
     return normalizeDiscoverPayload(response.data);
   },
 
   /** Séries adicionadas recentemente */
-  async getRecent(): Promise<Series[]> {
-    const response = await api.get<Series[]>("/discover/recent");
+  async getRecent(limit?: number): Promise<Series[]> {
+    const response = await api.get<Series[]>("/discover/recent", {
+      params: { limit: normalizeLimit(limit) },
+    });
     return normalizeCoverList(response.data);
   },
 
   /** Séries atualizadas recentemente */
-  async getUpdated(): Promise<Series[]> {
-    const response = await api.get<Series[]>("/discover/updated");
+  async getUpdated(limit?: number): Promise<Series[]> {
+    const response = await api.get<Series[]>("/discover/updated", {
+      params: { limit: normalizeLimit(limit) },
+    });
     return normalizeCoverList(response.data);
   },
 
   /** Séries mais populares (ranking por leitores únicos) */
-  async getPopular(): Promise<Series[]> {
-    const response = await api.get<Series[]>("/discover/popular");
+  async getPopular(limit?: number): Promise<Series[]> {
+    const response = await api.get<Series[]>("/discover/popular", {
+      params: { limit: normalizeLimit(limit) },
+    });
     return normalizeCoverList(response.data);
   },
 };

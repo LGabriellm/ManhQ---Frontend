@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Search, Flame, Play, ChevronRight, WifiOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { MangaCard } from "@/components/MangaCard";
@@ -71,7 +69,6 @@ function RowTitle({ label, href, accentColor = "#e50914" }: RowTitleProps) {
 
 // ─── Página ──────────────────────────────────────────────────────────────────
 export default function HomePage() {
-  const router = useRouter();
   const { isAuthenticated, isLoading: authLoading, subscription, user } =
     useAuth();
   const {
@@ -79,15 +76,9 @@ export default function HomePage() {
     isLoading: discoverLoading,
     error: discoverError,
     refetch: refetchDiscover,
-  } = useDiscover({ enabled: isAuthenticated });
+  } = useDiscover({ enabled: isAuthenticated, limit: 16 });
   const { data: continueReading, isLoading: continueLoading } =
     useContinueReading({ limit: 5 });
-
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
-      router.replace("/auth/login");
-    }
-  }, [authLoading, isAuthenticated, router]);
 
   const firstName = user?.name?.split(" ")[0] ?? "Leitor";
   const featured = discover?.mostViewed[0];

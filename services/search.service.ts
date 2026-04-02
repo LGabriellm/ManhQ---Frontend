@@ -2,11 +2,29 @@ import api from "./api";
 import type { Series } from "@/types/api";
 import { normalizeCoverList } from "@/lib/utils";
 
+const DEFAULT_SEARCH_PAGE = 1;
+const DEFAULT_SEARCH_LIMIT = 24;
+const MAX_SEARCH_LIMIT = 50;
+const DEFAULT_SUGGESTIONS_LIMIT = 6;
+const MAX_SUGGESTIONS_LIMIT = 12;
+
 export interface SearchSeriesResponse {
   items: Series[];
   total: number;
   page: number;
   limit: number;
+}
+
+function normalizePositiveInt(
+  value: number,
+  fallback: number,
+  max: number,
+): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(1, Math.trunc(value)));
 }
 
 function normalizeSearchPayload(payload: unknown): SearchSeriesResponse {
@@ -81,25 +99,40 @@ function normalizeSuggestionPayload(payload: unknown): string[] {
 export const searchService = {
   async searchSeries(
     query: string,
-    page = 1,
-    limit = 24,
+    page = DEFAULT_SEARCH_PAGE,
+    limit = DEFAULT_SEARCH_LIMIT,
   ): Promise<SearchSeriesResponse> {
+    const normalizedQuery = query.trim();
+    const normalizedPage = normalizePositiveInt(page, DEFAULT_SEARCH_PAGE, 1000);
+    const normalizedLimit = normalizePositiveInt(
+      limit,
+      DEFAULT_SEARCH_LIMIT,
+      MAX_SEARCH_LIMIT,
+    );
     const response = await api.get<unknown>("/search", {
       params: {
-        q: query,
-        page,
-        limit,
+        q: normalizedQuery,
+        page: normalizedPage,
+        limit: normalizedLimit,
       },
     });
 
     return normalizeSearchPayload(response.data);
   },
 
-  async getSuggestions(query: string, limit = 6): Promise<string[]> {
+  async getSuggestions(
+    query: string,
+    limit = DEFAULT_SUGGESTIONS_LIMIT,
+  ): Promise<string[]> {
+    const normalizedLimit = normalizePositiveInt(
+      limit,
+      DEFAULT_SUGGESTIONS_LIMIT,
+      MAX_SUGGESTIONS_LIMIT,
+    );
     const response = await api.get<unknown>("/search/suggestions", {
       params: {
-        q: query,
-        limit,
+        q: query.trim(),
+        limit: normalizedLimit,
       },
     });
 

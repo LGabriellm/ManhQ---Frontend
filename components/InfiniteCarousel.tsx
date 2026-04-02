@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import { useMemo } from "react";
@@ -21,66 +21,80 @@ interface InfiniteCarouselProps {
   backgroundMode?: boolean;
 }
 
+const FALLBACK_COVER_DATA_URI =
+  "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='800' viewBox='0 0 560 800'%3E%3Crect width='560' height='800' fill='%2316171a'/%3E%3Ctext x='50%25' y='50%25' fill='%23ffffff' font-family='Arial' font-size='32' text-anchor='middle'%3ECapa indispon%C3%ADvel%3C/text%3E%3C/svg%3E";
+
 function Card({
   item,
   backgroundMode,
+  reduceMotion,
 }: {
   item: CarouselItem;
   backgroundMode?: boolean;
+  reduceMotion?: boolean;
 }) {
+  const cover = (
+    <div
+      className={`relative overflow-hidden rounded-[20px] border transition-[border-color,box-shadow,transform,opacity] duration-300 ${
+        backgroundMode
+          ? "h-64 w-44 border-white/6 shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+          : "h-80 w-56 border-white/10 shadow-2xl group-hover:border-primary/30 group-hover:shadow-[0_20px_60px_rgba(229,9,20,0.3)]"
+      }`}
+    >
+      <Image
+        src={item.image}
+        alt={item.title}
+        fill
+        unoptimized
+        sizes={backgroundMode ? "176px" : "224px"}
+        loading="lazy"
+        className={`h-full w-full object-cover transition-transform duration-500 ${
+          backgroundMode ? "opacity-65" : "group-hover:scale-110"
+        }`}
+        onError={(event) => {
+          event.currentTarget.onerror = null;
+          event.currentTarget.src = FALLBACK_COVER_DATA_URI;
+        }}
+      />
+
+      <div
+        className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 ${
+          backgroundMode ? "opacity-40" : "opacity-0 group-hover:opacity-100"
+        }`}
+      />
+      <div
+        className={`absolute inset-0 flex items-end justify-start p-4 transition-opacity duration-300 ${
+          backgroundMode ? "opacity-0" : "opacity-0 group-hover:opacity-100"
+        }`}
+      >
+        <p className="line-clamp-2 text-sm font-semibold text-white">
+          {item.title}
+        </p>
+      </div>
+      {!backgroundMode && (
+        <div className="absolute right-3 top-3 rounded-full border border-primary/40 bg-primary/20 px-2 py-1 text-[10px] font-semibold text-primary opacity-0 backdrop-blur transition-opacity duration-300 group-hover:opacity-100">
+          Ver série
+        </div>
+      )}
+    </div>
+  );
+
+  if (backgroundMode) {
+    return (
+      <div className="group relative shrink-0" aria-hidden="true">
+        {cover}
+      </div>
+    );
+  }
+
   return (
     <motion.div
       className="group relative shrink-0"
-      whileHover={backgroundMode ? undefined : { y: -8 }}
+      whileHover={reduceMotion ? undefined : { y: -8 }}
       transition={{ type: "spring", stiffness: 300, damping: 30 }}
     >
       <Link href={`/serie/${item.id}`} className="block">
-        <div
-          className={`relative overflow-hidden rounded-[20px] border transition-all duration-300 ${
-            backgroundMode
-              ? "h-64 w-44 border-white/6 shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
-              : "h-80 w-56 border-white/10 shadow-2xl group-hover:border-primary/30 group-hover:shadow-[0_20px_60px_rgba(229,9,20,0.3)]"
-          }`}
-        >
-          <Image
-            src={item.image}
-            alt={item.title}
-            fill
-            unoptimized
-            sizes={backgroundMode ? "176px" : "224px"}
-            loading="lazy"
-            className={`h-full w-full object-cover transition-transform duration-500 ${
-              backgroundMode ? "opacity-65" : "group-hover:scale-110"
-            }`}
-            onError={(event) => {
-              event.currentTarget.onerror = null;
-              event.currentTarget.src =
-                "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='800' viewBox='0 0 560 800'%3E%3Crect width='560' height='800' fill='%2316171a'/%3E%3Ctext x='50%25' y='50%25' fill='%23ffffff' font-family='Arial' font-size='32' text-anchor='middle'%3ECapa indispon%C3%ADvel%3C/text%3E%3C/svg%3E";
-            }}
-          />
-
-          <div
-            className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-opacity duration-300 ${
-              backgroundMode
-                ? "opacity-40"
-                : "opacity-0 group-hover:opacity-100"
-            }`}
-          />
-          <div
-            className={`absolute inset-0 flex items-end justify-start p-4 transition-opacity duration-300 ${
-              backgroundMode ? "opacity-0" : "opacity-0 group-hover:opacity-100"
-            }`}
-          >
-            <p className="line-clamp-2 text-sm font-semibold text-white">
-              {item.title}
-            </p>
-          </div>
-          {!backgroundMode && (
-            <div className="absolute right-3 top-3 rounded-full border border-primary/40 bg-primary/20 px-2 py-1 text-[10px] font-semibold text-primary opacity-0 backdrop-blur transition-opacity duration-300 group-hover:opacity-100">
-              Ver série
-            </div>
-          )}
-        </div>
+        {cover}
       </Link>
     </motion.div>
   );
@@ -95,6 +109,25 @@ function buildInfiniteItems(items: CarouselItem[], min = 10): CarouselItem[] {
   return buffer;
 }
 
+function splitByParity(items: CarouselItem[]): {
+  left: CarouselItem[];
+  right: CarouselItem[];
+} {
+  const left: CarouselItem[] = [];
+  const right: CarouselItem[] = [];
+
+  items.forEach((item, index) => {
+    if (index % 2 === 0) {
+      left.push(item);
+      return;
+    }
+
+    right.push(item);
+  });
+
+  return { left, right };
+}
+
 export function InfiniteCarousel({
   sort = "recent",
   limit = 24,
@@ -102,6 +135,7 @@ export function InfiniteCarousel({
   className = "",
   backgroundMode = false,
 }: InfiniteCarouselProps) {
+  const shouldReduceMotion = useReducedMotion() ?? false;
   const { covers, loading, error, refetch } = useCarouselCovers({
     sort,
     limit,
@@ -118,12 +152,8 @@ export function InfiniteCarousel({
     [covers],
   );
 
-  const leftItems = useMemo(
-    () => items.filter((_, index) => index % 2 === 0),
-    [items],
-  );
-  const rightItems = useMemo(
-    () => items.filter((_, index) => index % 2 !== 0),
+  const { left: leftItems, right: rightItems } = useMemo(
+    () => splitByParity(items),
     [items],
   );
 
@@ -135,6 +165,8 @@ export function InfiniteCarousel({
     () => [...rightBase, ...rightBase],
     [rightBase],
   );
+  const leftVisibleItems = shouldReduceMotion ? leftBase : leftExtended;
+  const rightVisibleItems = shouldReduceMotion ? rightBase : rightExtended;
 
   if (loading && items.length === 0) {
     if (backgroundMode) return null;
@@ -199,18 +231,23 @@ export function InfiniteCarousel({
 
           <motion.div
             className="flex gap-4 px-5 sm:px-8 lg:px-12"
-            animate={{ x: ["0%", "-50%"] }}
-            transition={{
-              duration: speed,
-              repeat: Infinity,
-              ease: "linear",
-            }}
+            animate={shouldReduceMotion ? undefined : { x: ["0%", "-50%"] }}
+            transition={
+              shouldReduceMotion
+                ? undefined
+                : {
+                    duration: speed,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }
+            }
           >
-            {leftExtended.map((item, index) => (
+            {leftVisibleItems.map((item, index) => (
               <Card
                 key={`${item.id}-left-${index}`}
                 item={item}
                 backgroundMode={backgroundMode}
+                reduceMotion={shouldReduceMotion}
               />
             ))}
           </motion.div>
@@ -225,18 +262,23 @@ export function InfiniteCarousel({
 
           <motion.div
             className="flex gap-4 px-5 sm:px-8 lg:px-12"
-            animate={{ x: ["-50%", "0%"] }}
-            transition={{
-              duration: speed,
-              repeat: Infinity,
-              ease: "linear",
-            }}
+            animate={shouldReduceMotion ? undefined : { x: ["-50%", "0%"] }}
+            transition={
+              shouldReduceMotion
+                ? undefined
+                : {
+                    duration: speed,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }
+            }
           >
-            {rightExtended.map((item, index) => (
+            {rightVisibleItems.map((item, index) => (
               <Card
                 key={`${item.id}-right-${index}`}
                 item={item}
                 backgroundMode={backgroundMode}
+                reduceMotion={shouldReduceMotion}
               />
             ))}
           </motion.div>

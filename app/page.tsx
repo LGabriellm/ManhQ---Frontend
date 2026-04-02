@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import {
   Check,
@@ -17,8 +18,12 @@ import {
   getDefaultAuthenticatedPath,
 } from "@/lib/subscription";
 import { useAuth } from "@/contexts/AuthContext";
-import { InfiniteCarousel } from "@/components/InfiniteCarousel";
 import { trackFacebookPixel } from "@/lib/facebookPixel";
+
+const LandingCarousel = dynamic(
+  () => import("@/components/InfiniteCarousel").then((mod) => mod.InfiniteCarousel),
+  { ssr: false },
+);
 
 const benefits = [
   {
@@ -94,7 +99,7 @@ export default function HomePage() {
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 top-36 z-0 opacity-40 [mask-image:linear-gradient(to_bottom,transparent_0%,black_18%,black_78%,transparent_100%)]">
-        <InfiniteCarousel
+        <LandingCarousel
           sort="popular"
           limit={28}
           speed={34}
@@ -143,27 +148,24 @@ export default function HomePage() {
                 </p>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <a
+                  <motion.a
                     href={SUBSCRIPTION_CHECKOUT_URL}
                     target="_blank"
                     rel="noreferrer"
                     onClick={() => handleStartNowClick("hero")}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)] transition-shadow duration-300 hover:shadow-[0_24px_56px_rgba(229,9,20,0.5)]"
                   >
-                    <motion.div
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)] transition-shadow duration-300 hover:shadow-[0_24px_56px_rgba(229,9,20,0.5)]"
-                    >
-                      <Play className="h-4 w-4 fill-white" />
-                      Começar agora
-                    </motion.div>
-                  </a>
+                    <Play className="h-4 w-4 fill-white" />
+                    Começar agora
+                  </motion.a>
 
                   <Link href={isAuthenticated ? authenticatedPath : "/auth/login"}>
                     <motion.div
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.95 }}
-                      className="flex items-center justify-center gap-2 rounded-2xl border border-white/8 bg-white/4 px-6 py-4 text-sm font-semibold text-textMain backdrop-blur-xl transition-all duration-300 hover:border-primary/30 hover:bg-white/8"
+                      className="flex items-center justify-center gap-2 rounded-2xl border border-white/8 bg-white/4 px-6 py-4 text-sm font-semibold text-textMain backdrop-blur-xl transition-[border-color,background-color] duration-300 hover:border-primary/30 hover:bg-white/8"
                     >
                       Explorar catálogo
                       <ChevronRight className="h-4 w-4" />
@@ -229,8 +231,8 @@ export default function HomePage() {
                   viewport={{ once: true, amount: 0.35 }}
                   transition={{ delay: index * 0.05, duration: 0.35 }}
                 >
-                  <GlassCard className="group h-full p-6 transition-all duration-300 hover:border-primary/40 hover:shadow-[0_20px_60px_rgba(229,9,20,0.2)]">
-                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12 text-primary transition-all duration-300 group-hover:bg-primary/20 group-hover:scale-110">
+                  <GlassCard className="group h-full p-6 transition-[border-color,box-shadow] duration-300 hover:border-primary/40 hover:shadow-[0_20px_60px_rgba(229,9,20,0.2)]">
+                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12 text-primary transition-[transform,background-color] duration-300 group-hover:bg-primary/20 group-hover:scale-110">
                       <item.icon className="h-5 w-5" />
                     </div>
                     <h3 className="text-lg font-semibold text-white">
@@ -298,11 +300,9 @@ export default function HomePage() {
                       target="_blank"
                       rel="noreferrer"
                       onClick={() => handleStartNowClick("pricing")}
-                      className="flex-1"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 text-center text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.33)]"
                     >
-                      <div className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.33)]">
-                        Começar agora
-                      </div>
+                      Começar agora
                     </a>
                     <Link
                       href={isAuthenticated ? authenticatedPath : "/auth/login"}
@@ -370,21 +370,18 @@ export default function HomePage() {
                 pronta para quem quer ler sem fricção.
               </p>
               <div className="relative mt-8 flex flex-col justify-center gap-3 sm:flex-row">
-                <a
+                <motion.a
                   href={SUBSCRIPTION_CHECKOUT_URL}
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => handleStartNowClick("final_cta")}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.95 }}
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)]"
                 >
-                  <motion.div
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)]"
-                  >
-                    <Play className="h-4 w-4 fill-white" />
-                    Começar agora
-                  </motion.div>
-                </a>
+                  <Play className="h-4 w-4 fill-white" />
+                  Começar agora
+                </motion.a>
                 <Link href={isAuthenticated ? authenticatedPath : "/auth/login"}>
                   <motion.div
                     whileHover={{ scale: 1.02 }}

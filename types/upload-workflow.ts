@@ -208,6 +208,12 @@ export interface UploadSessionMetadata {
   userRole?: string;
 }
 
+export interface UploadSessionCallbacks {
+  poll: string;
+  events: string;
+  draft: string;
+}
+
 export interface UploadSessionSummary {
   id: string;
   source: UploadSource;
@@ -239,6 +245,7 @@ export interface UploadSessionSummary {
     code: string | null;
     message: string | null;
   } | null;
+  callbacks: UploadSessionCallbacks;
 }
 
 export interface UploadSessionDetail extends UploadSessionSummary {
@@ -268,6 +275,7 @@ export interface UploadDraft {
   expiresAt: number | null;
   sessionStatus: UploadSessionStatus;
   workflow: UploadWorkflow;
+  operational?: UploadSessionOperational;
   items: UploadItem[];
   rejected: UploadRejectedItem[];
   processing: {
@@ -280,6 +288,7 @@ export interface UploadDraft {
     finishedAt?: number;
     error?: string;
   };
+  callbacks: UploadSessionCallbacks;
 }
 
 export interface UploadDraftResponse {
@@ -559,7 +568,7 @@ export interface StageLocalUploadResponse {
   expiresAt: string | null;
   session: Pick<
     UploadSessionSummary,
-    "id" | "source" | "status" | "workflow" | "operational"
+    "id" | "source" | "status" | "workflow" | "operational" | "callbacks"
   >;
   nextStep: string;
 }
@@ -570,9 +579,37 @@ export interface UploadSessionCreatedResponse {
   sessionId: string;
   session: Pick<
     UploadSessionSummary,
-    "id" | "source" | "status" | "workflow" | "operational"
+    "id" | "source" | "status" | "workflow" | "operational" | "callbacks"
   >;
 }
+
+export interface UploadSessionSnapshotEvent {
+  type: "snapshot";
+  sessionId: string;
+  session: UploadSessionSummary & {
+    items?: UploadItem[];
+  };
+}
+
+export type UploadSessionEventType =
+  | "session_created"
+  | "session_updated"
+  | "session_canceled"
+  | "session_confirmed"
+  | "item_updated"
+  | "item_heartbeat";
+
+export interface UploadSessionStreamEvent {
+  id: string;
+  type: UploadSessionEventType;
+  sessionId: string;
+  createdAt: string;
+  payload: Record<string, unknown>;
+}
+
+export type UploadSessionSsePayload =
+  | UploadSessionSnapshotEvent
+  | UploadSessionStreamEvent;
 
 export interface GoogleDriveAccount {
   email?: string;
@@ -582,7 +619,7 @@ export interface GoogleDriveAccount {
 
 export interface GoogleDriveAuthUrlResponse {
   url: string;
-  callbackMode?: string | null;
+  callbackMode?: "popup" | "redirect" | "json" | null;
   returnUrl?: string | null;
   intent?: string | null;
   draftId?: string | null;

@@ -1,19 +1,13 @@
 "use client";
 
-import { useDeferredValue, useMemo, useRef, useState } from "react";
-import { Search, ArrowRight, FolderUp, Loader2, Upload } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, FolderUp, Loader2, Upload } from "lucide-react";
 import toast from "react-hot-toast";
-import { useSeriesSearch } from "@/hooks/useApi";
-import {
-  useStageLocalUpload,
-  useStageLocalUploadWithSeriesTitle,
-  useUploadToExistingSeries,
-} from "@/hooks/useUploadWorkflow";
+import { useStageLocalUpload, useStageLocalUploadWithSeriesTitle } from "@/hooks/useUploadWorkflow";
+import type { UploadPipelineStep } from "@/hooks/useUploadCenterStore";
 import { getUploadErrorMessage } from "@/lib/uploadErrors";
 
 const ACCEPTED_EXTENSIONS = [".cbz", ".cbr", ".pdf", ".epub", ".zip"];
-
-type LocalEntryMode = "review" | "existing" | "new";
 
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
@@ -23,7 +17,9 @@ function formatBytes(bytes: number) {
 
 function filterAcceptedFiles(files: File[]) {
   const accepted = files.filter((file) =>
-    ACCEPTED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext)),
+    ACCEPTED_EXTENSIONS.some((extension) =>
+      file.name.toLowerCase().endsWith(extension),
+    ),
   );
   const rejected = files.length - accepted.length;
 
@@ -31,7 +27,8 @@ function filterAcceptedFiles(files: File[]) {
 }
 
 function extractFolderName(files: File[]): string | undefined {
-  const relativePath = files.find((file) => "webkitRelativePath" in file)?.webkitRelativePath;
+  const relativePath = files.find((file) => "webkitRelativePath" in file)
+    ?.webkitRelativePath;
   if (!relativePath) {
     return undefined;
   }
@@ -41,25 +38,40 @@ function extractFolderName(files: File[]): string | undefined {
 
 interface LocalUploadEntryPanelProps {
   onOpenSession: (sessionId: string) => void;
+  onStepChange?: (step: UploadPipelineStep) => void;
 }
 
 export function LocalUploadEntryPanel({
   onOpenSession,
+  onStepChange,
 }: LocalUploadEntryPanelProps) {
-  const [mode, setMode] = useState<LocalEntryMode>("review");
   const [files, setFiles] = useState<File[]>([]);
-  const [newSeriesTitle, setNewSeriesTitle] = useState("");
-  const [selectedSeriesId, setSelectedSeriesId] = useState("");
-  const [selectedSeriesTitle, setSelectedSeriesTitle] = useState("");
-  const [seriesQuery, setSeriesQuery] = useState("");
-  const deferredSeriesQuery = useDeferredValue(seriesQuery.trim());
+  const [seriesTitle, setSeriesTitle] = useState("");
+  const [seriesTitleTouched, setSeriesTitleTouched] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
 
-  const searchResults = useSeriesSearch(deferredSeriesQuery, 1, 8);
   const stageMutation = useStageLocalUpload();
   const stageWithTitleMutation = useStageLocalUploadWithSeriesTitle();
-  const directExistingMutation = useUploadToExistingSeries();
+
+  const folderNameHint = useMemo(() => extractFolderName(files), [files]);
+  const totalSize = useMemo(
+    () => files.reduce((sum, file) => sum + file.size, 0),
+    [files],
+  );
+
+  useEffect(() => {
+    if (!onStepChange) {
+      return;
+    }
+
+    if (files.length === 0) {
+      onStepChange("SELECT_CONTENT");
+      return;
+    }
+
+    onStepChange("SERIES");
+  }, [files.length, onStepChange]);
 
   const addFiles = (incoming: File[]) => {
     const { accepted, rejected } = filterAcceptedFiles(incoming);
@@ -76,16 +88,25 @@ export function LocalUploadEntryPanel({
     setFiles((current) => {
       const next = [...current];
       accepted.forEach((file) => {
-        const exists = next.some(
+        const duplicate = next.some(
           (currentFile) =>
             currentFile.name === file.name && currentFile.size === file.size,
         );
-        if (!exists) {
+
+        if (!duplicate) {
           next.push(file);
         }
       });
+
       return next;
     });
+
+    if (!seriesTitleTouched && seriesTitle.trim().length === 0) {
+      const suggestedFolder = extractFolderName([...files, ...accepted]);
+      if (suggestedFolder) {
+        setSeriesTitle(suggestedFolder);
+      }
+    }
   };
 
   const handleSubmit = async () => {
@@ -94,103 +115,52 @@ export function LocalUploadEntryPanel({
       return;
     }
 
-    const folderName = extractFolderName(files);
+    onStepChange?.("INGEST");
 
     try {
-      if (mode === "review") {
-        const result = await stageMutation.mutateAsync({
-          files,
-          folderName,
-        });
-        toast.success(result.nextStep);
-        onOpenSession(result.draftId);
-        setFiles([]);
-        return;
-      }
+      const folderName = extractFolderName(files);
 
-      if (mode === "new") {
-        if (!newSeriesTitle.trim()) {
-          toast.error("Defina o título da nova série.");
-          return;
-        }
+      const response = seriesTitle.trim().length > 0
+        ? await stageWithTitleMutation.mutateAsync({
+            files,
+            seriesTitle: seriesTitle.trim(),
+            folderName,
+          })
+        : await stageMutation.mutateAsync({
+            files,
+            folderName,
+          });
 
-        const result = await stageWithTitleMutation.mutateAsync({
-          files,
-          seriesTitle: newSeriesTitle.trim(),
-          folderName,
-        });
-        toast.success(result.nextStep);
-        onOpenSession(result.draftId);
-        setFiles([]);
-        return;
-      }
-
-      if (!selectedSeriesId) {
-        toast.error("Escolha a série de destino.");
-        return;
-      }
-
-      const result = await directExistingMutation.mutateAsync({
-        seriesId: selectedSeriesId,
-        files,
-      });
-      toast.success(result.message);
-      onOpenSession(result.sessionId);
+      toast.success(response.nextStep);
+      onOpenSession(response.session.id || response.draftId);
       setFiles([]);
+      setSeriesTitle("");
+      setSeriesTitleTouched(false);
     } catch (error) {
       toast.error(
-        getUploadErrorMessage(error, "Falha ao iniciar o fluxo de upload local."),
+        getUploadErrorMessage(error, "Falha ao iniciar o stage local do upload."),
       );
     }
   };
 
   const isSubmitting =
-    stageMutation.isPending ||
-    stageWithTitleMutation.isPending ||
-    directExistingMutation.isPending;
-  const totalSize = useMemo(
-    () => files.reduce((sum, file) => sum + file.size, 0),
-    [files],
-  );
-  const folderNameHint = useMemo(() => extractFolderName(files), [files]);
+    stageMutation.isPending || stageWithTitleMutation.isPending;
 
   return (
     <section className="rounded-[32px] border border-white/8 bg-white/[0.03] p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-[var(--color-textDim)]/75">
-            Upload local
+            Etapas 2 e 3 · Origem local
           </p>
           <h2 className="mt-2 text-xl font-semibold text-[var(--color-textMain)]">
-            Staging, revisão e envio direto
+            Selecione arquivos e confirme o nome da série
           </h2>
           <p className="mt-2 max-w-2xl text-sm text-[var(--color-textDim)]">
-            O stage local cria um draft persistido e o workspace passa a seguir o
-            estado oficial do backend. Você pode revisar primeiro, forçar um novo
-            título ou enviar direto para uma série existente.
+            O envio local cria apenas um draft em revisão obrigatória. Nenhum
+            processamento final é iniciado automaticamente.
           </p>
         </div>
-      </div>
-
-      <div className="mt-5 grid gap-2 sm:grid-cols-3">
-        {([
-          ["review", "Enviar e revisar sugestões"],
-          ["existing", "Enviar direto para série existente"],
-          ["new", "Enviar como nova série"],
-        ] as const).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setMode(value)}
-            className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
-              mode === value
-                ? "border-[var(--color-primary)]/35 bg-[var(--color-primary)]/10 text-[var(--color-textMain)]"
-                : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
-            }`}
-          >
-            <p className="text-sm font-medium">{label}</p>
-          </button>
-        ))}
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
@@ -284,7 +254,7 @@ export function LocalUploadEntryPanel({
               )}
             </div>
 
-            <div className="mt-4 max-h-60 space-y-2 overflow-y-auto">
+            <div className="mt-4 max-h-60 space-y-2 scroll-region pr-1">
               {files.length === 0 ? (
                 <div className="rounded-2xl border border-white/8 bg-black/10 p-4 text-sm text-[var(--color-textDim)]">
                   Nenhum arquivo selecionado ainda.
@@ -307,7 +277,7 @@ export function LocalUploadEntryPanel({
                       type="button"
                       onClick={() =>
                         setFiles((current) =>
-                          current.filter((_, itemIndex) => itemIndex !== index),
+                          current.filter((_, fileIndex) => fileIndex !== index),
                         )
                       }
                       className="text-xs text-[var(--color-textDim)] transition-colors hover:text-rose-300"
@@ -322,79 +292,26 @@ export function LocalUploadEntryPanel({
         </div>
 
         <div className="rounded-[28px] border border-white/8 bg-black/10 p-5">
-          <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
-            Destino inicial
-          </p>
+          <label htmlFor="local-series-title" className="block">
+            <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+              3) Nome da série para revisão (editável)
+            </span>
+            <input
+              id="local-series-title"
+              type="text"
+              value={seriesTitle}
+              onChange={(event) => {
+                setSeriesTitle(event.target.value);
+                setSeriesTitleTouched(true);
+              }}
+              className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
+              placeholder="Pré-preenchido pela pasta quando possível"
+            />
+          </label>
 
-          {mode === "existing" && (
-            <div className="mt-4 space-y-3">
-              <label className="block">
-                <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                  Buscar série existente
-                </span>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-textDim)]" />
-                  <input
-                    type="text"
-                    value={seriesQuery}
-                    onChange={(event) => setSeriesQuery(event.target.value)}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] py-2.5 pl-10 pr-4 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
-                    placeholder="Busque a série..."
-                  />
-                </div>
-              </label>
-
-              <div className="grid gap-2">
-                {searchResults.data?.items.map((series) => (
-                  <button
-                    key={series.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedSeriesId(series.id);
-                      setSelectedSeriesTitle(series.title);
-                      setSeriesQuery(series.title);
-                    }}
-                    className={`rounded-2xl border px-3 py-2 text-left transition-colors ${
-                      selectedSeriesId === series.id
-                        ? "border-emerald-500/25 bg-emerald-500/10 text-[var(--color-textMain)]"
-                        : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
-                    }`}
-                  >
-                    <p className="text-sm font-medium">{series.title}</p>
-                    <p className="mt-1 text-xs opacity-80">{series.id}</p>
-                  </button>
-                ))}
-              </div>
-
-              {selectedSeriesTitle && (
-                <p className="text-xs text-emerald-200">
-                  Série escolhida: {selectedSeriesTitle}
-                </p>
-              )}
-            </div>
-          )}
-
-          {mode === "new" && (
-            <label className="mt-4 block">
-              <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                Título final da nova série
-              </span>
-              <input
-                type="text"
-                value={newSeriesTitle}
-                onChange={(event) => setNewSeriesTitle(event.target.value)}
-                className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
-                placeholder="Ex.: My New Series"
-              />
-            </label>
-          )}
-
-          <div className="mt-5 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm text-[var(--color-textDim)]">
-            {mode === "review"
-              ? "O stage cria um draft persistido. Depois disso, a próxima etapa é controlada por workflow.state e workflow.nextAction."
-              : mode === "existing"
-                ? "O destino já começa explícito, mas o backend ainda analisa o lote e pode exigir espera, aprovação ou reprocessamento."
-                : "O novo título já entra como dica forte para o draft, mantendo a revisão manual disponível enquanto o workflow permitir."}
+          <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm text-[var(--color-textDim)]">
+            O botão abaixo executa apenas o stage para draft em revisão. A
+            confirmação final permanece manual na etapa 6.
           </div>
 
           <button
@@ -408,11 +325,7 @@ export function LocalUploadEntryPanel({
             ) : (
               <ArrowRight className="h-4 w-4" />
             )}
-            {mode === "review"
-              ? "Criar sessão de revisão"
-              : mode === "existing"
-                ? "Enviar para série existente"
-                : "Criar sessão com novo título"}
+            4) Iniciar pré-processamento para draft
           </button>
         </div>
       </div>

@@ -90,6 +90,164 @@ function resolveCandidateTitle(candidate: UploadSeriesCandidate): string {
   return candidate.matchedSeriesTitle || candidate.normalizedTitle;
 }
 
+function normalizeToRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function hasPossibleSeriesMismatch(item: UploadItem): boolean {
+  const ingestionRecord = normalizeToRecord(item.ingestion);
+  const ingestionPlanMetadata = normalizeToRecord(ingestionRecord?.planMetadata);
+  const planRecord = normalizeToRecord(item.plan);
+
+  return (
+    ingestionRecord?.possibleSeriesMismatch === true ||
+    ingestionPlanMetadata?.possibleSeriesMismatch === true ||
+    planRecord?.possibleSeriesMismatch === true
+  );
+}
+
+function collectInconsistencyWarnings(item: UploadItem): string[] {
+  const combinedMessages = [...item.suggestion.warnings, ...item.suggestion.conflicts]
+    .filter((message) => !shouldSuppressSeriesConflictAlert(message));
+  const normalized = combinedMessages.map((message) => message.toLowerCase());
+  const alerts: string[] = [];
+  const hasSeriesKeyword = normalized.some(
+    (message) =>
+      message.includes("série") ||
+      message.includes("serie") ||
+      message.includes("title") ||
+      message.includes("nome"),
+  );
+  const mismatchFlag = hasPossibleSeriesMismatch(item);
+
+  if (
+    hasSeriesKeyword ||
+    (mismatchFlag &&
+      (item.parsing.confidence === "low" || item.parsing.requiresManualReview))
+  ) {
+    alerts.push("Possível inconsistência de nome ou série detectada.");
+  }
+
+  if (normalized.some((message) => message.includes("ano") || message.includes("year"))) {
+    alerts.push("Possível divergência de ano detectada.");
+  }
+
+  if (
+    normalized.some(
+      (message) =>
+        message.includes("fora do padrão") ||
+        message.includes("outside") ||
+        (message.includes("pasta") && message.includes("padr")) ||
+        message.includes("folder"),
+    )
+  ) {
+    alerts.push("Há arquivos possivelmente fora do padrão da pasta selecionada.");
+  }
+
+  return alerts;
+}
+
+function extractQuotedCandidates(message: string): string[] {
+  const matches = message.match(/"([^"]+)"/g);
+  if (!matches) {
+    return [];
+  }
+
+  return matches
+    .map((value) => value.replace(/"/g, "").trim())
+    .filter(Boolean);
+}
+
+function isLikelyNoisySeriesLabel(label: string): boolean {
+  const normalized = label.trim();
+  if (normalized.length < 4) {
+    return true;
+  }
+
+  const letters = Array.from(normalized).filter((char) =>
+    /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(char),
+  ).length;
+  const digits = Array.from(normalized).filter((char) => /[0-9]/.test(char))
+    .length;
+  const tokenList = normalized.split(/\s+/).filter(Boolean);
+  const tinyTokens = tokenList.filter((token) => token.length <= 2).length;
+  const hasLongMixedToken = tokenList.some(
+    (token) =>
+      token.length >= 8 && /[A-Za-z]/.test(token) && /[0-9]/.test(token),
+  );
+
+  const lettersRatio = letters / Math.max(normalized.length, 1);
+  const digitsRatio = digits / Math.max(normalized.length, 1);
+
+  if (hasLongMixedToken) {
+    return true;
+  }
+
+  if (digitsRatio > 0.2) {
+    return true;
+  }
+
+  if (tokenList.length >= 5 && tinyTokens / tokenList.length > 0.45) {
+    return true;
+  }
+
+  return lettersRatio < 0.45 && digits > 0;
+}
+
+function shouldSuppressSeriesConflictAlert(message: string): boolean {
+  const normalized = message.toLowerCase();
+  const isConflictMessage =
+    normalized.includes("conflito entre candidatos de série") ||
+    normalized.includes("conflito entre candidatos de serie") ||
+    normalized.includes("conflict between series candidates");
+
+  if (!isConflictMessage) {
+    return false;
+  }
+
+  const candidates = extractQuotedCandidates(message);
+  if (candidates.length < 2) {
+    return false;
+  }
+
+  const noisyCandidates = candidates.filter(isLikelyNoisySeriesLabel).length;
+  return noisyCandidates > 0 && noisyCandidates < candidates.length;
+}
+
+function isGenericManualReviewWarning(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("revisão humana obrigatória") ||
+    normalized.includes("revisao humana obrigatoria") ||
+    normalized.includes("review required before confirmation")
+  );
+}
+
+function dedupeMessages(messages: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const message of messages) {
+    const normalized = message.trim();
+    if (!normalized) {
+      continue;
+    }
+
+    if (seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
+}
+
 interface UploadItemCardProps {
   item: UploadItem;
   disabled?: boolean;
@@ -142,6 +300,7 @@ export function UploadItemCard({
   const [author, setAuthor] = useState(item.plan.author);
   const [artist, setArtist] = useState(item.plan.artist);
   const [seriesQuery, setSeriesQuery] = useState(getInitialSeriesSearchLabel(item));
+  const [showAdvancedMetadata, setShowAdvancedMetadata] = useState(false);
   const deferredSeriesQuery = useDeferredValue(seriesQuery.trim());
   const { data: seriesSearch } = useSeriesSearch(deferredSeriesQuery, 1, 8);
   const [isSaving, setIsSaving] = useState(false);
@@ -192,6 +351,12 @@ export function UploadItemCard({
   const chapterNeedsReview =
     item.parsing.requiresManualReview || item.parsing.confidence === "low";
   const destinationSummary = getDestinationSummary(item);
+  const chapterSummary =
+    item.plan.chapterNumber != null
+      ? `Cap. ${item.plan.chapterNumber}`
+      : item.parsing.chapterNumber != null
+        ? `Cap. ${item.parsing.chapterNumber}`
+        : "Capítulo não definido";
   const queueJobId = item.job.queueJobId || item.result.queueJobId;
   const topCandidates = useMemo(
     () =>
@@ -210,6 +375,25 @@ export function UploadItemCard({
   const canCancel = Boolean(
     onCancel && item.job.canCancel && !item.job.isCancelRequested && !cancelDisabled,
   );
+  const inconsistencyWarnings = useMemo(
+    () => collectInconsistencyWarnings(item),
+    [item],
+  );
+  const highlightedAlerts = useMemo(() => {
+    const allMessages = [
+      ...inconsistencyWarnings,
+      ...item.suggestion.warnings,
+      ...item.suggestion.conflicts,
+    ];
+    return dedupeMessages(
+      allMessages.filter(
+        (message) =>
+          !isGenericManualReviewWarning(message) &&
+          !shouldSuppressSeriesConflictAlert(message),
+      ),
+    );
+  }, [inconsistencyWarnings, item.suggestion.conflicts, item.suggestion.warnings]);
+  const hasCriticalAlerts = highlightedAlerts.length > 0 || Boolean(item.error?.message);
 
   const saveChanges = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -217,23 +401,39 @@ export function UploadItemCard({
       return;
     }
 
+    const payload: UpdateUploadDraftItemRequest = {
+      decision,
+      targetSeriesId: decision === "EXISTING_SERIES" ? targetSeriesId : undefined,
+      newSeriesTitle: decision === "NEW_SERIES" ? newSeriesTitle.trim() : undefined,
+      chapterNumber: chapterNumber ? Number(chapterNumber) : undefined,
+      volume: volume ? Number(volume) : null,
+      year: year ? Number(year) : null,
+      isOneShot,
+    };
+
+    if (tagsInput.trim()) {
+      payload.tags = parseTags(tagsInput);
+    }
+
+    if (description.trim()) {
+      payload.description = description.trim();
+    }
+
+    if (status.trim()) {
+      payload.status = status.trim();
+    }
+
+    if (author.trim()) {
+      payload.author = author.trim();
+    }
+
+    if (artist.trim()) {
+      payload.artist = artist.trim();
+    }
+
     setIsSaving(true);
     try {
-      await onPatch(item.id, {
-        decision,
-        targetSeriesId: decision === "EXISTING_SERIES" ? targetSeriesId : undefined,
-        newSeriesTitle:
-          decision === "NEW_SERIES" ? newSeriesTitle.trim() : undefined,
-        chapterNumber: chapterNumber ? Number(chapterNumber) : undefined,
-        volume: volume ? Number(volume) : null,
-        year: year ? Number(year) : null,
-        isOneShot,
-        tags: parseTags(tagsInput),
-        description: description.trim() || undefined,
-        status: status.trim() || undefined,
-        author: author.trim() || undefined,
-        artist: artist.trim() || undefined,
-      });
+      await onPatch(item.id, payload);
     } finally {
       setIsSaving(false);
     }
@@ -278,6 +478,7 @@ export function UploadItemCard({
 
   return (
     <article
+      data-upload-item-id={item.id}
       className={`rounded-[28px] border p-5 shadow-[0_20px_80px_-40px_rgba(0,0,0,0.65)] ${
         item.job.isStuck
           ? "border-rose-500/20 bg-rose-500/[0.06]"
@@ -391,128 +592,94 @@ export function UploadItemCard({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-4">
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2.5">
           <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
-            Job do item
+            Destino
           </p>
-          <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
-            {jobMeta.label}
-          </p>
-          <p className="mt-1 text-xs text-[var(--color-textDim)]">
-            {formatUploadStage(item.job.stage || item.currentStage)}
-          </p>
-          {item.job.userActionRequired && (
-            <p className="mt-2 text-xs text-amber-200">
-              O backend ainda exige ação manual neste item.
-            </p>
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
-            Sugestão do sistema
-          </p>
-          <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
-            {item.suggestion.matchedSeriesTitle || "Sem correspondência dominante"}
-          </p>
-          <p className="mt-1 text-xs text-[var(--color-textDim)]">
-            {item.suggestion.confidenceScore != null
-              ? `Score ${Math.round(item.suggestion.confidenceScore)}`
-              : "Score não informado"}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
-            Parsing do capítulo
-          </p>
-          <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
-            {item.parsing.chapterNumber != null
-              ? `Cap. ${item.parsing.chapterNumber}`
-              : "Capítulo não definido"}
-          </p>
-          <p className="mt-1 text-xs text-[var(--color-textDim)]">
-            {item.parsing.requiresManualReview
-              ? "Backend pediu revisão manual do número."
-              : item.parsing.candidateOptions.length > 1
-                ? "Há múltiplos candidatos aceitos pelo parser."
-                : "Número aceito pelo backend."}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-white/8 bg-black/10 p-3">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
-            Destino atual
-          </p>
-          <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
+          <p className="mt-1 text-sm font-medium text-[var(--color-textMain)]">
             {destinationSummary}
           </p>
-          <p className="mt-1 text-xs text-[var(--color-textDim)]">
-            {item.plan.decision
-              ? `Decisão ${item.plan.decision}`
-              : "Ainda sem decisão final"}
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2.5">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
+            Capítulo
           </p>
+          <p
+            className={`mt-1 text-sm font-medium ${
+              chapterNeedsReview
+                ? "text-amber-100"
+                : "text-[var(--color-textMain)]"
+            }`}
+          >
+            {chapterSummary}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2.5">
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-textDim)]/70">
+            Revisão
+          </p>
+          <p className="mt-1 text-sm font-medium text-[var(--color-textMain)]">
+            {needsManualChoice
+              ? "Pendente"
+              : item.plan.selectionConfirmed
+                ? "Concluída"
+                : "Aguardando análise"}
+          </p>
+          {item.plan.decision !== "SKIP" && item.plan.destinationReady !== true ? (
+            <p className="mt-1 text-[11px] text-amber-200">
+              Defina série/destino antes de confirmar.
+            </p>
+          ) : null}
         </div>
       </div>
 
-      {(item.job.isStuck || item.job.isCancelRequested) && (
+      {(item.job.isStuck || item.job.isCancelRequested || hasCriticalAlerts) && (
         <div
-          className={`mt-4 rounded-2xl border p-3 text-sm ${
-            item.job.isStuck
+          className={`mt-4 rounded-2xl border p-3 text-xs ${
+            item.error?.message || item.job.isStuck || item.suggestion.conflicts.length > 0
               ? "border-rose-500/20 bg-rose-500/10 text-rose-100"
               : "border-amber-500/20 bg-amber-500/10 text-amber-100"
           }`}
         >
           <p className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="h-4 w-4" />
-            {item.job.isStuck
-              ? "Item sem heartbeat recente"
-              : "Cancelamento em andamento"}
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {item.error?.message
+              ? "Item com erro"
+              : item.job.isStuck
+                ? "Item sem heartbeat recente"
+                : item.job.isCancelRequested
+                  ? "Cancelamento em andamento"
+                  : "Atenção na revisão"}
           </p>
-          <p className="mt-2 text-xs">
-            {item.job.isStuck
-              ? `Último heartbeat ${formatDateTime(item.job.lastHeartbeatAt || item.job.lastActivityAt)} · janela ${formatDurationMs(item.job.staleAfterMs)}.`
-              : item.job.cancelReason || "O worker encerrará no próximo checkpoint seguro."}
-          </p>
-        </div>
-      )}
 
-      {(item.suggestion.warnings.length > 0 || item.suggestion.conflicts.length > 0) && (
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {item.suggestion.warnings.length > 0 && (
-            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-100">
-              <p className="mb-2 flex items-center gap-2 font-semibold">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Alertas
-              </p>
-              <ul className="space-y-1">
-                {item.suggestion.warnings.map((warning) => (
-                  <li key={warning}>{warning}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {item.suggestion.conflicts.length > 0 && (
-            <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-100">
-              <p className="mb-2 flex items-center gap-2 font-semibold">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Conflitos
-              </p>
-              <ul className="space-y-1">
-                {item.suggestion.conflicts.map((conflict) => (
-                  <li key={conflict}>{conflict}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
+          {item.job.isStuck ? (
+            <p className="mt-2">
+              Último heartbeat {formatDateTime(item.job.lastHeartbeatAt || item.job.lastActivityAt)} ·
+              janela {formatDurationMs(item.job.staleAfterMs)}.
+            </p>
+          ) : null}
 
-      {item.error?.message && (
-        <div className="mt-4 rounded-2xl border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-100">
-          <p className="font-medium">Erro do item</p>
-          <p className="mt-1 text-xs">{item.error.message}</p>
+          {item.job.isCancelRequested ? (
+            <p className="mt-2">
+              {item.job.cancelReason || "O worker encerrará no próximo checkpoint seguro."}
+            </p>
+          ) : null}
+
+          {item.error?.message ? (
+            <p className="mt-2">{item.error.message}</p>
+          ) : null}
+
+          {!item.job.isStuck && !item.job.isCancelRequested && !item.error?.message ? (
+            <ul className="mt-2 space-y-1">
+              {highlightedAlerts.slice(0, 2).map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+              {highlightedAlerts.length > 2 ? (
+                <li>+{highlightedAlerts.length - 2} alerta(s) adicionais.</li>
+              ) : null}
+            </ul>
+          ) : null}
         </div>
       )}
 
@@ -639,27 +806,37 @@ export function UploadItemCard({
                       </button>
                     )}
 
-                  <div className="grid gap-2">
-                    {seriesSearch?.items?.map((series) => (
-                      <button
-                        key={series.id}
-                        type="button"
-                        onClick={() => {
-                          setTargetSeriesId(series.id);
-                          setSelectedSeriesTitle(series.title);
-                          setSeriesQuery(series.title);
-                        }}
-                        disabled={disabled}
-                        className={`rounded-2xl border px-3 py-2 text-left transition-colors ${
-                          targetSeriesId === series.id
-                            ? "border-emerald-500/25 bg-emerald-500/10 text-[var(--color-textMain)]"
-                            : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
-                        } disabled:opacity-50`}
-                      >
-                        <p className="text-sm font-medium">{series.title}</p>
-                        <p className="mt-1 text-xs opacity-80">{series.id}</p>
-                      </button>
-                    ))}
+                  <div className="list-panel max-h-52 scroll-region">
+                    {seriesSearch?.items?.length ? (
+                      seriesSearch.items.map((series) => (
+                        <button
+                          key={series.id}
+                          type="button"
+                          onClick={() => {
+                            setTargetSeriesId(series.id);
+                            setSelectedSeriesTitle(series.title);
+                            setSeriesQuery(series.title);
+                          }}
+                          disabled={disabled}
+                          className={`list-row ${
+                            targetSeriesId === series.id ? "list-row-active" : ""
+                          } disabled:opacity-50`}
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-[var(--color-textMain)]">
+                              {series.title}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                              {series.id}
+                            </p>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <p className="px-3 py-3 text-xs text-[var(--color-textDim)]">
+                        Nenhuma série encontrada para o termo pesquisado.
+                      </p>
+                    )}
                   </div>
 
                   {selectedSeriesTitle && (
@@ -718,7 +895,7 @@ export function UploadItemCard({
                 </div>
               )}
 
-              <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <label className="block">
                   <span className="mb-1 block text-xs text-[var(--color-textDim)]">
                     Capítulo
@@ -746,18 +923,6 @@ export function UploadItemCard({
                 </label>
                 <label className="block">
                   <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                    Volume
-                  </span>
-                  <input
-                    type="number"
-                    value={volume}
-                    onChange={(event) => setVolume(event.target.value)}
-                    disabled={disabled}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs text-[var(--color-textDim)]">
                     Ano
                   </span>
                   <input
@@ -768,21 +933,9 @@ export function UploadItemCard({
                     className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
                   />
                 </label>
-                <label className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5">
-                  <input
-                    type="checkbox"
-                    checked={isOneShot}
-                    onChange={(event) => setIsOneShot(event.target.checked)}
-                    disabled={disabled}
-                    className="rounded border-white/15 bg-transparent"
-                  />
-                  <span className="text-sm text-[var(--color-textMain)]">
-                    One-shot
-                  </span>
-                </label>
               </div>
 
-              {item.parsing.notes.length > 0 && (
+              {item.parsing.notes.length > 0 ? (
                 <div className="mt-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
                   <p className="text-xs font-medium text-[var(--color-textMain)]">
                     Notas do parser
@@ -793,75 +946,114 @@ export function UploadItemCard({
                     ))}
                   </ul>
                 </div>
-              )}
+              ) : null}
 
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                    Autor
-                  </span>
-                  <input
-                    type="text"
-                    value={author}
-                    onChange={(event) => setAuthor(event.target.value)}
-                    disabled={disabled}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                    Artista
-                  </span>
-                  <input
-                    type="text"
-                    value={artist}
-                    onChange={(event) => setArtist(event.target.value)}
-                    disabled={disabled}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
-                  />
-                </label>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdvancedMetadata((current) => !current)}
+                className="mt-3 text-xs font-medium text-[var(--color-textDim)] underline-offset-2 hover:text-[var(--color-textMain)] hover:underline"
+              >
+                {showAdvancedMetadata ? "Ocultar campos avançados" : "Mostrar campos avançados (opcional)"}
+              </button>
 
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                    Status da obra
-                  </span>
-                  <input
-                    type="text"
-                    value={status}
-                    onChange={(event) => setStatus(event.target.value)}
-                    disabled={disabled}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                    Tags livres
-                  </span>
-                  <input
-                    type="text"
-                    value={tagsInput}
-                    onChange={(event) => setTagsInput(event.target.value)}
-                    disabled={disabled}
-                    className="w-full rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
-                    placeholder="ação, fantasia, clássico"
-                  />
-                </label>
-              </div>
+              {showAdvancedMetadata ? (
+                <div className="mt-3 space-y-3 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+                        Volume
+                      </span>
+                      <input
+                        type="number"
+                        value={volume}
+                        onChange={(event) => setVolume(event.target.value)}
+                        disabled={disabled}
+                        className="w-full rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
+                      />
+                    </label>
+                    <label className="flex items-center gap-3 rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={isOneShot}
+                        onChange={(event) => setIsOneShot(event.target.checked)}
+                        disabled={disabled}
+                        className="rounded border-white/15 bg-transparent"
+                      />
+                      <span className="text-sm text-[var(--color-textMain)]">
+                        One-shot
+                      </span>
+                    </label>
+                  </div>
 
-              <label className="mt-3 block">
-                <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                  Descrição usada no plano
-                </span>
-                <textarea
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  rows={4}
-                  disabled={disabled}
-                  className="w-full rounded-[22px] border border-white/8 bg-white/[0.03] px-4 py-3 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
-                />
-              </label>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+                        Autor
+                      </span>
+                      <input
+                        type="text"
+                        value={author}
+                        onChange={(event) => setAuthor(event.target.value)}
+                        disabled={disabled}
+                        className="w-full rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+                        Artista
+                      </span>
+                      <input
+                        type="text"
+                        value={artist}
+                        onChange={(event) => setArtist(event.target.value)}
+                        disabled={disabled}
+                        className="w-full rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+                        Status da obra
+                      </span>
+                      <input
+                        type="text"
+                        value={status}
+                        onChange={(event) => setStatus(event.target.value)}
+                        disabled={disabled}
+                        className="w-full rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+                        Tags livres
+                      </span>
+                      <input
+                        type="text"
+                        value={tagsInput}
+                        onChange={(event) => setTagsInput(event.target.value)}
+                        disabled={disabled}
+                        className="w-full rounded-2xl border border-white/8 bg-black/20 px-3 py-2.5 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
+                        placeholder="ação, fantasia, clássico"
+                      />
+                    </label>
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+                      Descrição usada no plano
+                    </span>
+                    <textarea
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      rows={3}
+                      disabled={disabled}
+                      className="w-full rounded-[20px] border border-white/8 bg-black/20 px-4 py-3 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35 disabled:opacity-50"
+                    />
+                  </label>
+                </div>
+              ) : null}
             </section>
 
             <div className="flex flex-wrap items-center justify-end gap-3">
@@ -880,154 +1072,126 @@ export function UploadItemCard({
             </div>
           </form>
 
-          <aside className="space-y-4">
-            <section className="rounded-3xl border border-white/8 bg-black/10 p-4">
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/75">
-                Parsing e evidência
-              </p>
-
-              <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-                <p className="text-xs font-medium text-[var(--color-textMain)]">
-                  Resultado do parsing
-                </p>
-                <p className="mt-2 text-sm text-[var(--color-textMain)]">
-                  {item.parsing.chapterNumber != null
-                    ? `Capítulo ${item.parsing.chapterNumber}`
-                    : "Sem capítulo definido"}
-                </p>
-                <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                  Confiança {item.parsing.confidence || "não informada"}
-                </p>
-                {item.parsing.selectedCandidate && (
-                  <p className="mt-2 text-xs text-[var(--color-textDim)]">
-                    Escolhido: {item.parsing.selectedCandidate.raw}
-                    {item.parsing.selectedCandidate.strategy
-                      ? ` · ${item.parsing.selectedCandidate.strategy}`
-                      : ""}
+          <aside className="space-y-3">
+            <details
+              open={hasCriticalAlerts}
+              className="rounded-3xl border border-white/8 bg-black/10 p-4"
+            >
+              <summary className="cursor-pointer list-none text-sm font-medium text-[var(--color-textMain)]">
+                Alertas e inconsistências ({highlightedAlerts.length + (item.error?.message ? 1 : 0)})
+              </summary>
+              <div className="mt-3 space-y-2 text-xs">
+                {!highlightedAlerts.length && !item.error?.message ? (
+                  <p className="text-[var(--color-textDim)]">
+                    Sem alertas críticos para este item.
                   </p>
-                )}
-                {item.parsing.notes.length > 0 && (
-                  <ul className="mt-2 space-y-1 text-xs text-[var(--color-textDim)]">
-                    {item.parsing.notes.slice(0, 3).map((note) => (
-                      <li key={note}>{note}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {item.parsing.ignoredCandidates.length > 0 && (
-                <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-                  <p className="text-xs font-medium text-[var(--color-textMain)]">
-                    Candidatos ignorados
-                  </p>
-                  <div className="mt-2 space-y-2">
-                    {item.parsing.ignoredCandidates.slice(0, 4).map((candidate) => (
-                      <div
-                        key={`${candidate.raw}-${candidate.strategy || "candidate"}`}
-                        className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2"
-                      >
-                        <p className="text-xs text-[var(--color-textMain)]">
-                          {candidate.raw}
-                        </p>
-                        {candidate.rejectedReasons.length > 0 && (
-                          <p className="mt-1 text-[11px] text-[var(--color-textDim)]">
-                            {candidate.rejectedReasons.join(" · ")}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {item.parsing.candidateOptions.length > 0 && (
-                <div className="mt-4 rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-                  <p className="text-xs font-medium text-[var(--color-textMain)]">
-                    Opções aceitas pelo parser
-                  </p>
-                  <div className="mt-2 space-y-2">
-                    {item.parsing.candidateOptions.slice(0, 5).map((candidate) => (
-                      <div
-                        key={`${candidate.raw}-${candidate.strategy || "candidate-option"}`}
-                        className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2"
-                      >
-                        <p className="text-xs text-[var(--color-textMain)]">
-                          {candidate.raw}
-                        </p>
-                        <p className="mt-1 text-[11px] text-[var(--color-textDim)]">
-                          Valor {candidate.value ?? "—"} · score {candidate.score ?? "—"}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="mt-4 space-y-2">
-                {item.suggestion.candidates.slice(0, 5).map((candidate) => (
+                ) : null}
+                {highlightedAlerts.map((message) => (
                   <div
-                    key={`${candidate.normalizedTitle}-${candidate.matchedSeriesId || "new"}`}
-                    className="rounded-2xl border border-white/8 bg-white/[0.03] p-3"
+                    key={message}
+                    className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-amber-100"
                   >
-                    <p className="text-sm font-medium text-[var(--color-textMain)]">
-                      {resolveCandidateTitle(candidate)}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                      Evidência {Math.round(candidate.evidenceScore)} · score total{" "}
-                      {Math.round(candidate.combinedScore)}
-                    </p>
-                    <p className="mt-2 text-[11px] text-[var(--color-textDim)]">
-                      {candidate.evidenceSources.join(" · ")}
-                    </p>
+                    {message}
                   </div>
                 ))}
+                {item.error?.message ? (
+                  <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-rose-100">
+                    {item.error.message}
+                  </div>
+                ) : null}
               </div>
+            </details>
 
-              <div className="mt-4 space-y-2">
-                {item.suggestion.evidence.slice(0, 5).map((evidence) => (
-                  <div
-                    key={evidence.id}
-                    className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2"
-                  >
+            <details className="rounded-3xl border border-white/8 bg-black/10 p-4">
+              <summary className="cursor-pointer list-none text-sm font-medium text-[var(--color-textMain)]">
+                Parsing e evidências
+              </summary>
+              <div className="mt-3 space-y-3">
+                <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                  <p className="text-xs font-medium text-[var(--color-textMain)]">
+                    Resultado do parsing
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                    Capítulo {item.parsing.chapterNumber ?? "—"} · confiança{" "}
+                    {item.parsing.confidence || "não informada"}
+                  </p>
+                  {item.parsing.selectedCandidate ? (
+                    <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                      Candidato: {item.parsing.selectedCandidate.raw}
+                      {item.parsing.selectedCandidate.strategy
+                        ? ` · ${item.parsing.selectedCandidate.strategy}`
+                        : ""}
+                    </p>
+                  ) : null}
+                </div>
+
+                {item.parsing.notes.length > 0 ? (
+                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
                     <p className="text-xs font-medium text-[var(--color-textMain)]">
-                      {evidence.source}
+                      Notas do parser
                     </p>
-                    <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                      {evidence.rawValue}
-                    </p>
+                    <ul className="mt-2 space-y-1 text-[11px] text-[var(--color-textDim)]">
+                      {item.parsing.notes.slice(0, 5).map((note) => (
+                        <li key={note}>{note}</li>
+                      ))}
+                    </ul>
                   </div>
-                ))}
-              </div>
+                ) : null}
 
-              <div className="mt-4 space-y-2">
-                {item.suggestion.stages.map((stage) => (
-                  <div
-                    key={stage.id}
-                    className="flex items-start justify-between gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2"
-                  >
-                    <div>
-                      <p className="text-xs font-medium text-[var(--color-textMain)]">
-                        {formatUploadStage(stage.stage)}
-                      </p>
-                      {stage.detail && (
-                        <p className="mt-1 text-[11px] text-[var(--color-textDim)]">
-                          {stage.detail}
-                        </p>
-                      )}
+                {item.suggestion.candidates.length > 0 ? (
+                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                    <p className="text-xs font-medium text-[var(--color-textMain)]">
+                      Candidatos de série
+                    </p>
+                    <div className="mt-2 max-h-48 space-y-2 scroll-region pr-1">
+                      {item.suggestion.candidates.slice(0, 6).map((candidate) => (
+                        <div
+                          key={`${candidate.normalizedTitle}-${candidate.matchedSeriesId || "new"}`}
+                          className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2"
+                        >
+                          <p className="text-xs font-medium text-[var(--color-textMain)]">
+                            {resolveCandidateTitle(candidate)}
+                          </p>
+                          <p className="mt-1 text-[11px] text-[var(--color-textDim)]">
+                            Evidência {Math.round(candidate.evidenceScore)} · score total{" "}
+                            {Math.round(candidate.combinedScore)}
+                          </p>
+                        </div>
+                      ))}
                     </div>
-                    <span className="text-[11px] text-[var(--color-textDim)]">
-                      {stage.status}
-                    </span>
                   </div>
-                ))}
-              </div>
-            </section>
+                ) : null}
 
-            <section className="rounded-3xl border border-white/8 bg-black/10 p-4">
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/75">
+                {item.suggestion.evidence.length > 0 ? (
+                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
+                    <p className="text-xs font-medium text-[var(--color-textMain)]">
+                      Evidências capturadas
+                    </p>
+                    <div className="mt-2 max-h-44 space-y-2 scroll-region pr-1">
+                      {item.suggestion.evidence.slice(0, 6).map((evidence) => (
+                        <div
+                          key={evidence.id}
+                          className="rounded-2xl border border-white/8 bg-black/10 px-3 py-2"
+                        >
+                          <p className="text-xs font-medium text-[var(--color-textMain)]">
+                            {evidence.source}
+                          </p>
+                          <p className="mt-1 text-[11px] text-[var(--color-textDim)]">
+                            {evidence.rawValue}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </details>
+
+            <details className="rounded-3xl border border-white/8 bg-black/10 p-4">
+              <summary className="cursor-pointer list-none text-sm font-medium text-[var(--color-textMain)]">
                 Job e resultado
-              </p>
-              <div className="mt-4 space-y-2 text-sm text-[var(--color-textDim)]">
+              </summary>
+              <div className="mt-3 space-y-2 text-sm text-[var(--color-textDim)]">
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
                   Runtime: <span className="text-[var(--color-textMain)]">{jobMeta.label}</span>
                 </div>
@@ -1041,46 +1205,40 @@ export function UploadItemCard({
                   Aprovação: <span className="text-[var(--color-textMain)]">{item.approval.status}</span>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
-                  Progresso do worker:{" "}
+                  Progresso:{" "}
                   <span className="text-[var(--color-textMain)]">
                     {formatPercent(item.job.lastProgressPercent)}
                   </span>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
-                  Última atividade{" "}
+                  Última atividade:{" "}
                   <span className="text-[var(--color-textMain)]">
                     {formatDateTime(item.job.lastActivityAt || item.processedAt || item.updatedAt)}
                   </span>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
-                  Idade do heartbeat:{" "}
-                  <span className="text-[var(--color-textMain)]">
-                    {formatDurationMs(item.job.heartbeatAgeMs)}
-                  </span>
-                </div>
-                {item.result.seriesId && (
+                {item.result.seriesId ? (
                   <Link
                     href={`/serie/${item.result.seriesId}`}
                     className="block rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200 transition-colors hover:bg-emerald-500/15"
                   >
                     Abrir série resultante
                   </Link>
-                )}
-                {queueJobId && (
+                ) : null}
+                {queueJobId ? (
                   <Link
                     href={`/dashboard/jobs/${queueJobId}`}
                     className="block rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-xs transition-colors hover:bg-white/[0.06]"
                   >
                     Abrir job técnico: {queueJobId}
                   </Link>
-                )}
-                {item.approval.reason && (
+                ) : null}
+                {item.approval.reason ? (
                   <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
                     {item.approval.reason}
                   </div>
-                )}
+                ) : null}
               </div>
-            </section>
+            </details>
           </aside>
         </div>
       )}

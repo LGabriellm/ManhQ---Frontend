@@ -125,7 +125,7 @@ function applyQueryGuards(targetPath: string, searchParams: URLSearchParams): vo
   if (targetPath.startsWith("search/suggestions")) {
     searchParams.set(
       "limit",
-      normalizeBoundedInteger(searchParams.get("limit"), 1, 12, 6),
+      normalizeBoundedInteger(searchParams.get("limit"), 1, 20, 6),
     );
     return;
   }
@@ -133,7 +133,7 @@ function applyQueryGuards(targetPath: string, searchParams: URLSearchParams): vo
   if (targetPath.startsWith("discover")) {
     searchParams.set(
       "limit",
-      normalizeBoundedInteger(searchParams.get("limit"), 1, 36, 18),
+      normalizeBoundedInteger(searchParams.get("limit"), 1, 50, 18),
     );
   }
 }
@@ -151,6 +151,10 @@ function shouldApplyPublicCacheHeader(
     targetPath.startsWith("carousel/covers") ||
     targetPath.startsWith("public/series/")
   );
+}
+
+function isUploadSessionEventStream(targetPath: string): boolean {
+  return /^upload\/sessions\/[^/]+\/events$/.test(targetPath);
 }
 
 function rewriteSetCookieHeader(
@@ -237,7 +241,9 @@ async function handler(
   const init: RequestInit = {
     method: req.method,
     headers,
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    signal: isUploadSessionEventStream(targetPath)
+      ? undefined
+      : AbortSignal.timeout(FETCH_TIMEOUT_MS),
   };
 
   // Repassar body para métodos que suportam

@@ -188,6 +188,9 @@ api.interceptors.response.use(
     const responseData =
       parsedPayload && typeof parsedPayload === "object" ? parsedPayload : {};
     const fallbackMessage = extractMessageFromPayload(parsedPayload, contentType);
+    const requestId = responseData.requestId as string | undefined;
+    const endpoint = requestUrl || undefined;
+    const method = error.config?.method?.toUpperCase();
     const apiError = {
       message:
         (responseData.message as string) ||
@@ -203,11 +206,25 @@ api.interceptors.response.use(
       authRequired: responseData.authRequired as boolean | undefined,
       errorCode: responseData.errorCode as string | undefined,
       googleDrive: responseData.googleDrive as Record<string, unknown> | undefined,
+      requestId,
+      endpoint,
+      method,
       contentType,
       isUnexpectedPayload:
         typeof parsedPayload === "string" &&
         (contentType?.includes("text/html") || isHtmlLikePayload(parsedPayload)),
     };
+
+    if (typeof window !== "undefined") {
+      console.error("[API_ERROR]", {
+        endpoint,
+        method,
+        status: apiError.statusCode,
+        requestId,
+        errorCode: apiError.errorCode,
+        message: apiError.message,
+      });
+    }
 
     return Promise.reject(apiError);
   },

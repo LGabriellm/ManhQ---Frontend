@@ -606,13 +606,15 @@ export function itemNeedsManualChoice(item: UploadItem): boolean {
   const reviewStatus =
     item.status === "READY_FOR_REVIEW" || item.job.state === "review_required";
 
-  return Boolean(
-    reviewStatus &&
-      (item.job.userActionRequired ||
-        item.parsing.requiresManualReview ||
-        item.parsing.confidence === "low" ||
-        item.plan.selectionConfirmed !== true),
-  );
+  if (!reviewStatus || item.job.isCancelRequested) {
+    return false;
+  }
+
+  const hasPendingSelection = item.plan.selectionConfirmed !== true;
+  const missingDestination =
+    item.plan.decision !== "SKIP" && item.plan.destinationReady !== true;
+
+  return hasPendingSelection || missingDestination;
 }
 
 export function itemCanBeEdited(
@@ -622,7 +624,6 @@ export function itemCanBeEdited(
   return Boolean(
     workflow?.canEdit &&
       item.status === "READY_FOR_REVIEW" &&
-      item.job.canReview &&
       !item.job.isCancelRequested,
   );
 }

@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  resolveDraftWorkflow,
   shouldPollDraft,
   shouldPollSession,
 } from "@/lib/upload-workflow";
@@ -120,15 +121,25 @@ export function useUploadSessions(params?: {
   });
 }
 
-export function useUploadSession(sessionId: string, enabled = true) {
+export function useUploadSession(
+  sessionId: string,
+  enabled = true,
+  autoPoll = true,
+) {
   return useQuery({
     queryKey: uploadWorkflowKeys.session(sessionId),
     queryFn: () => uploadWorkflowService.getSession(sessionId),
     enabled: enabled && !!sessionId,
     staleTime: 1000 * 2,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     refetchInterval: (query) => {
       const session = query.state.data?.session;
       if (!session) {
+        return false;
+      }
+
+      if (!autoPoll) {
         return false;
       }
 
@@ -143,15 +154,22 @@ export function useUploadDraft(
   source: UploadSource,
   draftId: string,
   enabled = true,
+  autoPoll = true,
 ) {
   return useQuery({
     queryKey: uploadWorkflowKeys.draft(source, draftId),
     queryFn: () => uploadWorkflowService.getDraft(source, draftId),
     enabled: enabled && !!draftId,
     staleTime: 1000 * 2,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     refetchInterval: (query) => {
       const draft = query.state.data?.draft;
       if (!draft) {
+        return false;
+      }
+
+      if (!autoPoll) {
         return false;
       }
 
@@ -238,11 +256,31 @@ export function useUpdateUploadDraftItem() {
       itemId: string;
       data: UpdateUploadDraftItemRequest;
     }) => uploadWorkflowService.updateDraftItem(source, draftId, itemId, data),
-    onSuccess: async (_result, variables) => {
-      await invalidateWorkflowQueries(
-        queryClient,
-        variables.draftId,
-        variables.source,
+    onSuccess: async (result, variables) => {
+      queryClient.setQueryData(
+        uploadWorkflowKeys.draft(variables.source, variables.draftId),
+        (current:
+          | { success: true; draft: UploadDraft }
+          | undefined) => {
+          if (!current?.draft) {
+            return current;
+          }
+
+          const updatedDraft: UploadDraft = {
+            ...current.draft,
+            items: current.draft.items.map((item) =>
+              item.id === result.item.id ? result.item : item,
+            ),
+          };
+
+          return {
+            success: true as const,
+            draft: {
+              ...updatedDraft,
+              workflow: resolveDraftWorkflow(updatedDraft),
+            },
+          };
+        },
       );
     },
   });
@@ -263,11 +301,6 @@ export function useBulkUpdateUploadDraft() {
     }) => uploadWorkflowService.bulkUpdateDraft(source, draftId, data),
     onSuccess: async (result, variables) => {
       hydrateDraft(queryClient, variables.source, result.draft);
-      await invalidateWorkflowQueries(
-        queryClient,
-        variables.draftId,
-        variables.source,
-      );
     },
   });
 }
@@ -286,13 +319,8 @@ export function useConfirmUploadDraft() {
       idempotencyKey?: string;
     }) =>
       uploadWorkflowService.confirmDraft(source, draftId, idempotencyKey),
-    onSuccess: async (result, variables) => {
+    onSuccess: async (result) => {
       hydrateSession(queryClient, result.session);
-      await invalidateWorkflowQueries(
-        queryClient,
-        variables.draftId,
-        variables.source,
-      );
     },
   });
 }
@@ -369,6 +397,7 @@ export function useGoogleDriveAuthUrl() {
       returnUrl?: string;
       intent?: string;
       draftId?: string;
+      mode?: "popup" | "redirect" | "json";
     }) => uploadWorkflowService.getGoogleDriveAuthUrl(params),
   });
 }

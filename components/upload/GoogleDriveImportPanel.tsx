@@ -1,8 +1,8 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FeedbackState } from "@/components/FeedbackState";
-import { useSeriesSearch } from "@/hooks/useApi";
+import type { UploadPipelineStep } from "@/hooks/useUploadCenterStore";
 import { useGoogleDrivePopupAuth } from "@/hooks/useGoogleDrivePopupAuth";
 import { useGoogleDriveReconnectRecovery } from "@/hooks/useGoogleDriveReconnectRecovery";
 import {
@@ -11,7 +11,7 @@ import {
   useGoogleDriveNodes,
   useGoogleDrivePreviewRequest,
   useGoogleDriveStatus,
-  useImportFromGoogleDrive,
+  useImportFromGoogleDrive as useGoogleDriveDryRunImport,
   useStageGoogleDrive,
 } from "@/hooks/useUploadWorkflow";
 import { getUploadErrorMessage } from "@/lib/uploadErrors";
@@ -29,10 +29,9 @@ import {
   Search,
 } from "lucide-react";
 
-type GoogleDriveActionMode = "review" | "existing" | "new";
-
 interface GoogleDriveImportPanelProps {
   onOpenSession: (sessionId: string) => void;
+  onStepChange?: (step: UploadPipelineStep) => void;
 }
 
 interface DryRunSummary {
@@ -65,8 +64,8 @@ function getFolderIdValidationMessage(folderId: string): string | null {
 
 export function GoogleDriveImportPanel({
   onOpenSession,
+  onStepChange,
 }: GoogleDriveImportPanelProps) {
-  const [mode, setMode] = useState<GoogleDriveActionMode>("review");
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [currentFolderName, setCurrentFolderName] = useState<string | null>(null);
   const [navigationStack, setNavigationStack] = useState<
@@ -76,14 +75,10 @@ export function GoogleDriveImportPanel({
   const [recursive, setRecursive] = useState(true);
   const [maxFiles, setMaxFiles] = useState(200);
   const [reviewSeriesTitle, setReviewSeriesTitle] = useState("");
-  const [newSeriesTitle, setNewSeriesTitle] = useState("");
-  const [selectedSeriesId, setSelectedSeriesId] = useState("");
-  const [selectedSeriesTitle, setSelectedSeriesTitle] = useState("");
-  const [seriesQuery, setSeriesQuery] = useState("");
-  const deferredSeriesQuery = useDeferredValue(seriesQuery.trim());
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null);
   const [selectedFileIds, setSelectedFileIds] = useState<string[]>([]);
   const [dryRunResult, setDryRunResult] = useState<DryRunSummary | null>(null);
+  const [browserQuery, setBrowserQuery] = useState("");
 
   const normalizedManualFolderId = manualFolderId.trim();
   const folderIdValidationMessage = getFolderIdValidationMessage(
@@ -103,7 +98,7 @@ export function GoogleDriveImportPanel({
   const statusQuery = useGoogleDriveStatus();
   const disconnectMutation = useGoogleDriveDisconnect();
   const stageMutation = useStageGoogleDrive();
-  const importMutation = useImportFromGoogleDrive();
+  const dryRunMutation = useGoogleDriveDryRunImport();
   const previewMutation = useGoogleDrivePreviewRequest();
   const rootFoldersQuery = useGoogleDriveFolders({}, statusQuery.data?.connected);
   const nodesQuery = useGoogleDriveNodes(
@@ -112,11 +107,12 @@ export function GoogleDriveImportPanel({
     },
     Boolean(effectiveFolderId && statusQuery.data?.connected && manualFolderIdIsValid),
   );
-  const searchResults = useSeriesSearch(deferredSeriesQuery, 1, 8);
-
   const previewData = previewMutation.data;
   const previewFiles = previewData?.supportedFiles || [];
-  const currentFolderItems = nodesQuery.data?.files || [];
+  const currentFolderItems = useMemo(
+    () => nodesQuery.data?.files ?? [],
+    [nodesQuery.data?.files],
+  );
   const selectedFilesCount = selectedFileIds.length;
   const hasSelectionScope = Boolean(effectiveFolderId);
 
@@ -140,6 +136,9 @@ export function GoogleDriveImportPanel({
     setCurrentFolderName(folderName);
     setManualFolderId("");
     setNavigationStack((current) => [...current, { id: folderId, name: folderName }]);
+    if (reviewSeriesTitle.trim().length === 0) {
+      setReviewSeriesTitle(folderName);
+    }
     resetPreviewState();
   };
 
@@ -283,6 +282,7 @@ export function GoogleDriveImportPanel({
     }
 
     try {
+      onStepChange?.("INGEST");
       const result = await stageMutation.mutateAsync({
         data: {
           ...buildDrivePayload(),
@@ -291,7 +291,7 @@ export function GoogleDriveImportPanel({
         idempotencyKey: createIdempotencyKey(),
       });
       toast.success(result.nextStep);
-      onOpenSession(result.draftId);
+      onOpenSession(result.session.id || result.draftId);
     } catch (error) {
       if (allowReconnect) {
         try {
@@ -335,23 +335,11 @@ export function GoogleDriveImportPanel({
       return;
     }
 
-    if (mode === "existing" && !selectedSeriesId) {
-      toast.error("Escolha a série de destino antes do dry run.");
-      return;
-    }
-
-    if (mode === "new" && !newSeriesTitle.trim()) {
-      toast.error("Defina o título da nova série antes do dry run.");
-      return;
-    }
-
     try {
-      const result = await importMutation.mutateAsync({
+      const result = await dryRunMutation.mutateAsync({
         data: {
           ...buildDrivePayload(),
           dryRun: true,
-          targetSeriesId: mode === "existing" ? selectedSeriesId : undefined,
-          newSeriesTitle: mode === "new" ? newSeriesTitle.trim() : undefined,
         },
         idempotencyKey: createIdempotencyKey(),
       });
@@ -404,76 +392,32 @@ export function GoogleDriveImportPanel({
     }
   };
 
-  const startDirectImport = async (allowReconnect = true) => {
-    if (!hasSelectionScope) {
-      toast.error("Escolha uma pasta ou gere um preview antes de importar.");
-      return;
+  const currentBrowseFolders = useMemo(
+    () =>
+      effectiveFolderId
+        ? nodesQuery.data?.folders ?? []
+        : rootFoldersQuery.data?.folders ?? [],
+    [effectiveFolderId, nodesQuery.data?.folders, rootFoldersQuery.data?.folders],
+  );
+  const normalizedBrowserQuery = browserQuery.trim().toLowerCase();
+  const filteredBrowseFolders = useMemo(() => {
+    if (!normalizedBrowserQuery) {
+      return currentBrowseFolders;
     }
 
-    if (mode === "existing" && !selectedSeriesId) {
-      toast.error("Escolha a série de destino para a importação direta.");
-      return;
+    return currentBrowseFolders.filter((folder) =>
+      folder.name.toLowerCase().includes(normalizedBrowserQuery),
+    );
+  }, [currentBrowseFolders, normalizedBrowserQuery]);
+  const filteredCurrentFolderItems = useMemo(() => {
+    if (!normalizedBrowserQuery) {
+      return currentFolderItems;
     }
 
-    if (mode === "new" && !newSeriesTitle.trim()) {
-      toast.error("Defina o título da nova série antes de importar.");
-      return;
-    }
-
-    try {
-      const result = await importMutation.mutateAsync({
-        data: {
-          ...buildDrivePayload(),
-          targetSeriesId: mode === "existing" ? selectedSeriesId : undefined,
-          newSeriesTitle: mode === "new" ? newSeriesTitle.trim() : undefined,
-        },
-        idempotencyKey: createIdempotencyKey(),
-      });
-
-      if (!("dryRun" in result)) {
-        toast.success(result.message);
-        onOpenSession(result.sessionId);
-      }
-    } catch (error) {
-      if (allowReconnect) {
-        try {
-          const recovered = await recoverGoogleDriveReconnect({
-            error,
-            intent: "google_drive_import",
-            onConnected: async () => {
-              await statusQuery.refetch();
-            },
-            retry: async () => {
-              await startDirectImport(false);
-            },
-          });
-
-          if (recovered) {
-            return;
-          }
-        } catch (reconnectError) {
-          toast.error(
-            getUploadErrorMessage(
-              reconnectError,
-              "Não foi possível restabelecer a conexão com Google Drive.",
-            ),
-          );
-          return;
-        }
-      }
-
-      toast.error(
-        getUploadErrorMessage(
-          error,
-          "Falha ao iniciar a importação direta do Google Drive.",
-        ),
-      );
-    }
-  };
-
-  const currentBrowseFolders = effectiveFolderId
-    ? nodesQuery.data?.folders || []
-    : rootFoldersQuery.data?.folders || [];
+    return currentFolderItems.filter((file) =>
+      file.name.toLowerCase().includes(normalizedBrowserQuery),
+    );
+  }, [currentFolderItems, normalizedBrowserQuery]);
   const browseError = effectiveFolderId ? nodesQuery.error : rootFoldersQuery.error;
   const browseIsLoading = effectiveFolderId
     ? nodesQuery.isLoading
@@ -500,9 +444,22 @@ export function GoogleDriveImportPanel({
     isConnecting ||
     isReconnectingGoogleDrive ||
     stageMutation.isPending ||
-    importMutation.isPending ||
+    dryRunMutation.isPending ||
     previewMutation.isPending ||
     disconnectMutation.isPending;
+
+  useEffect(() => {
+    if (!onStepChange) {
+      return;
+    }
+
+    if (!hasSelectionScope) {
+      onStepChange("SELECT_CONTENT");
+      return;
+    }
+
+    onStepChange("SERIES");
+  }, [hasSelectionScope, onStepChange]);
 
   if (!statusQuery.data?.connected) {
     return (
@@ -581,7 +538,7 @@ export function GoogleDriveImportPanel({
         </div>
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.95fr)]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.92fr)]">
         <div className="space-y-4">
           <div className="surface-panel-muted rounded-[28px] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -690,7 +647,7 @@ export function GoogleDriveImportPanel({
             </div>
 
             <div className="mt-5">
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
                     Conteúdo disponível
@@ -705,6 +662,24 @@ export function GoogleDriveImportPanel({
                     Atualizando
                   </span>
                 ) : null}
+              </div>
+
+              <div className="mb-3">
+                <label className="block">
+                  <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+                    Filtrar pasta/arquivo no navegador
+                  </span>
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-textDim)]" />
+                    <input
+                      type="text"
+                      value={browserQuery}
+                      onChange={(event) => setBrowserQuery(event.target.value)}
+                      className="field-input rounded-2xl py-2.5 pl-10 pr-4 text-sm"
+                      placeholder="Digite para filtrar os itens carregados"
+                    />
+                  </div>
+                </label>
               </div>
 
               {browseIsLoading ? (
@@ -724,58 +699,87 @@ export function GoogleDriveImportPanel({
                   )}
                   tone="danger"
                 />
-              ) : currentBrowseFolders.length === 0 && currentFolderItems.length === 0 ? (
+              ) : filteredBrowseFolders.length === 0 &&
+                filteredCurrentFolderItems.length === 0 ? (
                 <FeedbackState
                   icon={<FolderOpen className="h-6 w-6" />}
-                  title="Nenhum item encontrado"
+                  title={
+                    normalizedBrowserQuery
+                      ? "Nenhum item encontrado no filtro"
+                      : "Nenhum item encontrado"
+                  }
                   description={
-                    normalizedManualFolderId
+                    normalizedBrowserQuery
+                      ? "Ajuste o termo de busca ou limpe o filtro para ver todos os itens."
+                      : normalizedManualFolderId
                       ? "Esse ID não retornou subpastas nem arquivos compatíveis."
                       : "Escolha uma pasta para visualizar o conteúdo ou informe um ID manual."
                   }
                   tone="default"
                 />
               ) : (
-                <div className="space-y-4">
-                  <div className="list-panel">
-                    {currentBrowseFolders.map((folder) => (
-                      <button
-                        key={folder.id}
-                        type="button"
-                        onClick={() => openFolder(folder.id, folder.name)}
-                        className="list-row"
-                      >
-                        <div className="rounded-2xl bg-[var(--color-primary)]/10 p-2 text-[var(--color-primary)]">
-                          <FolderOpen className="h-4 w-4" />
+                <div
+                  className={`grid gap-4 ${
+                    filteredCurrentFolderItems.length > 0
+                      ? "xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+                      : ""
+                  }`}
+                >
+                  <div>
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
+                        Subpastas
+                      </p>
+                      <span className="badge-soft text-[var(--color-textMain)]">
+                        {filteredBrowseFolders.length} pasta(s)
+                      </span>
+                    </div>
+                    <div className="list-panel max-h-52 scroll-region">
+                      {filteredBrowseFolders.length === 0 ? (
+                        <div className="px-4 py-3 text-sm text-[var(--color-textDim)]">
+                          Nenhuma subpasta encontrada neste contexto.
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-medium text-[var(--color-textMain)]">
-                            {folder.name}
-                          </p>
-                          <p className="mt-1 truncate text-xs text-[var(--color-textDim)]">
-                            {folder.modifiedTime
-                              ? `Atualizada em ${formatDateTime(folder.modifiedTime)}`
-                              : "Abrir pasta para navegar no conteúdo"}
-                          </p>
-                        </div>
-                        <ArrowRight className="h-4 w-4 text-[var(--color-textDim)]" />
-                      </button>
-                    ))}
+                      ) : (
+                        filteredBrowseFolders.map((folder) => (
+                          <button
+                            key={folder.id}
+                            type="button"
+                            onClick={() => openFolder(folder.id, folder.name)}
+                            className="list-row"
+                          >
+                            <div className="rounded-2xl bg-[var(--color-primary)]/10 p-2 text-[var(--color-primary)]">
+                              <FolderOpen className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-[var(--color-textMain)]">
+                                {folder.name}
+                              </p>
+                              <p className="mt-1 truncate text-xs text-[var(--color-textDim)]">
+                                {folder.modifiedTime
+                                  ? `Atualizada em ${formatDateTime(folder.modifiedTime)}`
+                                  : "Abrir pasta para navegar no conteúdo"}
+                              </p>
+                            </div>
+                            <ArrowRight className="h-4 w-4 text-[var(--color-textDim)]" />
+                          </button>
+                        ))
+                      )}
+                    </div>
                   </div>
 
-                  {currentFolderItems.length > 0 ? (
+                  {filteredCurrentFolderItems.length > 0 ? (
                     <div>
                       <div className="mb-3 flex items-center justify-between gap-3">
                         <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
                           Arquivos detectados
                         </p>
                         <span className="badge-soft text-[var(--color-textMain)]">
-                          {currentFolderItems.length} arquivo(s)
+                          {filteredCurrentFolderItems.length} arquivo(s)
                         </span>
                       </div>
 
-                      <div className="list-panel max-h-72 overflow-y-auto">
-                        {currentFolderItems.map((file) => (
+                      <div className="list-panel max-h-48 scroll-region">
+                        {filteredCurrentFolderItems.map((file) => (
                           <div key={file.id} className="list-row">
                             <div className="rounded-2xl bg-white/5 p-2 text-[var(--color-textDim)]">
                               <FileText className="h-4 w-4" />
@@ -878,7 +882,7 @@ export function GoogleDriveImportPanel({
                 </div>
               </div>
 
-              <div className="list-panel mt-4 max-h-80 overflow-y-auto">
+              <div className="list-panel mt-4 max-h-56 scroll-region">
                 {previewFiles.map((file) => {
                   const isSelected = selectedFileIds.includes(file.id);
 
@@ -915,125 +919,24 @@ export function GoogleDriveImportPanel({
         <div className="space-y-4">
           <div className="surface-panel rounded-[30px] p-4 sm:p-5">
             <p className="text-xs uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
-              Ação
+              Etapas 3 e 4 · Preparação do draft
             </p>
-            <div className="mt-4 grid gap-2">
-              {([
-                ["review", "Criar sessão de revisão"],
-                ["existing", "Importar para série existente"],
-                ["new", "Importar como nova série"],
-              ] as const).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setMode(value)}
-                  className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
-                    mode === value
-                      ? "border-[var(--color-primary)]/35 bg-[var(--color-primary)]/10 text-[var(--color-textMain)]"
-                      : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
-                  }`}
-                >
-                  <p className="text-sm font-medium">{label}</p>
-                </button>
-              ))}
-            </div>
-
-            {mode === "review" && (
-              <label className="mt-4 block">
-                <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                  Título final já conhecido? Pré-preencha para revisão
-                </span>
-                <input
-                  type="text"
-                  value={reviewSeriesTitle}
-                  onChange={(event) => setReviewSeriesTitle(event.target.value)}
-                  className="field-input rounded-2xl px-4 py-2.5 text-sm"
-                  placeholder="Opcional"
-                />
-              </label>
-            )}
-
-            {mode === "existing" && (
-              <div className="mt-4 space-y-3">
-                <label className="block">
-                  <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                    Buscar série existente
-                  </span>
-                  <div className="relative">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-textDim)]" />
-                    <input
-                      type="text"
-                      value={seriesQuery}
-                      onChange={(event) => setSeriesQuery(event.target.value)}
-                      className="field-input rounded-2xl py-2.5 pl-10 pr-4 text-sm"
-                      placeholder="Busque o destino..."
-                    />
-                  </div>
-                </label>
-
-                <div className="grid gap-2">
-                  {searchResults.data?.items.map((series) => (
-                    <button
-                      key={series.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedSeriesId(series.id);
-                        setSelectedSeriesTitle(series.title);
-                        setSeriesQuery(series.title);
-                      }}
-                      className={`rounded-2xl border px-3 py-2 text-left transition-colors ${
-                        selectedSeriesId === series.id
-                          ? "border-emerald-500/25 bg-emerald-500/10 text-[var(--color-textMain)]"
-                          : "border-white/8 bg-white/[0.03] text-[var(--color-textDim)] hover:border-white/15 hover:text-[var(--color-textMain)]"
-                      }`}
-                    >
-                      <p className="text-sm font-medium">{series.title}</p>
-                        <p className="mt-1 text-xs opacity-80">{series.id}</p>
-                      </button>
-                  ))}
-                </div>
-
-                {seriesQuery.trim().length >= 2 && searchResults.isLoading ? (
-                  <p className="text-xs text-[var(--color-textDim)]">
-                    Buscando séries existentes...
-                  </p>
-                ) : null}
-                {seriesQuery.trim().length >= 2 &&
-                !searchResults.isLoading &&
-                (searchResults.data?.items.length ?? 0) === 0 ? (
-                  <p className="text-xs text-[var(--color-textDim)]">
-                    Nenhuma série encontrada com esse termo.
-                  </p>
-                ) : null}
-                {selectedSeriesTitle && (
-                  <p className="text-xs text-emerald-200">
-                    Série selecionada: {selectedSeriesTitle}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {mode === "new" && (
-              <label className="mt-4 block">
-                <span className="mb-1 block text-xs text-[var(--color-textDim)]">
-                  Título final da nova série
-                </span>
-                <input
-                  type="text"
-                  value={newSeriesTitle}
-                  onChange={(event) => setNewSeriesTitle(event.target.value)}
-                  className="field-input rounded-2xl px-4 py-2.5 text-sm"
-                  placeholder="Digite o título definitivo..."
-                />
-              </label>
-            )}
+            <label className="mt-4 block">
+              <span className="mb-1 block text-xs text-[var(--color-textDim)]">
+                Nome da série para revisão (editável)
+              </span>
+              <input
+                type="text"
+                value={reviewSeriesTitle}
+                onChange={(event) => setReviewSeriesTitle(event.target.value)}
+                className="field-input rounded-2xl px-4 py-2.5 text-sm"
+                placeholder="Pré-preenchido quando você já conhece o nome"
+              />
+            </label>
 
             <div className="surface-panel-muted mt-5 rounded-2xl p-4 text-sm text-[var(--color-textDim)]">
-              {mode === "review"
-                ? "O stage do Drive cria um draft persistido. Depois disso o workspace acompanha callbacks, análise, revisão e confirmação item a item."
-                : mode === "existing"
-                  ? "Importação direta pede um destino confirmado e usa o backend para analisar, aprovar e processar o lote."
-                  : "Importação direta para nova série exige um título definitivo e ainda pode passar por aprovação ou reprocessamento."}
+              O stage do Drive cria um draft persistido com revisão obrigatória.
+              A confirmação final continua sempre manual no workspace da sessão.
             </div>
 
             <div className="mt-5 grid gap-3">
@@ -1043,7 +946,7 @@ export function GoogleDriveImportPanel({
                 disabled={!hasSelectionScope || !manualFolderIdIsValid || isBusy}
                 className="ui-btn-secondary w-full px-4 py-2.5 text-sm font-medium disabled:opacity-50"
               >
-                {importMutation.isPending && dryRunResult == null ? (
+                {dryRunMutation.isPending && dryRunResult == null ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <CheckCircle2 className="h-4 w-4" />
@@ -1051,35 +954,19 @@ export function GoogleDriveImportPanel({
                 Validar com dry run
               </button>
 
-              {mode === "review" ? (
-                <button
-                  type="button"
-                  onClick={() => void stageForReview()}
-                  disabled={!hasSelectionScope || !manualFolderIdIsValid || isBusy}
-                  className="ui-btn-primary w-full px-4 py-3 text-sm font-semibold disabled:opacity-50"
-                >
-                  {stageMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ArrowRight className="h-4 w-4" />
-                  )}
-                  Criar sessão de revisão
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void startDirectImport()}
-                  disabled={!hasSelectionScope || !manualFolderIdIsValid || isBusy}
-                  className="ui-btn-primary w-full px-4 py-3 text-sm font-semibold disabled:opacity-50"
-                >
-                  {importMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ArrowRight className="h-4 w-4" />
-                  )}
-                  Iniciar importação direta
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => void stageForReview()}
+                disabled={!hasSelectionScope || !manualFolderIdIsValid || isBusy}
+                className="ui-btn-primary w-full px-4 py-3 text-sm font-semibold disabled:opacity-50"
+              >
+                {stageMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4" />
+                )}
+                Criar sessão de revisão
+              </button>
             </div>
           </div>
 
@@ -1111,7 +998,7 @@ export function GoogleDriveImportPanel({
                 <p className="mt-1 text-xs text-[var(--color-textDim)]">
                   {previewData
                     ? `${previewData.unsupportedCount} não compatíveis`
-                    : "Gere um preview para revisar os arquivos antes do stage/import"}
+                    : "Gere um preview para revisar os arquivos antes do stage"}
                 </p>
               </div>
             </div>
@@ -1125,7 +1012,7 @@ export function GoogleDriveImportPanel({
                   {dryRunResult.supportedCount} suportados ·{" "}
                   {dryRunResult.unsupportedCount} não compatíveis
                 </p>
-                <div className="mt-3 max-h-40 space-y-2 overflow-y-auto">
+                <div className="mt-3 max-h-40 space-y-2 scroll-region">
                   {dryRunResult.files.map((file) => (
                     <div
                       key={file.id}

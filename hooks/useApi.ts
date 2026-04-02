@@ -34,7 +34,8 @@ export function useSeriesSearch(query: string, page = 1, limit = 24) {
 
   return useQuery({
     queryKey: ["search", normalizedQuery, page, limit],
-    queryFn: () => searchService.searchSeries(normalizedQuery, page, limit),
+    queryFn: ({ signal }) =>
+      searchService.searchSeries(normalizedQuery, page, limit, signal),
     enabled: normalizedQuery.length >= 2,
     staleTime: 1000 * 30,
   });
@@ -45,7 +46,8 @@ export function useSearchSuggestions(query: string, limit = 6) {
 
   return useQuery({
     queryKey: ["search", "suggestions", normalizedQuery, limit],
-    queryFn: () => searchService.getSuggestions(normalizedQuery, limit),
+    queryFn: ({ signal }) =>
+      searchService.getSuggestions(normalizedQuery, limit, signal),
     enabled: normalizedQuery.length >= 2,
     staleTime: 1000 * 60,
   });

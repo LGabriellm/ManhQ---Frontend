@@ -6,7 +6,7 @@ const DEFAULT_SEARCH_PAGE = 1;
 const DEFAULT_SEARCH_LIMIT = 24;
 const MAX_SEARCH_LIMIT = 50;
 const DEFAULT_SUGGESTIONS_LIMIT = 6;
-const MAX_SUGGESTIONS_LIMIT = 12;
+const MAX_SUGGESTIONS_LIMIT = 20;
 
 export interface SearchSeriesResponse {
   items: Series[];
@@ -27,14 +27,17 @@ function normalizePositiveInt(
   return Math.min(max, Math.max(1, Math.trunc(value)));
 }
 
-function normalizeSearchPayload(payload: unknown): SearchSeriesResponse {
+function normalizeSearchPayload(
+  payload: unknown,
+  limit: number,
+): SearchSeriesResponse {
   if (Array.isArray(payload)) {
-    const items = normalizeCoverList(payload as Series[]);
+    const items = normalizeCoverList(payload as Series[]).slice(0, limit);
     return {
       items,
       total: items.length,
       page: 1,
-      limit: items.length,
+      limit: Math.min(limit, items.length),
     };
   }
 
@@ -48,13 +51,13 @@ function normalizeSearchPayload(payload: unknown): SearchSeriesResponse {
     };
 
     const list = data.items ?? data.data ?? [];
-    const items = normalizeCoverList(list);
+    const items = normalizeCoverList(list).slice(0, limit);
 
     return {
       items,
       total: data.total ?? items.length,
       page: data.page ?? 1,
-      limit: data.limit ?? items.length,
+      limit: Math.min(data.limit ?? items.length, limit),
     };
   }
 
@@ -101,6 +104,7 @@ export const searchService = {
     query: string,
     page = DEFAULT_SEARCH_PAGE,
     limit = DEFAULT_SEARCH_LIMIT,
+    signal?: AbortSignal,
   ): Promise<SearchSeriesResponse> {
     const normalizedQuery = query.trim();
     const normalizedPage = normalizePositiveInt(page, DEFAULT_SEARCH_PAGE, 1000);
@@ -115,14 +119,16 @@ export const searchService = {
         page: normalizedPage,
         limit: normalizedLimit,
       },
+      signal,
     });
 
-    return normalizeSearchPayload(response.data);
+    return normalizeSearchPayload(response.data, normalizedLimit);
   },
 
   async getSuggestions(
     query: string,
     limit = DEFAULT_SUGGESTIONS_LIMIT,
+    signal?: AbortSignal,
   ): Promise<string[]> {
     const normalizedLimit = normalizePositiveInt(
       limit,
@@ -134,8 +140,9 @@ export const searchService = {
         q: query.trim(),
         limit: normalizedLimit,
       },
+      signal,
     });
 
-    return normalizeSuggestionPayload(response.data);
+    return normalizeSuggestionPayload(response.data).slice(0, normalizedLimit);
   },
 };

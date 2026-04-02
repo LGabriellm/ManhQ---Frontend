@@ -37,6 +37,7 @@ import type {
   UploadParsingCandidate,
   UploadRetryItemResponse,
   UploadSessionCreatedResponse,
+  UploadSessionCallbacks,
   UploadSessionDetail,
   UploadSessionDetailResponse,
   UploadSessionListResponse,
@@ -72,6 +73,61 @@ function normalizeDateString(value: unknown): string | null {
   }
 
   return value;
+}
+
+function normalizePathString(value: unknown, fallback: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return fallback;
+  }
+
+  const normalized = value.trim();
+
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    try {
+      const parsed = new URL(normalized);
+      return `${parsed.pathname}${parsed.search}`;
+    } catch {
+      return fallback;
+    }
+  }
+
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function buildDefaultCallbacks(
+  sessionId: string,
+  source: UploadSource,
+): UploadSessionCallbacks {
+  const draftPath =
+    source === "GOOGLE_DRIVE"
+      ? `/integrations/google-drive/drafts/${sessionId}`
+      : `/upload/drafts/${sessionId}`;
+
+  return {
+    poll: `/upload/sessions/${sessionId}`,
+    events: `/upload/sessions/${sessionId}/events`,
+    draft: draftPath,
+  };
+}
+
+function normalizeSessionCallbacks(
+  callbacks: unknown,
+  sessionId: string,
+  source: UploadSource,
+): UploadSessionCallbacks {
+  const fallback = buildDefaultCallbacks(sessionId, source);
+
+  if (!callbacks || typeof callbacks !== "object") {
+    return fallback;
+  }
+
+  const rawCallbacks = callbacks as Partial<UploadSessionCallbacks>;
+
+  return {
+    poll: normalizePathString(rawCallbacks.poll, fallback.poll),
+    events: normalizePathString(rawCallbacks.events, fallback.events),
+    draft: normalizePathString(rawCallbacks.draft, fallback.draft),
+  };
 }
 
 function normalizeNumber(value: unknown): number | null {
@@ -259,13 +315,14 @@ function normalizeUploadItem(item: UploadItem): UploadItem {
   };
 }
 
-function normalizeSessionSummary(
+export function normalizeUploadSessionSummary(
   session: UploadSessionSummary,
 ): UploadSessionSummary {
   const normalized = {
     ...session,
     cancelRequestedAt: normalizeDateString(session.cancelRequestedAt),
     canceledAt: normalizeDateString(session.canceledAt),
+    callbacks: normalizeSessionCallbacks(session.callbacks, session.id, session.source),
   };
 
   return {
@@ -275,12 +332,15 @@ function normalizeSessionSummary(
   };
 }
 
-function normalizeSessionDetail(session: UploadSessionDetail): UploadSessionDetail {
+export function normalizeUploadSessionDetail(
+  session: UploadSessionDetail,
+): UploadSessionDetail {
   const normalized = {
     ...session,
     items: session.items.map(normalizeUploadItem),
     cancelRequestedAt: normalizeDateString(session.cancelRequestedAt),
     canceledAt: normalizeDateString(session.canceledAt),
+    callbacks: normalizeSessionCallbacks(session.callbacks, session.id, session.source),
   };
 
   return {
@@ -297,10 +357,12 @@ function normalizeSessionStub<
     status: UploadSessionStatus;
     workflow?: Partial<UploadSessionSummary["workflow"]>;
     operational?: Partial<UploadSessionOperational> | null;
+    callbacks?: Partial<UploadSessionCallbacks> | null;
   },
 >(session: T): T & {
   workflow: UploadSessionSummary["workflow"];
   operational: UploadSessionSummary["operational"];
+  callbacks: UploadSessionCallbacks;
 } {
   return {
     ...session,
@@ -312,6 +374,7 @@ function normalizeSessionStub<
       status: session.status,
       operational: session.operational,
     }),
+    callbacks: normalizeSessionCallbacks(session.callbacks, session.id, session.source),
   };
 }
 
@@ -320,6 +383,16 @@ function normalizeDraft(draft: UploadDraft): UploadDraft {
     ...draft,
     items: draft.items.map(normalizeUploadItem),
     workflow: draft.workflow,
+    operational: resolveSessionOperational({
+      status: draft.sessionStatus,
+      operational: draft.operational,
+      items: draft.items,
+    }),
+    callbacks: normalizeSessionCallbacks(
+      draft.callbacks,
+      draft.id,
+      draft.source,
+    ),
   };
 
   return {
@@ -353,7 +426,7 @@ function normalizeConfirmResponse(
       rejected: response.totals?.rejected ?? response.rejected.length,
       skipped: response.totals?.skipped ?? response.skipped.length,
     },
-    session: normalizeSessionDetail(response.session),
+    session: normalizeUploadSessionDetail(response.session),
   };
 }
 
@@ -362,7 +435,9 @@ function normalizeCancelDraftResponse(
 ): UploadDraftCancelResponse {
   return {
     ...response,
-    session: response.session ? normalizeSessionDetail(response.session) : undefined,
+    session: response.session
+      ? normalizeUploadSessionDetail(response.session)
+      : undefined,
   };
 }
 
@@ -373,7 +448,7 @@ function normalizeItemCancellationResponse(
     ...response,
     cancellation: {
       ...response.cancellation,
-      session: normalizeSessionDetail(response.cancellation.session),
+      session: normalizeUploadSessionDetail(response.cancellation.session),
     },
   };
 }
@@ -390,7 +465,7 @@ export const uploadWorkflowService = {
 
     return {
       ...response.data,
-      sessions: response.data.sessions.map(normalizeSessionSummary),
+      sessions: response.data.sessions.map(normalizeUploadSessionSummary),
     };
   },
 
@@ -401,7 +476,20 @@ export const uploadWorkflowService = {
 
     return {
       ...response.data,
-      session: normalizeSessionDetail(response.data.session),
+      session: normalizeUploadSessionDetail(response.data.session),
+    };
+  },
+
+  async getSessionByCallbackPath(
+    callbackPath: string,
+  ): Promise<UploadSessionDetailResponse> {
+    const response = await api.get<UploadSessionDetailResponse>(
+      normalizePathString(callbackPath, "/upload/sessions"),
+    );
+
+    return {
+      ...response.data,
+      session: normalizeUploadSessionDetail(response.data.session),
     };
   },
 
@@ -473,6 +561,16 @@ export const uploadWorkflowService = {
   ): Promise<UploadDraftResponse | GoogleDriveDraftResponse> {
     const response = await api.get<UploadDraftResponse | GoogleDriveDraftResponse>(
       buildDraftRoute(source, draftId),
+    );
+
+    return normalizeDraftResponse(response.data);
+  },
+
+  async getDraftByCallbackPath(
+    callbackPath: string,
+  ): Promise<UploadDraftResponse | GoogleDriveDraftResponse> {
+    const response = await api.get<UploadDraftResponse | GoogleDriveDraftResponse>(
+      normalizePathString(callbackPath, "/upload/drafts"),
     );
 
     return normalizeDraftResponse(response.data);
@@ -557,7 +655,7 @@ export const uploadWorkflowService = {
 
     return {
       ...response.data,
-      session: normalizeSessionDetail(response.data.session),
+      session: normalizeUploadSessionDetail(response.data.session),
     };
   },
 
@@ -565,6 +663,7 @@ export const uploadWorkflowService = {
     returnUrl?: string;
     intent?: string;
     draftId?: string;
+    mode?: "popup" | "redirect" | "json";
   }): Promise<GoogleDriveAuthUrlResponse> {
     const response = await api.get<GoogleDriveAuthUrlResponse>(
       "/integrations/google-drive/auth-url",
@@ -657,7 +756,7 @@ export const uploadWorkflowService = {
 
     return {
       ...response.data,
-      session: normalizeSessionSummary(response.data.session),
+      session: normalizeUploadSessionSummary(response.data.session),
     };
   },
 
@@ -681,7 +780,7 @@ export const uploadWorkflowService = {
 
     return {
       ...response.data,
-      session: normalizeSessionSummary(response.data.session),
+      session: normalizeUploadSessionSummary(response.data.session),
     };
   },
 };

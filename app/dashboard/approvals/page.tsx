@@ -15,7 +15,7 @@ import {
   ITEM_STATUS_META,
   TONE_STYLES,
   formatDateTime,
-} from "@/lib/upload-workflow";
+} from "@/types/upload";
 import type { ApprovalItem, ApprovalsParams } from "@/types/api";
 import toast from "react-hot-toast";
 import {
@@ -48,7 +48,11 @@ function approvalTone(status: ApprovalItem["approval"]["status"]) {
 
 function formatDecision(item: ApprovalItem) {
   if (item.plan.decision === "EXISTING_SERIES") {
-    return item.suggestion.matchedSeriesTitle || item.plan.targetSeriesId || "Série existente";
+    return (
+      item.suggestion.matchedSeriesTitle ||
+      item.plan.targetSeriesId ||
+      "Série existente"
+    );
   }
 
   if (item.plan.decision === "NEW_SERIES") {
@@ -190,7 +194,8 @@ function ApprovalCard({
                 {approval.originalName}
               </p>
               <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                Enviado em {formatDateTime(approval.createdAt)} por {submitterLabel}
+                Enviado em {formatDateTime(approval.createdAt)} por{" "}
+                {submitterLabel}
               </p>
             </div>
 
@@ -274,9 +279,11 @@ function ApprovalCard({
                 <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4">
                   <p className="text-sm font-medium text-rose-100">Conflitos</p>
                   <ul className="mt-2 space-y-1 text-xs text-rose-50/90">
-                    {approval.suggestion.conflicts.slice(0, 4).map((conflict) => (
-                      <li key={conflict}>{conflict}</li>
-                    ))}
+                    {approval.suggestion.conflicts
+                      .slice(0, 4)
+                      .map((conflict) => (
+                        <li key={conflict}>{conflict}</li>
+                      ))}
                   </ul>
                 </div>
               )}
@@ -289,24 +296,27 @@ function ApprovalCard({
                 Ranking de candidatos
               </p>
               <div className="mt-3 grid gap-2">
-                {approval.suggestion.candidates.slice(0, 3).map((candidate, index) => (
-                  <div
-                    key={`${candidate.normalizedTitle}-${index}`}
-                    className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-[var(--color-textMain)]">
-                        {candidate.matchedSeriesTitle || candidate.normalizedTitle}
-                      </p>
-                      <p className="text-xs text-[var(--color-textDim)]">
-                        score {Math.round(candidate.combinedScore)}
+                {approval.suggestion.candidates
+                  .slice(0, 3)
+                  .map((candidate, index) => (
+                    <div
+                      key={`${candidate.normalizedTitle}-${index}`}
+                      className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2.5"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-[var(--color-textMain)]">
+                          {candidate.matchedSeriesTitle ||
+                            candidate.normalizedTitle}
+                        </p>
+                        <p className="text-xs text-[var(--color-textDim)]">
+                          score {Math.round(candidate.combinedScore)}
+                        </p>
+                      </div>
+                      <p className="mt-1 text-xs text-[var(--color-textDim)]">
+                        evidências: {candidate.evidenceSources.join(", ")}
                       </p>
                     </div>
-                    <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                      evidências: {candidate.evidenceSources.join(", ")}
-                    </p>
-                  </div>
-                ))}
+                  ))}
               </div>
             </div>
           )}
@@ -319,8 +329,11 @@ function ApprovalCard({
 
           {approval.result.seriesId && (
             <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-              Resultado atual: {approval.result.seriesTitle || approval.result.seriesId}
-              {approval.result.mediaId ? ` · mídia ${approval.result.mediaId}` : ""}
+              Resultado atual:{" "}
+              {approval.result.seriesTitle || approval.result.seriesId}
+              {approval.result.mediaId
+                ? ` · mídia ${approval.result.mediaId}`
+                : ""}
             </div>
           )}
 
@@ -389,9 +402,7 @@ function StatCard({
             {value}
           </p>
         </div>
-        <div
-          className={`rounded-2xl border p-3 ${TONE_STYLES[tone]}`}
-        >
+        <div className={`rounded-2xl border p-3 ${TONE_STYLES[tone]}`}>
           <Icon className="h-5 w-5" />
         </div>
       </div>
@@ -456,7 +467,8 @@ export default function ApprovalsPage() {
   const toggleAllVisible = () => {
     const visibleIds = filteredApprovals.map((approval) => approval.approvalId);
     const allSelected =
-      visibleIds.length > 0 && visibleIds.every((approvalId) => selectedIds.has(approvalId));
+      visibleIds.length > 0 &&
+      visibleIds.every((approvalId) => selectedIds.has(approvalId));
 
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -493,7 +505,9 @@ export default function ApprovalsPage() {
         await bulkRejectMutation.mutateAsync({ ids, reason });
       }
       toast.success(
-        ids.length === 1 ? "Item rejeitado." : `${ids.length} item(ns) rejeitado(s).`,
+        ids.length === 1
+          ? "Item rejeitado."
+          : `${ids.length} item(ns) rejeitado(s).`,
       );
       setSelectedIds((current) => {
         const next = new Set(current);
@@ -503,7 +517,8 @@ export default function ApprovalsPage() {
       setRejectingIds(null);
     } catch (error) {
       const message =
-        (error as { message?: string })?.message || "Falha ao rejeitar seleção.";
+        (error as { message?: string })?.message ||
+        "Falha ao rejeitar seleção.";
       toast.error(message);
     }
   };
@@ -582,11 +597,13 @@ export default function ApprovalsPage() {
       <div className="rounded-[28px] border border-white/8 bg-white/[0.03] p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2">
-            {([
-              ["PENDING", "Pendentes"],
-              ["APPROVED", "Aprovados"],
-              ["REJECTED", "Rejeitados"],
-            ] as const).map(([value, label]) => (
+            {(
+              [
+                ["PENDING", "Pendentes"],
+                ["APPROVED", "Aprovados"],
+                ["REJECTED", "Rejeitados"],
+              ] as const
+            ).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
@@ -717,7 +734,10 @@ export default function ApprovalsPage() {
               onClick={() =>
                 setParams((current) => ({
                   ...current,
-                  page: Math.min(pagination.totalPages, (current.page || 1) + 1),
+                  page: Math.min(
+                    pagination.totalPages,
+                    (current.page || 1) + 1,
+                  ),
                 }))
               }
               disabled={pagination.page >= pagination.totalPages}

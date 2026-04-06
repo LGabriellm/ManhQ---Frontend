@@ -1,10 +1,10 @@
 // Tipos da API ManhQ
-import type { MetadataSourceRecord } from "@/types/metadata-review";
+import type { MetadataSourceRecord } from "@/types/metadata";
 import type {
   UploadApprovalListItem,
   UploadJob,
   UploadSessionStatus,
-} from "@/types/upload-workflow";
+} from "@/types/upload";
 
 // ===== Autenticação =====
 export type SubscriptionStatus =
@@ -578,7 +578,7 @@ export interface ApiError {
   statusCode: number;
   // Campos adicionais para erros de validação
   error?: string; // Mensagem de erro específica (ex: validação de senha)
-  details?: string[]; // Array de detalhes dos erros
+  details?: string[] | Record<string, unknown>; // Array de detalhes ou objeto (ex: MAX_RETRIES_EXCEEDED)
   retryAfter?: number; // Tempo em ms para retry (rate limiting)
 }
 

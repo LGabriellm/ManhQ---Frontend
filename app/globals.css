@@ -257,8 +257,14 @@ button {
 .list-panel {
   border-radius: 1.75rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.14);
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.03),
+      rgba(255, 255, 255, 0.015)
+    ),
+    rgba(0, 0, 0, 0.12);
   min-height: 0;
+  overflow: hidden;
 }
 
 .list-row {
@@ -266,9 +272,12 @@ button {
   width: 100%;
   align-items: center;
   gap: 0.85rem;
-  padding: 0.9rem 1rem;
+  padding: 0.85rem 1rem;
   text-align: left;
-  transition: background-color 180ms ease, border-color 180ms ease;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
 }
 
 .list-row + .list-row {
@@ -276,18 +285,23 @@ button {
 }
 
 .list-row:hover {
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .list-row-active {
-  background: rgba(229, 9, 20, 0.12);
+  background: rgba(229, 9, 20, 0.11);
 }
 
 .scroll-region {
+  overflow-x: hidden;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  min-height: 0;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .scroll-region::-webkit-scrollbar {
@@ -309,7 +323,31 @@ button {
   gap: 0.35rem;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
   padding: 0.3rem 0.65rem;
   font-size: 0.72rem;
   font-weight: 600;
+}
+
+.upload-subsection {
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.upload-stat {
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.9rem 1rem;
+}
+
+.ui-btn-primary:focus-visible,
+.ui-btn-secondary:focus-visible,
+.ui-btn-ghost:focus-visible,
+.list-row:focus-visible,
+summary:focus-visible,
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 62%, white 38%);
+  outline-offset: 2px;
 }

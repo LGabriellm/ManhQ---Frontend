@@ -9,7 +9,7 @@ import {
   ITEM_STATUS_META,
   TONE_STYLES,
   formatDateTime,
-} from "@/lib/upload-workflow";
+} from "@/types/upload";
 import type { SubmissionItem } from "@/types/api";
 import {
   CheckCircle2,
@@ -38,7 +38,11 @@ function approvalTone(status: SubmissionItem["approval"]["status"]) {
 
 function destinationLabel(item: SubmissionItem) {
   if (item.plan.decision === "EXISTING_SERIES") {
-    return item.suggestion.matchedSeriesTitle || item.plan.targetSeriesId || "Série existente";
+    return (
+      item.suggestion.matchedSeriesTitle ||
+      item.plan.targetSeriesId ||
+      "Série existente"
+    );
   }
 
   if (item.plan.decision === "NEW_SERIES") {
@@ -118,7 +122,9 @@ function SubmissionCard({ item }: { item: SubmissionItem }) {
             Resultado
           </p>
           <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
-            {item.result.seriesTitle || item.result.seriesId || "Ainda sem série final"}
+            {item.result.seriesTitle ||
+              item.result.seriesId ||
+              "Ainda sem série final"}
           </p>
           <p className="mt-2 text-xs text-[var(--color-textDim)]">
             {item.result.mediaId
@@ -221,11 +227,13 @@ export default function SubmissionsPage() {
       <div className="rounded-[28px] border border-white/8 bg-white/[0.03] p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap gap-2">
-            {([
-              ["PENDING", "Pendentes", Clock],
-              ["APPROVED", "Aprovados", CheckCircle2],
-              ["REJECTED", "Rejeitados", XCircle],
-            ] as const).map(([value, label, Icon]) => (
+            {(
+              [
+                ["PENDING", "Pendentes", Clock],
+                ["APPROVED", "Aprovados", CheckCircle2],
+                ["REJECTED", "Rejeitados", XCircle],
+              ] as const
+            ).map(([value, label, Icon]) => (
               <button
                 key={value}
                 type="button"
@@ -296,7 +304,11 @@ export default function SubmissionsPage() {
             </button>
             <button
               type="button"
-              onClick={() => setPage((current) => Math.min(pagination.totalPages, current + 1))}
+              onClick={() =>
+                setPage((current) =>
+                  Math.min(pagination.totalPages, current + 1),
+                )
+              }
               disabled={pagination.page >= pagination.totalPages}
               className="rounded-full border border-white/10 p-2 text-[var(--color-textDim)] transition-colors hover:text-[var(--color-textMain)] disabled:opacity-30"
             >

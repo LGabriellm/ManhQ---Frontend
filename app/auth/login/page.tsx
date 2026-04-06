@@ -26,6 +26,9 @@ export default function LoginPage() {
   const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const [retryAfter, setRetryAfter] = useState<number | null>(null);
   const [isOffline, setIsOffline] = useState(false);
+  const normalizedEmail = email.trim();
+  const isSubmitDisabled =
+    isLoading || isOffline || !normalizedEmail || password.length === 0;
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
@@ -61,7 +64,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await login({ email, password });
+      const response = await login({ email: normalizedEmail, password });
       router.replace(getDefaultAuthenticatedPath(response.user));
     } catch (rawError) {
       const apiError = rawError as ApiError;
@@ -127,13 +130,17 @@ export default function LoginPage() {
         </div>
 
         {isOffline ? (
-          <div className="state-panel state-panel-warning mt-5 flex items-center gap-3">
+          <div
+            className="state-panel state-panel-warning mt-5 flex items-center gap-3"
+            role="status"
+            aria-live="polite"
+          >
             <WifiOff className="h-[18px] w-[18px] shrink-0" />
             <p className="text-sm">Sem conexão com a internet.</p>
           </div>
         ) : null}
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-[var(--color-textMain)]">
               Email
@@ -142,12 +149,17 @@ export default function LoginPage() {
               <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[var(--color-textDim)]/60" />
               <input
                 id="email"
+                name="email"
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="seu@email.com"
+                placeholder="seu@email.com…"
                 required
                 autoComplete="email"
+                inputMode="email"
+                spellCheck={false}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? "login-form-error" : undefined}
                 className="field-input rounded-2xl py-3 pl-11 pr-4 text-sm"
               />
             </div>
@@ -161,18 +173,23 @@ export default function LoginPage() {
               <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[var(--color-textDim)]/60" />
               <input
                 id="password"
+                name="password"
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="••••••••"
+                placeholder="••••••••…"
                 required
                 autoComplete="current-password"
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? "login-form-error" : undefined}
                 className="field-input rounded-2xl py-3 pl-11 pr-11 text-sm"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((current) => !current)}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-[var(--color-textDim)]/60 transition-colors hover:text-[var(--color-textMain)]"
+                aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                aria-pressed={showPassword}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-[var(--color-textDim)]/60 transition-colors hover:text-[var(--color-textMain)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]/40"
               >
                 {showPassword ? (
                   <EyeOff className="h-[18px] w-[18px]" />
@@ -184,7 +201,12 @@ export default function LoginPage() {
           </label>
 
           {error ? (
-            <div className="state-panel state-panel-danger">
+            <div
+              id="login-form-error"
+              className="state-panel state-panel-danger"
+              role="alert"
+              aria-live="polite"
+            >
               <p className="text-sm font-medium">{error}</p>
               {errorDetails.length > 0 ? (
                 <ul className="mt-2 space-y-1 text-xs">
@@ -206,7 +228,8 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={isLoading || isOffline}
+            disabled={isSubmitDisabled}
+            aria-busy={isLoading}
             className="ui-btn-primary w-full rounded-2xl px-4 py-3.5 text-sm font-semibold shadow-lg shadow-[var(--color-primary)]/20 disabled:opacity-50"
           >
             {isLoading ? (

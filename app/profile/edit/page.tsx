@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import axios from "axios";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -63,6 +64,23 @@ function passwordChecks(password: string) {
   };
 }
 
+function getActionErrorMessage(error: unknown, fallback: string) {
+  if (axios.isAxiosError(error)) {
+    const message =
+      typeof error.response?.data?.message === "string"
+        ? error.response.data.message
+        : typeof error.response?.data?.error === "string"
+          ? error.response.data.error
+          : undefined;
+
+    if (message) {
+      return message;
+    }
+  }
+
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export default function EditProfilePage() {
   const router = useRouter();
   const { user, refreshUser, logout } = useAuth();
@@ -91,6 +109,7 @@ export default function EditProfilePage() {
   const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const usernameRequestRef = useRef(0);
 
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
@@ -102,6 +121,7 @@ export default function EditProfilePage() {
 
   const [avatarBust, setAvatarBust] = useState<number | undefined>(undefined);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
 
   const orderedSessions = useMemo(() => {
     const list = Array.isArray(sessions.data) ? sessions.data : [];
@@ -119,11 +139,26 @@ export default function EditProfilePage() {
     checks.lower &&
     checks.number &&
     checks.special;
+  const trimmedUsername = username.trim();
+  const hasUsernameChanged = trimmedUsername !== currentUsername;
+  const canSaveUsername =
+    hasUsernameChanged &&
+    usernameStatus !== "checking" &&
+    usernameStatus !== "unavailable" &&
+    (trimmedUsername.length === 0 || trimmedUsername.length >= 3);
+
+  useEffect(() => {
+    return () => {
+      if (usernameDebounceRef.current) {
+        clearTimeout(usernameDebounceRef.current);
+      }
+      usernameRequestRef.current += 1;
+    };
+  }, []);
 
   const handleRefresh = async () => {
     try {
-      await refreshUser();
-      await account.refetch();
+      await Promise.all([refreshUser(), account.refetch(), sessions.refetch()]);
       setUsernameInput(undefined);
       setUsernameStatus("idle");
       setUsernameSuggestions([]);
@@ -137,21 +172,38 @@ export default function EditProfilePage() {
     setUsernameInput(value);
     setUsernameSuggestions([]);
 
-    if (value.trim() === currentUsername || value.trim().length < 3) {
+    const normalizedValue = value.trim();
+
+    if (usernameDebounceRef.current) {
+      clearTimeout(usernameDebounceRef.current);
+      usernameDebounceRef.current = null;
+    }
+
+    if (normalizedValue === currentUsername || normalizedValue.length < 3) {
+      usernameRequestRef.current += 1;
       setUsernameStatus("idle");
       return;
     }
 
     setUsernameStatus("checking");
-    if (usernameDebounceRef.current) clearTimeout(usernameDebounceRef.current);
+    const requestId = usernameRequestRef.current + 1;
+    usernameRequestRef.current = requestId;
     usernameDebounceRef.current = setTimeout(() => {
       accountService
-        .checkUsername(value)
+        .checkUsername(normalizedValue)
         .then((result) => {
+          if (usernameRequestRef.current !== requestId) {
+            return;
+          }
           setUsernameStatus(result.available ? "available" : "unavailable");
           setUsernameSuggestions(result.suggestions || []);
         })
-        .catch(() => setUsernameStatus("idle"));
+        .catch(() => {
+          if (usernameRequestRef.current !== requestId) {
+            return;
+          }
+          setUsernameStatus("idle");
+        });
     }, 400);
   };
 
@@ -161,18 +213,29 @@ export default function EditProfilePage() {
       return;
     }
 
+    if (!hasUsernameChanged) {
+      toast("Nenhuma alteração para salvar.");
+      return;
+    }
+
+    if (trimmedUsername.length > 0 && trimmedUsername.length < 3) {
+      toast.error("O username precisa ter pelo menos 3 caracteres.");
+      return;
+    }
+
     try {
       await updateProfile.mutateAsync({
-        username: username.trim() || undefined,
+        username: trimmedUsername || undefined,
       });
-      await refreshUser();
-      await account.refetch();
-      setUsernameInput(undefined);
+      await Promise.all([refreshUser(), account.refetch()]);
+      setUsernameInput(trimmedUsername);
       setUsernameStatus("idle");
       setUsernameSuggestions([]);
       toast.success("Username atualizado com sucesso.");
-    } catch {
-      toast.error("Não foi possível atualizar o username.");
+    } catch (error) {
+      toast.error(
+        getActionErrorMessage(error, "Não foi possível atualizar o username."),
+      );
     }
   };
 
@@ -197,8 +260,10 @@ export default function EditProfilePage() {
         confirmPassword: "",
       });
       toast.success("Senha alterada com sucesso.");
-    } catch {
-      toast.error("Não foi possível alterar a senha.");
+    } catch (error) {
+      toast.error(
+        getActionErrorMessage(error, "Não foi possível alterar a senha."),
+      );
     }
   };
 
@@ -212,31 +277,43 @@ export default function EditProfilePage() {
 
     try {
       await uploadAvatar.mutateAsync(file);
+      await Promise.all([refreshUser(), account.refetch()]);
       setAvatarBust(Date.now());
-      await account.refetch();
       toast.success("Foto de perfil atualizada.");
-    } catch {
-      toast.error("Não foi possível enviar a foto.");
+    } catch (error) {
+      toast.error(
+        getActionErrorMessage(error, "Não foi possível enviar a foto."),
+      );
     }
   };
 
   const deleteAvatar = async () => {
     try {
       await removeAvatar.mutateAsync();
+      await Promise.all([refreshUser(), account.refetch()]);
       setAvatarBust(Date.now());
-      await account.refetch();
       toast.success("Foto de perfil removida.");
-    } catch {
-      toast.error("Não foi possível remover a foto.");
+    } catch (error) {
+      toast.error(
+        getActionErrorMessage(error, "Não foi possível remover a foto."),
+      );
     }
   };
 
   const revokeOneSession = async (sessionId: string) => {
+    setPendingSessionId(sessionId);
     try {
       await revokeSession.mutateAsync(sessionId);
+      await sessions.refetch();
       toast.success("Sessão revogada.");
-    } catch {
-      toast.error("Não foi possível revogar essa sessão.");
+    } catch (error) {
+      toast.error(
+        getActionErrorMessage(error, "Não foi possível revogar essa sessão."),
+      );
+    } finally {
+      setPendingSessionId((current) =>
+        current === sessionId ? null : current,
+      );
     }
   };
 
@@ -246,8 +323,13 @@ export default function EditProfilePage() {
       await logout();
       toast.success("Todas as sessões foram encerradas.");
       router.replace("/auth/login");
-    } catch {
-      toast.error("Não foi possível encerrar todas as sessões.");
+    } catch (error) {
+      toast.error(
+        getActionErrorMessage(
+          error,
+          "Não foi possível encerrar todas as sessões.",
+        ),
+      );
     }
   };
 
@@ -379,9 +461,7 @@ export default function EditProfilePage() {
             <button
               type="button"
               onClick={() => void saveUsername()}
-              disabled={
-                updateProfile.isPending || usernameStatus === "unavailable"
-              }
+              disabled={updateProfile.isPending || !canSaveUsername}
               className="inline-flex w-full items-center justify-center gap-2 rounded-3xl bg-primary py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
             >
               {updateProfile.isPending ? (
@@ -537,6 +617,18 @@ export default function EditProfilePage() {
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Carregando sessões...
               </div>
+            ) : sessions.isError ? (
+              <div className="rounded-2xl border border-rose-400/20 bg-rose-500/10 px-4 py-5 text-sm text-rose-100">
+                <p className="font-medium">Não foi possível carregar as sessões.</p>
+                <button
+                  type="button"
+                  onClick={() => void sessions.refetch()}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl border border-rose-300/20 bg-black/20 px-3 py-2 text-xs font-semibold text-rose-100 transition-colors hover:bg-black/35"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Tentar novamente
+                </button>
+              </div>
             ) : orderedSessions.length ? (
               orderedSessions.map((session) => {
                 const DeviceIcon = deviceIcon(session.userAgent);
@@ -566,10 +658,10 @@ export default function EditProfilePage() {
                     <button
                       type="button"
                       onClick={() => void revokeOneSession(session.id)}
-                      disabled={revokeSession.isPending}
+                      disabled={pendingSessionId === session.id}
                       className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-black/20 px-3 py-2 text-xs font-semibold text-textMain transition-colors hover:bg-black/35 disabled:opacity-60"
                     >
-                      {revokeSession.isPending ? (
+                      {pendingSessionId === session.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       ) : (
                         <Trash2 className="h-3.5 w-3.5" />

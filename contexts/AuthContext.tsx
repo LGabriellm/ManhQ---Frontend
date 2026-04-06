@@ -6,6 +6,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -13,12 +14,18 @@ import {
   getDefaultAuthenticatedPath,
   hasSubscriptionAccess,
 } from "@/lib/subscription";
-import { getStoredUser, setStoredUser, clearStoredUser } from "@/services/api";
+import {
+  STORED_USER_EVENT,
+  clearStoredUser,
+  getStoredUser,
+  setStoredUser,
+} from "@/services/api";
 import { authService } from "@/services/auth.service";
 import type {
   AuthResponse,
   LoginRequest,
   RegisterRequest,
+  ApiError,
   SubscriptionState,
   SubscriptionView,
   User,
@@ -26,7 +33,6 @@ import type {
 
 interface AuthContextType {
   user: User | null;
-  token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
@@ -45,9 +51,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const token: string | null = null;
   const [isLoading, setIsLoading] = useState(true);
   const queryClient = useQueryClient();
+  const meRequestRef = useRef<Promise<User> | null>(null);
 
   const isAuthenticated = !!user;
   const isAdmin = isAuthenticated && user?.role === "ADMIN";
@@ -59,32 +65,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     subscription?.state ?? user?.subscriptionState ?? "inactive";
   const defaultAuthenticatedPath = getDefaultAuthenticatedPath(user);
 
+  const clearAuthState = useCallback(
+    (shouldClearQueries = false) => {
+      clearStoredUser();
+      setUser(null);
+
+      if (shouldClearQueries) {
+        queryClient.clear();
+      }
+    },
+    [queryClient],
+  );
+
+  const fetchFreshUser = useCallback(async () => {
+    if (!meRequestRef.current) {
+      meRequestRef.current = authService.me().finally(() => {
+        meRequestRef.current = null;
+      });
+    }
+
+    return meRequestRef.current;
+  }, []);
+
   // Carregar sessão na inicialização
   useEffect(() => {
     let isMounted = true;
 
     const loadUser = async () => {
+      const storedUser = getStoredUser();
+
+      if (storedUser && isMounted) {
+        setUser(storedUser);
+      }
+
       try {
-        const storedUser = getStoredUser();
-
-        if (storedUser && isMounted) {
-          setUser(storedUser);
+        const freshUser = await fetchFreshUser();
+        if (!isMounted) {
+          return;
         }
 
-        try {
-          const freshUser = await authService.me();
-          if (isMounted) {
-            setUser(freshUser);
-            setStoredUser(freshUser);
-          }
-        } catch {
-          if (isMounted) {
-            clearStoredUser();
-            setUser(null);
-          }
-        }
+        setUser(freshUser);
+        setStoredUser(freshUser);
       } catch (error) {
-        console.error("Erro ao carregar usuário:", error);
+        const apiError = error as ApiError;
+        if (apiError.statusCode === 401 && isMounted) {
+          clearAuthState(true);
+        }
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -96,6 +122,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       isMounted = false;
+    };
+  }, [clearAuthState, fetchFreshUser]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const syncStoredUser = () => {
+      setUser(getStoredUser());
+    };
+
+    const handleStoredUserChange = () => {
+      syncStoredUser();
+    };
+
+    window.addEventListener("storage", syncStoredUser);
+    window.addEventListener(STORED_USER_EVENT, handleStoredUserChange);
+
+    return () => {
+      window.removeEventListener("storage", syncStoredUser);
+      window.removeEventListener(STORED_USER_EVENT, handleStoredUserChange);
     };
   }, []);
 
@@ -118,38 +166,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     try {
       await authService.logout();
-    } catch (error) {
-      console.error("Erro ao fazer logout:", error);
     } finally {
       // Limpar estado local independentemente do resultado
-      clearStoredUser();
-      setUser(null);
-      queryClient.clear();
+      clearAuthState(true);
     }
-  }, [queryClient]);
+  }, [clearAuthState]);
 
   const refreshUser = useCallback(async () => {
     try {
-      const freshUser = await authService.me();
+      const freshUser = await fetchFreshUser();
       setUser(freshUser);
       setStoredUser(freshUser);
       return freshUser;
     } catch (error) {
-      console.error("Erro ao atualizar usuário:", error);
-      const apiError = error as { statusCode?: number };
+      const apiError = error as ApiError;
       if (apiError.statusCode === 401) {
-        clearStoredUser();
-        setUser(null);
-        queryClient.clear();
+        clearAuthState(true);
+        return null;
       }
-      return null;
+
+      return getStoredUser();
     }
-  }, [queryClient]);
+  }, [clearAuthState, fetchFreshUser]);
 
   const contextValue = useMemo<AuthContextType>(
     () => ({
       user,
-      token,
       isLoading,
       isAuthenticated,
       isAdmin,
@@ -176,7 +218,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       register,
       subscription,
       subscriptionState,
-      token,
       user,
     ],
   );

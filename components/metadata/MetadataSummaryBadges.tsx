@@ -2,68 +2,83 @@
 
 import type { AdminSeriesItem } from "@/types/api";
 
-interface MetadataSummaryBadgesProps {
-  series: Pick<AdminSeriesItem, "workType" | "metadata">;
-  compact?: boolean;
+function confidenceColor(label: "low" | "medium" | "high"): string {
+  switch (label) {
+    case "high":
+      return "text-emerald-300 bg-emerald-500/10 border-emerald-500/20";
+    case "medium":
+      return "text-amber-300 bg-amber-500/10 border-amber-500/20";
+    default:
+      return "text-rose-300 bg-rose-500/10 border-rose-500/20";
+  }
 }
 
 export function MetadataSummaryBadges({
   series,
   compact = false,
-}: MetadataSummaryBadgesProps) {
-  const badges: Array<{
-    label: string;
-    className: string;
-  }> = [];
+}: {
+  series: AdminSeriesItem;
+  compact?: boolean;
+}) {
+  const meta = series.metadata;
+  if (!meta) return null;
 
-  if (series.workType || series.metadata?.workType) {
-    badges.push({
-      label: (series.metadata?.workType || series.workType || "other").replaceAll(
-        "_",
-        " ",
-      ),
-      className:
-        "border-sky-500/20 bg-sky-500/10 text-sky-200",
-    });
-  }
-
-  if (series.metadata?.confidenceLabel) {
-    const confidenceMap = {
-      high: "border-emerald-500/20 bg-emerald-500/10 text-emerald-200",
-      medium: "border-amber-500/20 bg-amber-500/10 text-amber-200",
-      low: "border-rose-500/20 bg-rose-500/10 text-rose-200",
-    } as const;
-
-    badges.push({
-      label: `confiança ${series.metadata.confidenceLabel}`,
-      className: confidenceMap[series.metadata.confidenceLabel],
-    });
-  }
-
-  if (series.metadata?.reviewRequired) {
-    badges.push({
-      label: "revisão pendente",
-      className:
-        "border-amber-500/20 bg-amber-500/10 text-amber-200",
-    });
-  } else if (series.metadata) {
-    badges.push({
-      label: "revisado",
-      className:
-        "border-emerald-500/20 bg-emerald-500/10 text-emerald-200",
-    });
-  }
+  const badgeClass = compact
+    ? "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px]"
+    : "inline-flex items-center rounded-full border px-2 py-0.5 text-xs";
 
   return (
-    <div className={`flex flex-wrap gap-2 ${compact ? "mt-2" : "mt-3"}`}>
-      {badges.map((badge) => (
+    <div className="flex flex-wrap gap-1">
+      {meta.workType && (
         <span
-          key={badge.label}
-          className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium capitalize ${badge.className}`}
+          className={`${badgeClass} bg-white/5 text-[var(--color-textDim)] border-white/10`}
         >
-          {badge.label}
+          {meta.workType}
         </span>
-      ))}
+      )}
+
+      <span
+        className={`${badgeClass} border ${confidenceColor(meta.confidenceLabel)}`}
+      >
+        {Math.round(meta.confidence)}%
+      </span>
+
+      {meta.reviewRequired && (
+        <span
+          className={`${badgeClass} border bg-amber-500/10 text-amber-300 border-amber-500/20`}
+        >
+          Revisão
+        </span>
+      )}
+
+      {!compact && meta.canonicalGenres.length > 0 && (
+        <>
+          {meta.canonicalGenres.slice(0, 3).map((g) => (
+            <span
+              key={g}
+              className={`${badgeClass} bg-white/5 text-[var(--color-textDim)] border-white/10`}
+            >
+              {g}
+            </span>
+          ))}
+          {meta.canonicalGenres.length > 3 && (
+            <span
+              className={`${badgeClass} bg-white/5 text-[var(--color-textDim)] border-white/10`}
+            >
+              +{meta.canonicalGenres.length - 3}
+            </span>
+          )}
+        </>
+      )}
+
+      {!compact && meta.metadataSources.length > 0 && (
+        <span
+          className={`${badgeClass} bg-sky-500/10 text-sky-300 border-sky-500/20`}
+        >
+          {meta.metadataSources.length} fonte
+          {meta.metadataSources.length > 1 ? "s" : ""}
+        </span>
+      )}
     </div>
   );
 }

@@ -78,8 +78,18 @@ function GlassCard({
 export default function HomePage() {
   const { isAuthenticated, user } = useAuth();
   const authenticatedPath = getDefaultAuthenticatedPath(user);
+  const primaryCtaHref = isAuthenticated
+    ? authenticatedPath
+    : SUBSCRIPTION_CHECKOUT_URL;
+  const primaryCtaLabel = isAuthenticated ? "Abrir minha área" : "Começar agora";
+  const primaryCtaTarget = isAuthenticated ? undefined : "_blank";
+  const primaryCtaRel = isAuthenticated ? undefined : "noreferrer";
 
   const handleStartNowClick = (placement: string) => {
+    if (isAuthenticated) {
+      return;
+    }
+
     trackFacebookPixel("InitiateCheckout", {
       content_name: "Landing Page CTA",
       content_category: "subscription",
@@ -101,7 +111,7 @@ export default function HomePage() {
       <div className="pointer-events-none absolute inset-x-0 top-36 z-0 opacity-40 [mask-image:linear-gradient(to_bottom,transparent_0%,black_18%,black_78%,transparent_100%)]">
         <LandingCarousel
           sort="popular"
-          limit={28}
+          limit={24}
           speed={34}
           backgroundMode
           className="bg-transparent"
@@ -116,13 +126,13 @@ export default function HomePage() {
                 ManHQ
               </p>
               <a
-                href={SUBSCRIPTION_CHECKOUT_URL}
-                target="_blank"
-                rel="noreferrer"
+                href={primaryCtaHref}
+                target={primaryCtaTarget}
+                rel={primaryCtaRel}
                 onClick={() => handleStartNowClick("header")}
                 className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_38px_rgba(229,9,20,0.34)] transition-transform hover:scale-[1.02]"
               >
-                Começar agora
+                {primaryCtaLabel}
               </a>
             </div>
 
@@ -149,16 +159,16 @@ export default function HomePage() {
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                   <motion.a
-                    href={SUBSCRIPTION_CHECKOUT_URL}
-                    target="_blank"
-                    rel="noreferrer"
+                    href={primaryCtaHref}
+                    target={primaryCtaTarget}
+                    rel={primaryCtaRel}
                     onClick={() => handleStartNowClick("hero")}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.95 }}
                     className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)] transition-shadow duration-300 hover:shadow-[0_24px_56px_rgba(229,9,20,0.5)]"
                   >
                     <Play className="h-4 w-4 fill-white" />
-                    Começar agora
+                    {primaryCtaLabel}
                   </motion.a>
 
                   <Link href={isAuthenticated ? authenticatedPath : "/auth/login"}>
@@ -296,13 +306,13 @@ export default function HomePage() {
 
                   <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                     <a
-                      href={SUBSCRIPTION_CHECKOUT_URL}
-                      target="_blank"
-                      rel="noreferrer"
+                      href={primaryCtaHref}
+                      target={primaryCtaTarget}
+                      rel={primaryCtaRel}
                       onClick={() => handleStartNowClick("pricing")}
                       className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 text-center text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.33)]"
                     >
-                      Começar agora
+                      {primaryCtaLabel}
                     </a>
                     <Link
                       href={isAuthenticated ? authenticatedPath : "/auth/login"}
@@ -371,16 +381,16 @@ export default function HomePage() {
               </p>
               <div className="relative mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                 <motion.a
-                  href={SUBSCRIPTION_CHECKOUT_URL}
-                  target="_blank"
-                  rel="noreferrer"
+                  href={primaryCtaHref}
+                  target={primaryCtaTarget}
+                  rel={primaryCtaRel}
                   onClick={() => handleStartNowClick("final_cta")}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.95 }}
                   className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)]"
                 >
                   <Play className="h-4 w-4 fill-white" />
-                  Começar agora
+                  {primaryCtaLabel}
                 </motion.a>
                 <Link href={isAuthenticated ? authenticatedPath : "/auth/login"}>
                   <motion.div

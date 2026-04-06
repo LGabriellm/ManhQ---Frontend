@@ -10,6 +10,11 @@ import { searchService } from "@/services/search.service";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ContinueReadingParams, ProgressHistoryParams } from "@/types/api";
 
+interface SearchQueryOptions {
+  enabled?: boolean;
+  staleTime?: number;
+}
+
 // ===== SÉRIES =====
 export function useSeries() {
   return useQuery({
@@ -29,27 +34,40 @@ export function useSeriesById(id: string | undefined) {
 }
 
 // ===== BUSCA =====
-export function useSeriesSearch(query: string, page = 1, limit = 24) {
+export function useSeriesSearch(
+  query: string,
+  page = 1,
+  limit = 24,
+  options?: SearchQueryOptions,
+) {
   const normalizedQuery = query.trim();
 
   return useQuery({
     queryKey: ["search", normalizedQuery, page, limit],
     queryFn: ({ signal }) =>
       searchService.searchSeries(normalizedQuery, page, limit, signal),
-    enabled: normalizedQuery.length >= 2,
-    staleTime: 1000 * 30,
+    enabled: normalizedQuery.length >= 2 && (options?.enabled ?? true),
+    staleTime: options?.staleTime ?? 1000 * 30,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
-export function useSearchSuggestions(query: string, limit = 6) {
+export function useSearchSuggestions(
+  query: string,
+  limit = 6,
+  options?: SearchQueryOptions,
+) {
   const normalizedQuery = query.trim();
 
   return useQuery({
     queryKey: ["search", "suggestions", normalizedQuery, limit],
     queryFn: ({ signal }) =>
       searchService.getSuggestions(normalizedQuery, limit, signal),
-    enabled: normalizedQuery.length >= 2,
-    staleTime: 1000 * 60,
+    enabled: normalizedQuery.length >= 2 && (options?.enabled ?? true),
+    staleTime: options?.staleTime ?? 1000 * 60,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -59,6 +77,8 @@ export function useChapterInfo(chapterId: string | undefined) {
     queryKey: ["chapter-info", chapterId],
     queryFn: () => readerService.getChapterInfo(chapterId!),
     enabled: !!chapterId,
+    staleTime: 1000 * 60 * 10, // 10 minutos — dados do capítulo raramente mudam
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -117,15 +137,20 @@ export function useUserStats() {
     queryFn: () => statsService.getAll(),
     enabled: isAuthenticated && accessGranted,
     staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
 // ===== LISTAS DO USUÁRIO (FAVORITOS, LENDO, HISTÓRICO) =====
-export function useFavorites() {
+export function useFavorites(options?: SearchQueryOptions) {
   return useQuery({
     queryKey: ["favorites"],
     queryFn: () => userListsService.getFavorites(),
-    staleTime: 1000 * 60 * 3, // 3 minutos
+    enabled: options?.enabled ?? true,
+    staleTime: options?.staleTime ?? 1000 * 60 * 3,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -137,15 +162,19 @@ export function useToggleFavorite() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["favorites"] });
       queryClient.invalidateQueries({ queryKey: ["series-status"] });
+      queryClient.invalidateQueries({ queryKey: ["user-stats"] });
     },
   });
 }
 
-export function useReading() {
+export function useReading(options?: SearchQueryOptions) {
   return useQuery({
     queryKey: ["reading"],
     queryFn: () => userListsService.getReading(),
-    staleTime: 1000 * 60 * 3,
+    enabled: options?.enabled ?? true,
+    staleTime: options?.staleTime ?? 1000 * 60 * 3,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -157,6 +186,7 @@ export function useToggleReading() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reading"] });
       queryClient.invalidateQueries({ queryKey: ["series-status"] });
+      queryClient.invalidateQueries({ queryKey: ["user-stats"] });
     },
   });
 }
@@ -174,6 +204,7 @@ export function useSeriesStatus(seriesId: string | undefined) {
     queryKey: ["series-status", seriesId],
     queryFn: () => userListsService.getSeriesStatus(seriesId!),
     enabled: !!seriesId,
+    staleTime: 1000 * 60 * 3, // 3 minutos
   });
 }
 
@@ -183,6 +214,7 @@ export function useMediaProgress(mediaId: string | undefined) {
     queryKey: ["progress", mediaId],
     queryFn: () => progressService.getMediaProgress(mediaId!),
     enabled: !!mediaId,
+    staleTime: 1000 * 60 * 2, // 2 minutos
   });
 }
 
@@ -194,21 +226,33 @@ export function useSeriesProgress(seriesId: string | undefined) {
   });
 }
 
-export function useContinueReading(params?: ContinueReadingParams) {
+export function useContinueReading(
+  params?: ContinueReadingParams,
+  options?: SearchQueryOptions,
+) {
   const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: ["progress", "continue-reading", params],
     queryFn: () => progressService.getContinueReading(params),
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && (options?.enabled ?? true),
+    staleTime: options?.staleTime ?? 1000 * 60,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
-export function useProgressHistory(params?: ProgressHistoryParams) {
+export function useProgressHistory(
+  params?: ProgressHistoryParams,
+  options?: SearchQueryOptions,
+) {
   const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: ["progress", "history", params],
     queryFn: () => progressService.getHistory(params),
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && (options?.enabled ?? true),
+    staleTime: options?.staleTime ?? 1000 * 60,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -227,8 +271,10 @@ export function useMarkAsRead() {
   return useMutation({
     mutationFn: (mediaId: string) => progressService.markAsRead(mediaId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["progress"] });
-      queryClient.invalidateQueries({ queryKey: ["history"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "continue-reading"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "history"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "series-list"] });
+      queryClient.invalidateQueries({ queryKey: ["user-stats"] });
     },
   });
 }
@@ -239,8 +285,10 @@ export function useRemoveProgress() {
   return useMutation({
     mutationFn: (mediaId: string) => progressService.removeProgress(mediaId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["progress"] });
-      queryClient.invalidateQueries({ queryKey: ["history"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "continue-reading"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "history"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "series-list"] });
+      queryClient.invalidateQueries({ queryKey: ["user-stats"] });
     },
   });
 }
@@ -251,9 +299,11 @@ export function useMarkAllAsRead() {
   return useMutation({
     mutationFn: (seriesId: string) => progressService.markAllAsRead(seriesId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["progress"] });
-      queryClient.invalidateQueries({ queryKey: ["history"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "continue-reading"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "history"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "series-list"] });
       queryClient.invalidateQueries({ queryKey: ["series"] });
+      queryClient.invalidateQueries({ queryKey: ["user-stats"] });
     },
   });
 }
@@ -265,19 +315,24 @@ export function useRemoveSeriesProgress() {
     mutationFn: (seriesId: string) =>
       progressService.removeSeriesProgress(seriesId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["progress"] });
-      queryClient.invalidateQueries({ queryKey: ["history"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "continue-reading"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "history"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "series-list"] });
       queryClient.invalidateQueries({ queryKey: ["series"] });
+      queryClient.invalidateQueries({ queryKey: ["user-stats"] });
     },
   });
 }
 
 // ===== SESSÕES / PERFIL =====
-export function useSessions() {
+export function useSessions(options?: SearchQueryOptions) {
   return useQuery({
     queryKey: ["sessions"],
     queryFn: () => authService.getSessions(),
-    staleTime: 1000 * 30,
+    enabled: options?.enabled ?? true,
+    staleTime: options?.staleTime ?? 1000 * 30,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 

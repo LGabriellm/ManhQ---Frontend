@@ -28,7 +28,9 @@ export function MangaCard({
   return (
     <Link href={`/serie/${id}`}>
       <motion.div
-        whileTap={{ scale: 0.96 }}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.97 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
         className={cn(
           "relative group cursor-pointer",
           variant === "portrait" ? "w-full" : "flex gap-3",

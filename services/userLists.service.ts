@@ -2,18 +2,54 @@ import api from "./api";
 import type { Series, CollectionItem, SeriesStatus } from "@/types/api";
 import { normalizeCoverUrl } from "@/lib/utils";
 
+type CollectionResponse =
+  | CollectionItem[]
+  | { items?: CollectionItem[]; data?: CollectionItem[] };
+
+function extractItems(payload: CollectionResponse): CollectionItem[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload.items)) {
+    return payload.items;
+  }
+
+  if (Array.isArray(payload.data)) {
+    return payload.data;
+  }
+
+  return [];
+}
+
 // Função auxiliar para extrair séries de CollectionItems
 function extractSeriesFromItems(items: CollectionItem[]): Series[] {
-  return items
-    .filter((item) => item.series)
-    .map((item) => normalizeCoverUrl(item.series!));
+  const seenSeries = new Set<string>();
+
+  return items.flatMap((item) => {
+    if (!item.series) {
+      return [];
+    }
+
+    const normalizedSeries = normalizeCoverUrl(item.series);
+    if (seenSeries.has(normalizedSeries.id)) {
+      return [];
+    }
+
+    seenSeries.add(normalizedSeries.id);
+    return [normalizedSeries];
+  });
+}
+
+async function getCollectionSeries(path: string): Promise<Series[]> {
+  const response = await api.get<CollectionResponse>(path);
+  return extractSeriesFromItems(extractItems(response.data));
 }
 
 export const userListsService = {
   // ===== FAVORITOS =====
   async getFavorites(): Promise<Series[]> {
-    const response = await api.get<CollectionItem[]>("/favorites");
-    return extractSeriesFromItems(response.data);
+    return getCollectionSeries("/favorites");
   },
 
   async toggleFavorite(seriesId: string): Promise<void> {
@@ -22,8 +58,7 @@ export const userListsService = {
 
   // ===== LENDO =====
   async getReading(): Promise<Series[]> {
-    const response = await api.get<CollectionItem[]>("/reading");
-    return extractSeriesFromItems(response.data);
+    return getCollectionSeries("/reading");
   },
 
   async toggleReading(seriesId: string): Promise<void> {
@@ -32,8 +67,7 @@ export const userListsService = {
 
   // ===== HISTÓRICO =====
   async getHistory(): Promise<Series[]> {
-    const response = await api.get<CollectionItem[]>("/history");
-    return extractSeriesFromItems(response.data);
+    return getCollectionSeries("/history");
   },
 
   // ===== STATUS DA SÉRIE =====

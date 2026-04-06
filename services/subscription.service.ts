@@ -10,13 +10,21 @@ export interface SubscriptionResponse {
   subscription: SubscriptionView;
 }
 
+function normalizeSubscriptionResponse(payload: unknown): SubscriptionView {
+  if (payload && typeof payload === "object" && "subscription" in payload) {
+    const nestedPayload = (payload as { subscription?: unknown }).subscription;
+    return normalizeSubscriptionView(nestedPayload) ?? EMPTY_SUBSCRIPTION;
+  }
+
+  return normalizeSubscriptionView(payload) ?? EMPTY_SUBSCRIPTION;
+}
+
 export const subscriptionService = {
   async getCurrent(): Promise<SubscriptionResponse> {
-    const response = await api.get<{ subscription?: unknown }>("/subscription");
+    const response = await api.get<unknown>("/subscription");
 
     return {
-      subscription:
-        normalizeSubscriptionView(response.data.subscription) ?? EMPTY_SUBSCRIPTION,
+      subscription: normalizeSubscriptionResponse(response.data),
     };
   },
 
@@ -30,8 +38,7 @@ export const subscriptionService = {
 
     return {
       ...response.data,
-      subscription:
-        normalizeSubscriptionView(response.data.subscription) ?? EMPTY_SUBSCRIPTION,
+      subscription: normalizeSubscriptionResponse(response.data),
     };
   },
 };

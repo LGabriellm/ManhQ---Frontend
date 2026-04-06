@@ -13,6 +13,7 @@ export interface SearchSeriesResponse {
   total: number;
   page: number;
   limit: number;
+  totalPages: number;
 }
 
 function normalizePositiveInt(
@@ -29,6 +30,7 @@ function normalizePositiveInt(
 
 function normalizeSearchPayload(
   payload: unknown,
+  page: number,
   limit: number,
 ): SearchSeriesResponse {
   if (Array.isArray(payload)) {
@@ -36,8 +38,9 @@ function normalizeSearchPayload(
     return {
       items,
       total: items.length,
-      page: 1,
-      limit: Math.min(limit, items.length),
+      page,
+      limit,
+      totalPages: items.length > 0 ? 1 : 0,
     };
   }
 
@@ -48,55 +51,114 @@ function normalizeSearchPayload(
       total?: number;
       page?: number;
       limit?: number;
+      pagination?: {
+        page?: number;
+        limit?: number;
+        total?: number;
+        totalPages?: number;
+      };
     };
 
     const list = data.items ?? data.data ?? [];
     const items = normalizeCoverList(list).slice(0, limit);
+    const pagination = data.pagination;
+    const normalizedPage = normalizePositiveInt(
+      pagination?.page ?? data.page ?? page,
+      page,
+      1000,
+    );
+    const normalizedLimit = normalizePositiveInt(
+      pagination?.limit ?? data.limit ?? limit,
+      limit,
+      MAX_SEARCH_LIMIT,
+    );
+    const total = Math.max(
+      items.length,
+      Number.isFinite(pagination?.total) ? Number(pagination?.total) : 0,
+      Number.isFinite(data.total) ? Number(data.total) : 0,
+    );
+    const totalPages = Math.max(
+      total > 0 ? Math.ceil(total / normalizedLimit) : 0,
+      Number.isFinite(pagination?.totalPages)
+        ? Number(pagination?.totalPages)
+        : 0,
+    );
 
     return {
       items,
-      total: data.total ?? items.length,
-      page: data.page ?? 1,
-      limit: Math.min(data.limit ?? items.length, limit),
+      total,
+      page: normalizedPage,
+      limit: normalizedLimit,
+      totalPages,
     };
   }
 
   return {
     items: [],
     total: 0,
-    page: 1,
-    limit: 0,
+    page,
+    limit,
+    totalPages: 0,
   };
 }
 
 function normalizeSuggestionPayload(payload: unknown): string[] {
-  if (Array.isArray(payload)) {
-    if (payload.every((item) => typeof item === "string")) {
-      return payload as string[];
+  const seen = new Set<string>();
+  const suggestions: string[] = [];
+
+  const pushSuggestion = (value: unknown) => {
+    if (typeof value !== "string") {
+      return;
     }
 
-    return (payload as Series[])
-      .map((item) => item.title)
-      .filter((title): title is string => typeof title === "string");
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      return;
+    }
+
+    const dedupeKey = normalizedValue.toLocaleLowerCase("pt-BR");
+    if (seen.has(dedupeKey)) {
+      return;
+    }
+
+    seen.add(dedupeKey);
+    suggestions.push(normalizedValue);
+  };
+
+  if (Array.isArray(payload)) {
+    if (payload.every((item) => typeof item === "string")) {
+      payload.forEach((item) => pushSuggestion(item));
+      return suggestions;
+    }
+
+    (payload as Series[]).forEach((item) => pushSuggestion(item.title));
+    return suggestions;
   }
 
   if (payload && typeof payload === "object") {
     const data = payload as {
       suggestions?: string[];
-      items?: Series[];
+      items?: Array<Series | { id?: string; title?: string }>;
       data?: string[];
     };
 
-    if (Array.isArray(data.suggestions)) return data.suggestions;
-    if (Array.isArray(data.data)) return data.data;
+    if (Array.isArray(data.suggestions)) {
+      data.suggestions.forEach((item) => pushSuggestion(item));
+      return suggestions;
+    }
+
+    if (Array.isArray(data.data)) {
+      data.data.forEach((item) => pushSuggestion(item));
+      return suggestions;
+    }
+
     if (Array.isArray(data.items)) {
-      return data.items
-        .map((item) => item.title)
-        .filter((title): title is string => typeof title === "string");
+      data.items.forEach((item) => pushSuggestion(item.title));
+      return suggestions;
     }
   }
 
-  return [];
+  return suggestions;
 }
 
 export const searchService = {
@@ -113,6 +175,17 @@ export const searchService = {
       DEFAULT_SEARCH_LIMIT,
       MAX_SEARCH_LIMIT,
     );
+
+    if (!normalizedQuery) {
+      return {
+        items: [],
+        total: 0,
+        page: normalizedPage,
+        limit: normalizedLimit,
+        totalPages: 0,
+      };
+    }
+
     const response = await api.get<unknown>("/search", {
       params: {
         q: normalizedQuery,
@@ -122,7 +195,11 @@ export const searchService = {
       signal,
     });
 
-    return normalizeSearchPayload(response.data, normalizedLimit);
+    return normalizeSearchPayload(
+      response.data,
+      normalizedPage,
+      normalizedLimit,
+    );
   },
 
   async getSuggestions(
@@ -130,14 +207,20 @@ export const searchService = {
     limit = DEFAULT_SUGGESTIONS_LIMIT,
     signal?: AbortSignal,
   ): Promise<string[]> {
+    const normalizedQuery = query.trim();
     const normalizedLimit = normalizePositiveInt(
       limit,
       DEFAULT_SUGGESTIONS_LIMIT,
       MAX_SUGGESTIONS_LIMIT,
     );
+
+    if (!normalizedQuery) {
+      return [];
+    }
+
     const response = await api.get<unknown>("/search/suggestions", {
       params: {
-        q: query.trim(),
+        q: normalizedQuery,
         limit: normalizedLimit,
       },
       signal,

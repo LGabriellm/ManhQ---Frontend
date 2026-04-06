@@ -6,6 +6,20 @@ export interface CarouselCover {
   coverUrl: string;
 }
 
+interface RawCarouselCover {
+  id: string;
+  title: string;
+  coverUrl: string | null;
+}
+
+type CarouselCollectionResponse =
+  | RawCarouselCover[]
+  | {
+      items?: RawCarouselCover[];
+      data?: RawCarouselCover[];
+      results?: RawCarouselCover[];
+    };
+
 export interface CarouselCoversQueryParams {
   sort?: "recent" | "popular" | "random";
   limit?: number;
@@ -34,9 +48,9 @@ function normalizeCarouselSort(
   return DEFAULT_CAROUSEL_SORT;
 }
 
-function normalizeCoverUrl(rawUrl: string): string {
+function normalizeCoverUrl(rawUrl: string | null | undefined, fallbackId: string): string {
   if (!rawUrl) {
-    return rawUrl;
+    return `/api/public/series/${fallbackId}/cover`;
   }
 
   let normalizedInput = rawUrl.startsWith("/series/")
@@ -75,13 +89,35 @@ function normalizeCoverUrl(rawUrl: string): string {
   return `/api/${normalizedInput}`;
 }
 
-export function normalizeCarouselCovers(covers: CarouselCover[]): CarouselCover[] {
-  return covers.map((cover) => ({
+export function normalizeCarouselCovers(
+  covers: RawCarouselCover[],
+): CarouselCover[] {
+  return covers
+    .filter((cover) => typeof cover?.id === "string" && cover.id.trim() !== "")
+    .map((cover) => ({
     ...cover,
-    coverUrl: normalizeCoverUrl(
-      cover.coverUrl || `/public/series/${cover.id}/cover`,
-    ),
-  }));
+    coverUrl: normalizeCoverUrl(cover.coverUrl, cover.id),
+    }));
+}
+
+function extractCarouselCovers(payload: CarouselCollectionResponse): RawCarouselCover[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload.items)) {
+    return payload.items;
+  }
+
+  if (Array.isArray(payload.data)) {
+    return payload.data;
+  }
+
+  if (Array.isArray(payload.results)) {
+    return payload.results;
+  }
+
+  return [];
 }
 
 export const carouselService = {
@@ -94,15 +130,11 @@ export const carouselService = {
       limit: normalizeCarouselLimit(params.limit),
     };
 
-    const response = await api.get<CarouselCover[]>("/carousel/covers", {
+    const response = await api.get<CarouselCollectionResponse>("/carousel/covers", {
       params: normalizedParams,
       signal,
     });
 
-    if (!Array.isArray(response.data)) {
-      return [];
-    }
-
-    return normalizeCarouselCovers(response.data);
+    return normalizeCarouselCovers(extractCarouselCovers(response.data));
   },
 };

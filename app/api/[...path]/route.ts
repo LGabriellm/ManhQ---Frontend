@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.API_URL || "https://api.manhq.com.br";
 const FORWARDED_COOKIE_NAMES = ["manhq_session", "cf_clearance", "__cf_bm"];
+const FORWARDED_REQUEST_HEADER_NAMES = [
+  "accept",
+  "accept-language",
+  "cache-control",
+  "content-length",
+  "content-type",
+  "if-modified-since",
+  "if-none-match",
+  "if-range",
+  "last-event-id",
+  "pragma",
+  "range",
+  "user-agent",
+] as const;
 
 // Prefixos de path permitidos — rejeita qualquer rota fora desta lista
 const ALLOWED_PREFIXES = [
@@ -53,8 +67,11 @@ const ALLOWED_PREFIXES = [
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;
+const UPLOAD_TIMEOUT_MS = 120_000;
 const PUBLIC_CACHE_CONTROL =
   "public, max-age=60, s-maxage=300, stale-while-revalidate=1800";
+const PRIVATE_CACHE_CONTROL = "private, no-store, max-age=0, must-revalidate";
+const SSE_CACHE_CONTROL = "private, no-store, no-transform, max-age=0";
 
 function matchesAllowedPrefix(targetPath: string, prefix: string): boolean {
   if (prefix.endsWith("/")) {
@@ -84,7 +101,36 @@ function buildForwardedCookieHeader(req: NextRequest): string | null {
   return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
 }
 
-function normalizeBoundedInteger(value: string | null, min: number, max: number, fallback: number): string {
+function buildForwardedHeaders(
+  req: NextRequest,
+  forwardedCookieHeader: string | null,
+): Headers {
+  const headers = new Headers();
+
+  for (const headerName of FORWARDED_REQUEST_HEADER_NAMES) {
+    const value = req.headers.get(headerName);
+    if (value) {
+      headers.set(headerName, value);
+    }
+  }
+
+  if (forwardedCookieHeader) {
+    headers.set("cookie", forwardedCookieHeader);
+  }
+
+  headers.set("accept-encoding", "identity");
+  headers.set("x-forwarded-host", req.headers.get("host") || req.nextUrl.host);
+  headers.set("x-forwarded-proto", req.nextUrl.protocol.replace(":", ""));
+
+  return headers;
+}
+
+function normalizeBoundedInteger(
+  value: string | null,
+  min: number,
+  max: number,
+  fallback: number,
+): string {
   if (value === null || value === "") {
     return String(fallback);
   }
@@ -97,7 +143,10 @@ function normalizeBoundedInteger(value: string | null, min: number, max: number,
   return String(Math.min(max, Math.max(min, parsed)));
 }
 
-function applyQueryGuards(targetPath: string, searchParams: URLSearchParams): void {
+function applyQueryGuards(
+  targetPath: string,
+  searchParams: URLSearchParams,
+): void {
   if (targetPath.startsWith("carousel/covers")) {
     const sort = searchParams.get("sort");
     if (sort !== "recent" && sort !== "popular" && sort !== "random") {
@@ -157,10 +206,32 @@ function isUploadSessionEventStream(targetPath: string): boolean {
   return /^upload\/sessions\/[^/]+\/events$/.test(targetPath);
 }
 
-function rewriteSetCookieHeader(
-  cookie: string,
-  req: NextRequest,
-): string {
+function isUploadStagingPath(targetPath: string): boolean {
+  return (
+    targetPath === "upload/stage" ||
+    targetPath === "upload/workflow/series-stage" ||
+    targetPath.startsWith("upload/series/") ||
+    targetPath === "integrations/google-drive/stage"
+  );
+}
+
+function appendVaryHeader(headers: Headers, value: string): void {
+  const current = headers.get("vary");
+  if (!current) {
+    headers.set("vary", value);
+    return;
+  }
+
+  const values = current
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  if (!values.includes(value.toLowerCase())) {
+    headers.set("vary", `${current}, ${value}`);
+  }
+}
+
+function rewriteSetCookieHeader(cookie: string, req: NextRequest): string {
   const isHttps = req.nextUrl.protocol === "https:";
   let rewritten = cookie.replace(/;\s*Domain=[^;]+/gi, "");
 
@@ -212,38 +283,19 @@ async function handler(
   applyQueryGuards(targetPath, guardedSearchParams);
   url.search = guardedSearchParams.toString();
 
-  const headers = new Headers(req.headers);
-  const forwardedHost = req.headers.get("host") || req.nextUrl.host;
-  const forwardedProto = req.nextUrl.protocol.replace(":", "");
-
-  // Remove headers que não devem ser repassados
-  headers.delete("host");
-  headers.delete("connection");
-  headers.delete("cookie");
-  headers.delete("forwarded");
-  headers.delete("x-forwarded-for");
-  headers.delete("x-forwarded-host");
-  headers.delete("x-forwarded-proto");
-  headers.delete("x-real-ip");
-  headers.delete("content-length");
-  headers.delete("origin");
-  headers.delete("referer");
-
   const forwardedCookieHeader = buildForwardedCookieHeader(req);
-  if (forwardedCookieHeader) {
-    headers.set("cookie", forwardedCookieHeader);
-  }
-
-  headers.set("accept-encoding", "identity");
-  headers.set("x-forwarded-host", forwardedHost);
-  headers.set("x-forwarded-proto", forwardedProto);
+  const headers = buildForwardedHeaders(req, forwardedCookieHeader);
 
   const init: RequestInit = {
     method: req.method,
     headers,
     signal: isUploadSessionEventStream(targetPath)
       ? undefined
-      : AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      : AbortSignal.timeout(
+          isUploadStagingPath(targetPath)
+            ? UPLOAD_TIMEOUT_MS
+            : FETCH_TIMEOUT_MS,
+        ),
   };
 
   // Repassar body para métodos que suportam
@@ -255,6 +307,12 @@ async function handler(
 
   try {
     const response = await fetch(url.toString(), init);
+    const isEventStream = isUploadSessionEventStream(targetPath);
+    const isPublicCacheable = shouldApplyPublicCacheHeader(
+      req,
+      targetPath,
+      Boolean(forwardedCookieHeader),
+    );
 
     // Repassar response com headers originais
     const responseHeaders = new Headers(response.headers);
@@ -266,20 +324,26 @@ async function handler(
     responseHeaders.delete("set-cookie");
 
     for (const cookie of setCookies) {
-      responseHeaders.append(
-        "set-cookie",
-        rewriteSetCookieHeader(cookie, req),
-      );
+      responseHeaders.append("set-cookie", rewriteSetCookieHeader(cookie, req));
     }
 
-    if (
-      shouldApplyPublicCacheHeader(
-        req,
-        targetPath,
-        Boolean(forwardedCookieHeader),
-      )
-    ) {
+    if (isEventStream) {
+      responseHeaders.set("cache-control", SSE_CACHE_CONTROL);
+      responseHeaders.set("x-accel-buffering", "no");
+    } else if (isPublicCacheable) {
       responseHeaders.set("cache-control", PUBLIC_CACHE_CONTROL);
+      appendVaryHeader(responseHeaders, "Cookie");
+    } else if (forwardedCookieHeader || req.method !== "GET") {
+      responseHeaders.set("cache-control", PRIVATE_CACHE_CONTROL);
+      appendVaryHeader(responseHeaders, "Cookie");
+    }
+
+    // Preserve Retry-After on rate limit responses so clients know how long to back off
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("retry-after");
+      if (retryAfter) {
+        responseHeaders.set("retry-after", retryAfter);
+      }
     }
 
     return new Response(response.body, {
@@ -289,9 +353,25 @@ async function handler(
     });
   } catch (err) {
     if (err instanceof DOMException && err.name === "TimeoutError") {
-      return NextResponse.json({ error: "Gateway timeout" }, { status: 504 });
+      return NextResponse.json(
+        { error: "Gateway timeout" },
+        {
+          status: 504,
+          headers: {
+            "cache-control": PRIVATE_CACHE_CONTROL,
+          },
+        },
+      );
     }
-    return NextResponse.json({ error: "Backend unavailable" }, { status: 502 });
+    return NextResponse.json(
+      { error: "Backend unavailable" },
+      {
+        status: 502,
+        headers: {
+          "cache-control": PRIVATE_CACHE_CONTROL,
+        },
+      },
+    );
   }
 }
 

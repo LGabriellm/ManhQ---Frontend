@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import axios from "axios";
 import {
   AlertTriangle,
   ArrowRight,
@@ -12,11 +13,13 @@ import {
   RotateCcw,
   ShieldCheck,
 } from "lucide-react";
+import toast from "react-hot-toast";
 import { FeedbackState } from "@/components/FeedbackState";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   SUBSCRIPTION_CHECKOUT_URL,
   getDefaultAuthenticatedPath,
+  hasSubscriptionAccess,
 } from "@/lib/subscription";
 
 type RenewalPhase = "neutral" | "success" | "pending" | "cancelled" | "error";
@@ -86,9 +89,37 @@ function getRenewalCopy(phase: RenewalPhase) {
   }
 }
 
+function getRenewalErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const message =
+      typeof error.response?.data?.message === "string"
+        ? error.response.data.message
+        : undefined;
+
+    if (message) {
+      return message;
+    }
+
+    if (error.response?.status === 401) {
+      return "Faça login novamente para confirmar a atualização da assinatura.";
+    }
+
+    if (error.response?.status === 504) {
+      return "A confirmação está demorando mais do que o esperado. Tente novamente em instantes.";
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Não foi possível confirmar o status da assinatura agora.";
+}
+
 export default function RenewalPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const searchParamsString = searchParams.toString();
   const {
     accessGranted,
     defaultAuthenticatedPath,
@@ -97,38 +128,71 @@ export default function RenewalPage() {
     subscription,
   } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [verificationMessage, setVerificationMessage] = useState<string | null>(null);
+  const [statusAnnouncement, setStatusAnnouncement] = useState<string | null>(
+    null,
+  );
 
   const phase = useMemo(() => {
+    const currentSearchParams = new URLSearchParams(searchParamsString);
     return normalizePhaseValue(
-      searchParams.get("status") ||
-        searchParams.get("result") ||
-        searchParams.get("outcome") ||
-        searchParams.get("paymentStatus") ||
-        searchParams.get("checkoutStatus"),
+      currentSearchParams.get("status") ||
+        currentSearchParams.get("result") ||
+        currentSearchParams.get("outcome") ||
+        currentSearchParams.get("paymentStatus") ||
+        currentSearchParams.get("checkoutStatus"),
     );
-  }, [searchParams]);
+  }, [searchParamsString]);
 
-  const email = searchParams.get("email");
-  const subscriptionId = searchParams.get("subscriptionId");
-  const message = searchParams.get("message") || searchParams.get("error");
+  const email = useMemo(
+    () => new URLSearchParams(searchParamsString).get("email"),
+    [searchParamsString],
+  );
+  const subscriptionId = useMemo(
+    () => new URLSearchParams(searchParamsString).get("subscriptionId"),
+    [searchParamsString],
+  );
+  const message = useMemo(() => {
+    const currentSearchParams = new URLSearchParams(searchParamsString);
+    return (
+      currentSearchParams.get("message") || currentSearchParams.get("error")
+    );
+  }, [searchParamsString]);
   const copy = getRenewalCopy(phase);
 
   const verifyAccess = async () => {
     setIsRefreshing(true);
+    setVerificationMessage(null);
+    setStatusAnnouncement(null);
 
     try {
       const refreshedUser = await refreshUser();
 
       if (!refreshedUser) {
+        setVerificationMessage(
+          "Sua sessão expirou ou não pôde ser validada. Faça login novamente para continuar.",
+        );
         router.replace("/auth/login");
         return;
       }
 
-      router.replace(
-        refreshedUser.subscription?.accessGranted
-          ? getDefaultAuthenticatedPath(refreshedUser)
-          : "/subscription",
+      const hasAccess = hasSubscriptionAccess(refreshedUser);
+      const nextPath = hasAccess
+        ? getDefaultAuthenticatedPath(refreshedUser)
+        : "/subscription";
+
+      setStatusAnnouncement(
+        hasAccess
+          ? "Assinatura confirmada. Redirecionando para sua área de leitura."
+          : "A assinatura ainda não foi liberada. Abrindo a central para você acompanhar o status.",
       );
+      router.replace(
+        nextPath,
+      );
+    } catch (error) {
+      const resolvedMessage = getRenewalErrorMessage(error);
+      setVerificationMessage(resolvedMessage);
+      toast.error(resolvedMessage);
     } finally {
       setIsRefreshing(false);
     }
@@ -230,6 +294,7 @@ export default function RenewalPage() {
                 href={SUBSCRIPTION_CHECKOUT_URL}
                 target="_blank"
                 rel="noreferrer"
+                aria-label="Abrir novo checkout em uma nova aba"
                 className="ui-btn-primary px-5 py-3 text-sm font-semibold"
               >
                 <CreditCard className="h-4 w-4" />
@@ -240,6 +305,7 @@ export default function RenewalPage() {
                 type="button"
                 onClick={() => void verifyAccess()}
                 disabled={isRefreshing}
+                aria-busy={isRefreshing}
                 className="ui-btn-secondary px-5 py-3 text-sm font-semibold disabled:opacity-50"
               >
                 {isRefreshing ? (
@@ -310,6 +376,21 @@ export default function RenewalPage() {
             description="Abra um novo checkout ou faça login para conferir se a assinatura já mudou de estado."
             tone="danger"
           />
+        ) : null}
+
+        {verificationMessage ? (
+          <FeedbackState
+            icon={<AlertTriangle className="h-6 w-6" />}
+            title="Ainda não conseguimos validar sua assinatura"
+            description={verificationMessage}
+            tone="warning"
+          />
+        ) : null}
+
+        {statusAnnouncement ? (
+          <div className="sr-only" aria-live="polite">
+            {statusAnnouncement}
+          </div>
         ) : null}
       </div>
     </main>

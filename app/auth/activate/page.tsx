@@ -115,6 +115,11 @@ export default function ActivatePage() {
   );
   const isPasswordValid = passwordValidation.every((item) => item.ok);
   const passwordsMatch = password === confirmPassword;
+  const isSubmitDisabled =
+    isSubmitting ||
+    !displayName.trim() ||
+    !password ||
+    !confirmPassword;
   const expiresAtLabel = validation?.expiresAt
     ? formatSubscriptionDateTime(validation.expiresAt)
     : null;
@@ -399,7 +404,7 @@ export default function ActivatePage() {
             configurado do jeito certo.
           </p>
 
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-textMain">
                 Nome de exibição
@@ -407,11 +412,15 @@ export default function ActivatePage() {
               <div className="relative">
                 <UserRound className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-textDim/60" />
                 <input
+                  id="display-name"
+                  name="displayName"
                   type="text"
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
-                  placeholder="Como você quer aparecer"
+                  placeholder="Como você quer aparecer…"
                   required
+                  aria-invalid={Boolean(error)}
+                  aria-describedby={error ? "activate-form-error" : undefined}
                   className="field-input rounded-[24px] py-3 pl-11 pr-4 text-sm"
                 />
               </div>
@@ -422,15 +431,23 @@ export default function ActivatePage() {
                 Username
               </span>
               <input
+                id="username"
+                name="username"
                 type="text"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
-                placeholder={validation?.suggestedUsername || "seu_username"}
+                placeholder={`${validation?.suggestedUsername || "seu_username"}…`}
                 autoCapitalize="none"
                 autoCorrect="off"
+                spellCheck={false}
+                aria-invalid={Boolean(error)}
+                aria-describedby="activate-username-hint"
                 className="field-input rounded-[24px] px-4 py-3 text-sm"
               />
-              <p className="mt-2 text-xs leading-6 text-textDim">
+              <p
+                id="activate-username-hint"
+                className="mt-2 text-xs leading-6 text-textDim"
+              >
                 Opcional. Se preferir, use a sugestão inicial ou deixe em branco
                 para aceitarmos um username automático.
               </p>
@@ -443,18 +460,24 @@ export default function ActivatePage() {
               <div className="relative">
                 <Lock className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-textDim/60" />
                 <input
+                  id="activate-password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Crie uma senha segura"
+                  placeholder="Crie uma senha segura…"
                   required
                   autoComplete="new-password"
+                  aria-invalid={Boolean(error)}
+                  aria-describedby={error ? "activate-form-error" : undefined}
                   className="field-input rounded-[24px] py-3 pl-11 pr-11 text-sm"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((current) => !current)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-textDim/70 transition-colors hover:text-textMain"
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  aria-pressed={showPassword}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-textDim/70 transition-colors hover:text-textMain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 >
                   {showPassword ? (
                     <EyeOff className="h-[18px] w-[18px]" />
@@ -473,24 +496,43 @@ export default function ActivatePage() {
               <div className="relative">
                 <Lock className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-textDim/60" />
                 <input
+                  id="activate-confirm-password"
+                  name="confirmPassword"
                   type={showPassword ? "text" : "password"}
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
-                  placeholder="Repita a senha"
+                  placeholder="Repita a senha…"
                   required
                   autoComplete="new-password"
+                  aria-invalid={Boolean(error) || (confirmPassword.length > 0 && !passwordsMatch)}
+                  aria-describedby={
+                    confirmPassword && !passwordsMatch
+                      ? "activate-confirm-password-error"
+                      : error
+                        ? "activate-form-error"
+                        : undefined
+                  }
                   className="field-input rounded-[24px] py-3 pl-11 pr-4 text-sm"
                 />
               </div>
               {confirmPassword && !passwordsMatch ? (
-                <p className="mt-2 text-xs text-rose-300">
+                <p
+                  id="activate-confirm-password-error"
+                  className="mt-2 text-xs text-rose-300"
+                  role="alert"
+                >
                   A confirmação precisa ser exatamente igual à senha.
                 </p>
               ) : null}
             </label>
 
             {error ? (
-              <div className="state-panel state-panel-danger">
+              <div
+                id="activate-form-error"
+                className="state-panel state-panel-danger"
+                role="alert"
+                aria-live="polite"
+              >
                 <p className="text-sm font-semibold text-textMain">{error}</p>
                 {errorDetails.length > 0 ? (
                   <ul className="mt-3 space-y-1 text-xs">
@@ -507,7 +549,8 @@ export default function ActivatePage() {
 
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitDisabled}
+              aria-busy={isSubmitting}
               className="ui-btn-primary w-full rounded-[24px] px-5 py-3.5 text-sm font-semibold disabled:opacity-50"
             >
               {isSubmitting ? (

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import axios from "axios";
 import {
   AlertTriangle,
   ArrowRight,
@@ -48,6 +49,25 @@ function DetailItem({
   );
 }
 
+function getSubscriptionErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const message =
+      typeof error.response?.data?.message === "string"
+        ? error.response.data.message
+        : undefined;
+
+    if (message) {
+      return message;
+    }
+
+    if (error.response?.status === 504) {
+      return "O servidor demorou para responder. Tente novamente em instantes.";
+    }
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function SubscriptionPage() {
   const {
     accessGranted,
@@ -66,6 +86,14 @@ export default function SubscriptionPage() {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelImmediately, setCancelImmediately] = useState(false);
+  const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
+  const [refreshFeedback, setRefreshFeedback] = useState<{
+    tone: "info" | "warning" | "danger";
+    message: string;
+  } | null>(null);
+  const cancelDialogTitleId = useId();
+  const cancelDialogDescriptionId = useId();
+  const cancelReasonRef = useRef<HTMLTextAreaElement | null>(null);
 
   const subscription = useMemo(
     () => data?.subscription ?? sessionSubscription ?? EMPTY_SUBSCRIPTION,
@@ -87,6 +115,71 @@ export default function SubscriptionPage() {
     Boolean(subscription.actions.canCancel) &&
     subscription.state !== "inactive" &&
     !cancellationRequested;
+  const cancelReasonLength = cancelReason.trim().length;
+
+  useEffect(() => {
+    if (!showCancelDialog) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    cancelReasonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !cancelSubscription.isPending) {
+        setShowCancelDialog(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [cancelSubscription.isPending, showCancelDialog]);
+
+  const handleRefreshStatus = async () => {
+    setIsRefreshingStatus(true);
+    setRefreshFeedback(null);
+
+    try {
+      const [subscriptionResult, refreshedUser] = await Promise.all([
+        refetchSubscription(),
+        refreshUser(),
+      ]);
+
+      if (subscriptionResult.error) {
+        const message = getSubscriptionErrorMessage(
+          subscriptionResult.error,
+          "Não foi possível atualizar o status da assinatura agora.",
+        );
+        setRefreshFeedback({ tone: "warning", message });
+        toast.error(message);
+        return;
+      }
+
+      const message = refreshedUser
+        ? "Status da assinatura atualizado."
+        : "Verificação concluída. Faça login novamente se o acesso não aparecer.";
+
+      setRefreshFeedback({
+        tone: refreshedUser ? "info" : "warning",
+        message,
+      });
+      toast.success(message);
+    } catch (error) {
+      const message = getSubscriptionErrorMessage(
+        error,
+        "Não foi possível atualizar o status da assinatura agora.",
+      );
+      setRefreshFeedback({ tone: "danger", message });
+      toast.error(message);
+    } finally {
+      setIsRefreshingStatus(false);
+    }
+  };
 
   const submitCancellation = async () => {
     try {
@@ -102,8 +195,13 @@ export default function SubscriptionPage() {
       setShowCancelDialog(false);
       setCancelReason("");
       setCancelImmediately(false);
-    } catch {
-      toast.error("Não foi possível registrar o cancelamento agora.");
+    } catch (error) {
+      toast.error(
+        getSubscriptionErrorMessage(
+          error,
+          "Não foi possível registrar o cancelamento agora.",
+        ),
+      );
     }
   };
 
@@ -151,16 +249,32 @@ export default function SubscriptionPage() {
 
         <button
           type="button"
-          onClick={() => {
-            void refetchSubscription();
-            void refreshUser();
-          }}
-          className="ui-btn-secondary px-4 py-2.5 text-sm font-semibold"
+          onClick={() => void handleRefreshStatus()}
+          disabled={isRefreshingStatus}
+          className="ui-btn-secondary px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <RefreshCw className="h-4 w-4" />
-          Atualizar status
+          <RefreshCw
+            className={`h-4 w-4 ${isRefreshingStatus ? "animate-spin" : ""}`}
+          />
+          {isRefreshingStatus ? "Atualizando" : "Atualizar status"}
         </button>
       </header>
+
+      {refreshFeedback ? (
+        <section
+          className={`state-panel ${
+            refreshFeedback.tone === "danger"
+              ? "state-panel-danger"
+              : refreshFeedback.tone === "warning"
+                ? "state-panel-warning"
+                : "state-panel-info"
+          }`}
+          role={refreshFeedback.tone === "danger" ? "alert" : "status"}
+          aria-live="polite"
+        >
+          <p className="text-sm font-medium">{refreshFeedback.message}</p>
+        </section>
+      ) : null}
 
       <section className="surface-panel rounded-[32px] p-6 sm:p-7">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -280,32 +394,56 @@ export default function SubscriptionPage() {
 
           <div className="mt-5 space-y-3">
             {canRenew ? (
-              <a
-                href={renewalHref}
-                target={renewalHrefIsExternal ? "_blank" : undefined}
-                rel={renewalHrefIsExternal ? "noreferrer" : undefined}
-                className="surface-panel-muted block rounded-[24px] p-4 transition-colors hover:bg-white/6"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-semibold text-textMain">
-                      {subscription.state === "inactive"
-                        ? "Assinar agora"
-                        : "Renovar assinatura"}
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-textDim">
-                      {subscription.state === "inactive"
-                        ? "Abrir um novo checkout para liberar o acesso da conta."
-                        : "Use o link de renovação para evitar ou corrigir a interrupção do acesso."}
-                    </p>
-                  </div>
-                  {renewalHrefIsExternal ? (
+              renewalHrefIsExternal ? (
+                <a
+                  href={renewalHref}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`${
+                    subscription.state === "inactive"
+                      ? "Assinar agora"
+                      : "Renovar assinatura"
+                  } em uma nova aba`}
+                  className="surface-panel-muted block rounded-[24px] p-4 transition-colors hover:bg-white/6"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-textMain">
+                        {subscription.state === "inactive"
+                          ? "Assinar agora"
+                          : "Renovar assinatura"}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-textDim">
+                        {subscription.state === "inactive"
+                          ? "Abrir um novo checkout para liberar o acesso da conta."
+                          : "Use o link de renovação para evitar ou corrigir a interrupção do acesso."}
+                      </p>
+                    </div>
                     <ExternalLink className="h-4 w-4 text-textDim" />
-                  ) : (
+                  </div>
+                </a>
+              ) : (
+                <Link
+                  href={renewalHref}
+                  className="surface-panel-muted block rounded-[24px] p-4 transition-colors hover:bg-white/6"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-textMain">
+                        {subscription.state === "inactive"
+                          ? "Assinar agora"
+                          : "Renovar assinatura"}
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-textDim">
+                        {subscription.state === "inactive"
+                          ? "Abrir um novo checkout para liberar o acesso da conta."
+                          : "Use o link de renovação para evitar ou corrigir a interrupção do acesso."}
+                      </p>
+                    </div>
                     <ArrowRight className="h-4 w-4 text-textDim" />
-                  )}
-                </div>
-              </a>
+                  </div>
+                </Link>
+              )
             ) : null}
 
             {canCancel ? (
@@ -386,14 +524,26 @@ export default function SubscriptionPage() {
 
       {showCancelDialog ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="surface-panel w-full max-w-xl rounded-[28px] p-6 sm:p-7">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={cancelDialogTitleId}
+            aria-describedby={cancelDialogDescriptionId}
+            className="surface-panel w-full max-w-xl rounded-[28px] p-6 sm:p-7"
+          >
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="section-kicker">Cancelar</p>
-                <h2 className="mt-2 text-xl font-semibold text-textMain">
+                <h2
+                  id={cancelDialogTitleId}
+                  className="mt-2 text-xl font-semibold text-textMain"
+                >
                   Como deseja encerrar a assinatura?
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-textDim">
+                <p
+                  id={cancelDialogDescriptionId}
+                  className="mt-2 text-sm leading-6 text-textDim"
+                >
                   Você pode manter o acesso até o fim do período atual ou
                   encerrar tudo imediatamente.
                 </p>
@@ -451,11 +601,17 @@ export default function SubscriptionPage() {
                 Motivo do cancelamento
               </span>
               <textarea
+                ref={cancelReasonRef}
+                id="subscription-cancel-reason"
                 value={cancelReason}
                 onChange={(event) => setCancelReason(event.target.value)}
                 placeholder="Opcional, mas útil para melhorarmos a experiência."
+                maxLength={500}
                 className="field-textarea min-h-28 rounded-[22px] px-4 py-3 text-sm"
               />
+              <p className="mt-2 text-xs text-textDim" aria-live="polite">
+                {cancelReasonLength}/500 caracteres
+              </p>
             </label>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
@@ -470,6 +626,7 @@ export default function SubscriptionPage() {
                 type="button"
                 onClick={() => void submitCancellation()}
                 disabled={cancelSubscription.isPending}
+                aria-busy={cancelSubscription.isPending}
                 className="ui-btn-primary px-5 py-3 text-sm font-semibold disabled:opacity-50"
               >
                 {cancelSubscription.isPending ? (

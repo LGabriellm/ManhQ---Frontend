@@ -12,7 +12,12 @@ import {
   SquareX,
 } from "lucide-react";
 import { FeedbackState } from "@/components/FeedbackState";
-import { useAdminJob, useDeleteJob, useJobLogs, useRetryJob } from "@/hooks/useAdmin";
+import {
+  useAdminJob,
+  useDeleteJob,
+  useJobLogs,
+  useRetryJob,
+} from "@/hooks/useAdmin";
 import {
   OPERATIONAL_STATE_META,
   TONE_STYLES,
@@ -20,7 +25,7 @@ import {
   formatDurationMs,
   formatPercent,
   formatUploadStage,
-} from "@/lib/upload-workflow";
+} from "@/types/upload";
 
 function formatJobProgress(progress: unknown): string {
   if (typeof progress === "number") {
@@ -262,7 +267,9 @@ export default function DashboardJobDetailPage() {
 
           <div className="mt-5 grid gap-4 md:grid-cols-4">
             <div className="surface-panel-muted rounded-2xl p-4">
-              <p className="text-xs text-[var(--color-textDim)]">Estado da sessão</p>
+              <p className="text-xs text-[var(--color-textDim)]">
+                Estado da sessão
+              </p>
               <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
                 {job.upload.sessionStatus}
               </p>
@@ -280,14 +287,17 @@ export default function DashboardJobDetailPage() {
               </p>
             </div>
             <div className="surface-panel-muted rounded-2xl p-4">
-              <p className="text-xs text-[var(--color-textDim)]">Progresso persistido</p>
+              <p className="text-xs text-[var(--color-textDim)]">
+                Progresso persistido
+              </p>
               <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
                 {formatPercent(job.upload.operational.lastProgressPercent)}
               </p>
             </div>
           </div>
 
-          {(job.upload.operational.isStuck || job.upload.operational.isCancelRequested) && (
+          {(job.upload.operational.isStuck ||
+            job.upload.operational.isCancelRequested) && (
             <div
               className={`mt-4 rounded-2xl border p-4 text-sm ${
                 job.upload.operational.isStuck
@@ -302,7 +312,8 @@ export default function DashboardJobDetailPage() {
               </p>
               <p className="mt-2 text-xs">
                 {job.upload.operational.cancelReason ||
-                  OPERATIONAL_STATE_META[job.upload.operational.state].description}
+                  OPERATIONAL_STATE_META[job.upload.operational.state]
+                    .description}
               </p>
             </div>
           )}
@@ -315,7 +326,9 @@ export default function DashboardJobDetailPage() {
             <p className="section-kicker">Identificação</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div className="surface-panel-muted rounded-2xl p-4">
-                <p className="text-xs text-[var(--color-textDim)]">Nome do job</p>
+                <p className="text-xs text-[var(--color-textDim)]">
+                  Nome do job
+                </p>
                 <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
                   {job.name}
                 </p>
@@ -333,7 +346,9 @@ export default function DashboardJobDetailPage() {
                 </p>
               </div>
               <div className="surface-panel-muted rounded-2xl p-4">
-                <p className="text-xs text-[var(--color-textDim)]">Finalizado em</p>
+                <p className="text-xs text-[var(--color-textDim)]">
+                  Finalizado em
+                </p>
                 <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
                   {formatDateTime(job.finishedAt || job.processedAt)}
                 </p>
@@ -363,7 +378,9 @@ export default function DashboardJobDetailPage() {
             <p className="section-kicker">BullMQ</p>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <div className="surface-panel-muted rounded-2xl p-4">
-                <p className="text-xs text-[var(--color-textDim)]">Estado bruto</p>
+                <p className="text-xs text-[var(--color-textDim)]">
+                  Estado bruto
+                </p>
                 <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
                   {job.state}
                 </p>
@@ -375,13 +392,17 @@ export default function DashboardJobDetailPage() {
                 </p>
               </div>
               <div className="surface-panel-muted rounded-2xl p-4">
-                <p className="text-xs text-[var(--color-textDim)]">Stalled count</p>
+                <p className="text-xs text-[var(--color-textDim)]">
+                  Stalled count
+                </p>
                 <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
                   {job.stalledCount ?? "—"}
                 </p>
               </div>
               <div className="surface-panel-muted rounded-2xl p-4">
-                <p className="text-xs text-[var(--color-textDim)]">Attempts started</p>
+                <p className="text-xs text-[var(--color-textDim)]">
+                  Attempts started
+                </p>
                 <p className="mt-2 text-sm font-medium text-[var(--color-textMain)]">
                   {job.attemptsStarted ?? "—"}
                 </p>

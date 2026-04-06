@@ -1,5 +1,5 @@
 import api from "./api";
-import type { UploadSessionDetail } from "@/types/upload-workflow";
+import type { UploadSessionDetail } from "@/types/upload";
 import type {
   AdminDashboardResponse,
   AdminSeriesListResponse,
@@ -115,10 +115,15 @@ function flattenJobs(data: JobsResponse): AdminJob[] {
   if (jobs.delayed) all.push(...jobs.delayed);
   if (jobs.completed) all.push(...jobs.completed);
   if (jobs.failed) all.push(...jobs.failed);
-  return all.sort((left, right) => (right.createdAt || 0) - (left.createdAt || 0));
+  return all.sort(
+    (left, right) => (right.createdAt || 0) - (left.createdAt || 0),
+  );
 }
 
-function normalizeJobQueueStats(value: unknown, queue?: JobQueueStats["queue"]): JobQueueStats {
+function normalizeJobQueueStats(
+  value: unknown,
+  queue?: JobQueueStats["queue"],
+): JobQueueStats {
   const rawValue = value as Partial<JobQueueStats> | null | undefined;
 
   return {
@@ -139,12 +144,17 @@ function normalizeJobsStats(payload: unknown): JobsStats {
     | null
     | undefined;
   const source =
-    rawPayload?.uploads || rawPayload?.uploadIntake || rawPayload?.uploadPipeline
+    rawPayload?.uploads ||
+    rawPayload?.uploadIntake ||
+    rawPayload?.uploadPipeline
       ? rawPayload
       : rawPayload?.stats;
 
   const uploads = normalizeJobQueueStats(source?.uploads, "uploads");
-  const uploadIntake = normalizeJobQueueStats(source?.uploadIntake, "upload-intake");
+  const uploadIntake = normalizeJobQueueStats(
+    source?.uploadIntake,
+    "upload-intake",
+  );
   const scans = normalizeJobQueueStats(source?.scans, "scans");
 
   return {
@@ -196,7 +206,8 @@ function normalizeJobsStats(payload: unknown): JobsStats {
       },
       thresholds: {
         heartbeatTimeoutMs:
-          typeof source?.uploadPipeline?.thresholds?.heartbeatTimeoutMs === "number"
+          typeof source?.uploadPipeline?.thresholds?.heartbeatTimeoutMs ===
+          "number"
             ? source.uploadPipeline.thresholds.heartbeatTimeoutMs
             : 0,
         staleBefore:
@@ -758,9 +769,7 @@ export const adminService = {
     return response.data;
   },
 
-  async deleteJob(
-    jobId: string,
-  ): Promise<DeleteJobResponse> {
+  async deleteJob(jobId: string): Promise<DeleteJobResponse> {
     const response = await api.delete<DeleteJobResponse>(`/jobs/${jobId}`);
     return response.data;
   },
@@ -788,7 +797,9 @@ export const adminService = {
   },
 
   async getJobsStats(): Promise<JobsStats> {
-    const response = await api.get<JobsStats | { stats?: JobsStats }>("/jobs/stats");
+    const response = await api.get<JobsStats | { stats?: JobsStats }>(
+      "/jobs/stats",
+    );
     return normalizeJobsStats(response.data);
   },
 

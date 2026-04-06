@@ -1,7 +1,14 @@
 "use client";
 
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  type MouseEvent,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
@@ -12,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   BookOpen,
+  RefreshCcw,
 } from "lucide-react";
 import {
   useChapterInfo,
@@ -23,18 +31,41 @@ import { useFavorites } from "@/hooks/useFavoritesApi";
 import { AuthImage } from "@/components/AuthImage";
 import { CommentSection } from "@/components/community/CommentSection";
 
+interface ChapterNavigationItem {
+  id: string;
+  number: number;
+  title: string;
+}
+
+function clampPage(page: number, totalPages: number): number {
+  if (!Number.isFinite(page)) {
+    return 1;
+  }
+
+  return Math.min(totalPages, Math.max(1, Math.trunc(page)));
+}
+
 export default function ReaderPage() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
   const seriesId = params.id as string;
   const chapterId = params.chapter as string;
-  const urlPage = Number(searchParams.get("page")) || 0;
+  const rawPageParam = searchParams.get("page");
+  const hasExplicitPageParam =
+    rawPageParam !== null && rawPageParam.trim() !== "";
+  const urlPage = hasExplicitPageParam ? Number(rawPageParam) : null;
 
-  // Buscar informações do capítulo e da série da API
-  const { data: chapterData, isLoading, error } = useChapterInfo(chapterId);
+  const {
+    data: chapterData,
+    isLoading,
+    error,
+    refetch,
+    isFetching,
+  } = useChapterInfo(chapterId);
   const { data: seriesData } = useSeriesById(seriesId);
-  const { data: savedProgress } = useMediaProgress(chapterId);
+  const { data: savedProgress, isLoading: isProgressLoading } =
+    useMediaProgress(chapterId);
   const {
     isFavorite,
     toggleFavorite,
@@ -43,165 +74,360 @@ export default function ReaderPage() {
 
   const [showControls, setShowControls] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
-  const [currentPage, setCurrentPage] = useState(urlPage || 1);
+  const [currentPage, setCurrentPage] = useState(1);
   const [readingMode, setReadingMode] = useState<"vertical" | "horizontal">(
-    "vertical",
+    () => {
+      if (typeof window === "undefined") return "vertical";
+      const stored = localStorage.getItem("manhq:reader:mode");
+      return stored === "horizontal" ? "horizontal" : "vertical";
+    },
   );
   const containerRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const restoredForChapter = useRef<string | null>(null);
+  const latestPageRef = useRef(1);
 
-  // Resetar estado ao trocar de capítulo
-  useEffect(() => {
-    restoredForChapter.current = null;
-    queueMicrotask(() => {
-      setCurrentPage(urlPage || 1);
-    });
-  }, [chapterId, urlPage]);
+  const totalPages = chapterData?.pageCount ?? 1;
+  const chapters = useMemo(
+    () => seriesData?.medias ?? [],
+    [seriesData?.medias],
+  );
+  const currentChapterIndex = useMemo(
+    () => chapters.findIndex((chapter) => chapter.id === chapterId),
+    [chapterId, chapters],
+  );
+  const isHorizontal = readingMode === "horizontal";
+  const chapterTitle =
+    chapterData?.title || `Capítulo ${chapterData?.number ?? "-"}`;
 
-  const totalPages = chapterData?.pageCount || 1;
-
-  // Sincronização de progresso otimizada (debounce + flush no unmount)
   useProgressSync(chapterId, currentPage, totalPages);
 
-  // Encontrar capítulos anterior e próximo
-  const chapters = seriesData?.medias || [];
-  const currentChapterIndex = chapters.findIndex((ch) => ch.id === chapterId);
-  const prevChapter =
-    currentChapterIndex > 0 ? chapters[currentChapterIndex - 1] : null;
-  const nextChapter =
-    currentChapterIndex >= 0 && currentChapterIndex < chapters.length - 1
-      ? chapters[currentChapterIndex + 1]
-      : null;
-
-  // Restaurar posição de leitura: prioridade URL > progresso salvo
   useEffect(() => {
-    if (restoredForChapter.current === chapterId) return;
+    latestPageRef.current = currentPage;
+  }, [currentPage]);
 
-    // Prioridade 1: página da URL (navegação de "continuar lendo")
-    if (urlPage > 1) {
-      restoredForChapter.current = chapterId;
-      requestAnimationFrame(() => {
-        const target = document.getElementById(`page-${urlPage}`);
-        if (target) target.scrollIntoView({ behavior: "instant" });
+  const scrollToPage = useCallback(
+    (page: number, behavior: ScrollBehavior = "smooth") => {
+      const targetPage = clampPage(page, totalPages);
+      const target = document.getElementById(`page-${targetPage}`);
+      target?.scrollIntoView({
+        behavior,
+        block: "start",
+        inline: "start",
       });
+    },
+    [totalPages],
+  );
+
+  const resolveAdjacentChapter = useCallback(
+    (
+      target: { id: string; number: number } | null | undefined,
+      fallbackIndex: number,
+    ): ChapterNavigationItem | null => {
+      if (target) {
+        const chapter = chapters.find((item) => item.id === target.id);
+        return {
+          id: target.id,
+          number: target.number,
+          title: chapter?.title || `Capítulo ${target.number}`,
+        };
+      }
+
+      if (fallbackIndex >= 0 && fallbackIndex < chapters.length) {
+        const chapter = chapters[fallbackIndex];
+        return {
+          id: chapter.id,
+          number: chapter.number,
+          title: chapter.title || `Capítulo ${chapter.number}`,
+        };
+      }
+
+      return null;
+    },
+    [chapters],
+  );
+
+  const prevChapter = useMemo(
+    () =>
+      resolveAdjacentChapter(chapterData?.prevChapter, currentChapterIndex - 1),
+    [chapterData?.prevChapter, currentChapterIndex, resolveAdjacentChapter],
+  );
+  const nextChapter = useMemo(
+    () =>
+      resolveAdjacentChapter(chapterData?.nextChapter, currentChapterIndex + 1),
+    [chapterData?.nextChapter, currentChapterIndex, resolveAdjacentChapter],
+  );
+
+  useEffect(() => {
+    restoredForChapter.current = null;
+    setShowControls(true);
+    setShowSettings(false);
+  }, [chapterId]);
+
+  useEffect(() => {
+    if (!chapterData || restoredForChapter.current === chapterId) {
       return;
     }
 
-    // Prioridade 2: progresso salvo da API
-    if (savedProgress) {
-      restoredForChapter.current = chapterId;
-      if (!savedProgress.finished && savedProgress.page > 1) {
-        requestAnimationFrame(() => {
-          const target = document.getElementById(`page-${savedProgress.page}`);
-          if (target) target.scrollIntoView({ behavior: "instant" });
-        });
-      }
+    // When there's no explicit ?page= param, wait for savedProgress to load
+    if (!hasExplicitPageParam && isProgressLoading) {
+      return;
     }
-  }, [savedProgress, chapterId, urlPage]);
 
-  // Auto esconder controles
+    const targetPage = clampPage(
+      hasExplicitPageParam
+        ? (urlPage ?? 1)
+        : savedProgress && !savedProgress.finished
+          ? savedProgress.page
+          : 1,
+      totalPages,
+    );
+
+    restoredForChapter.current = chapterId;
+    latestPageRef.current = targetPage;
+    const frame = requestAnimationFrame(() => {
+      setCurrentPage(targetPage);
+      scrollToPage(targetPage, "auto");
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [
+    chapterData,
+    chapterId,
+    hasExplicitPageParam,
+    isProgressLoading,
+    savedProgress,
+    scrollToPage,
+    totalPages,
+    urlPage,
+  ]);
+
   useEffect(() => {
-    if (showControls) {
-      timeoutRef.current = setTimeout(() => {
-        setShowControls(false);
-      }, 3000);
+    if (!chapterData) {
+      return;
     }
+
+    const frame = requestAnimationFrame(() => {
+      scrollToPage(latestPageRef.current, "auto");
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [chapterData, readingMode, scrollToPage]);
+
+  useEffect(() => {
+    if (!showControls || showSettings) {
+      return;
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      setShowControls(false);
+    }, 3000);
 
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [showControls]);
+  }, [showControls, showSettings]);
 
-  // Detectar scroll para atualizar página atual
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || readingMode !== "vertical") return;
+    if (!container || totalPages < 1) {
+      return;
+    }
 
-    const handleScroll = () => {
-      const scrollTop = container.scrollTop;
-      const windowHeight = window.innerHeight;
-      const page = Math.floor(scrollTop / windowHeight) + 1;
-      setCurrentPage(Math.min(page, totalPages));
+    const observedPages = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-reader-page]"),
+    );
+    if (observedPages.length === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let bestMatch: { page: number; ratio: number } | null = null;
+
+        for (const entry of entries) {
+          if (!entry.isIntersecting) {
+            continue;
+          }
+
+          const rawPage = Number(
+            (entry.target as HTMLElement).dataset.pageNumber,
+          );
+          if (!Number.isFinite(rawPage)) {
+            continue;
+          }
+
+          if (!bestMatch || entry.intersectionRatio > bestMatch.ratio) {
+            bestMatch = { page: rawPage, ratio: entry.intersectionRatio };
+          }
+        }
+
+        if (bestMatch) {
+          setCurrentPage((previousPage) =>
+            previousPage === bestMatch?.page ? previousPage : bestMatch.page,
+          );
+        }
+      },
+      {
+        root: container,
+        threshold: [0.55, 0.7, 0.85],
+      },
+    );
+
+    for (const page of observedPages) {
+      observer.observe(page);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [chapterId, readingMode, totalPages]);
+
+  useEffect(() => {
+    localStorage.setItem("manhq:reader:mode", readingMode);
+  }, [readingMode]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
+      switch (event.key) {
+        case "ArrowRight":
+        case "ArrowDown":
+          if (latestPageRef.current < totalPages) {
+            scrollToPage(latestPageRef.current + 1, "smooth");
+          }
+          break;
+        case "ArrowLeft":
+        case "ArrowUp":
+          if (latestPageRef.current > 1) {
+            scrollToPage(latestPageRef.current - 1, "smooth");
+          }
+          break;
+        case "Escape":
+          setShowSettings(false);
+          break;
+        case "f":
+          setShowControls((value) => !value);
+          break;
+        default:
+          break;
+      }
     };
 
-    container.addEventListener("scroll", handleScroll);
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, [readingMode, totalPages]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [totalPages, scrollToPage]);
 
-  // Estado de loading
-  if (isLoading) {
-    return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
-      </div>
-    );
-  }
-
-  // Estado de erro
-  if (error || !chapterData) {
-    return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center px-4">
-        <div className="text-center">
-          <p className="text-white text-lg font-semibold mb-6">
-            Erro ao carregar capítulo
-          </p>
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={() => router.push(`/serie/${seriesId}`)}
-            className="flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl transition-all mx-auto shadow-lg shadow-primary/20 group"
-          >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform duration-200" />
-            <span>Voltar</span>
-          </motion.button>
-        </div>
-      </div>
-    );
-  }
-
-  const handleTap = (e: React.MouseEvent) => {
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const width = rect.width;
-
-    // Dividir tela em 3 áreas: esquerda, centro, direita
-    if (x < width * 0.25) {
-      // Esquerda - página anterior
-      if (currentPage > 1) {
-        const prevPage = document.getElementById(`page-${currentPage - 1}`);
-        prevPage?.scrollIntoView({ behavior: "smooth" });
-      }
-    } else if (x > width * 0.75) {
-      // Direita - próxima página
-      if (currentPage < totalPages) {
-        const nextPage = document.getElementById(`page-${currentPage + 1}`);
-        nextPage?.scrollIntoView({ behavior: "smooth" });
-      }
-    } else {
-      // Centro - toggle controles
-      setShowControls(!showControls);
-    }
-  };
+  const goToPage = useCallback(
+    (page: number) => {
+      scrollToPage(page, "smooth");
+    },
+    [scrollToPage],
+  );
 
   const goToNextPage = () => {
     if (currentPage < totalPages) {
-      const nextPage = document.getElementById(`page-${currentPage + 1}`);
-      nextPage?.scrollIntoView({ behavior: "smooth" });
+      goToPage(currentPage + 1);
     }
   };
 
   const goToPrevPage = () => {
     if (currentPage > 1) {
-      const prevPage = document.getElementById(`page-${currentPage - 1}`);
-      prevPage?.scrollIntoView({ behavior: "smooth" });
+      goToPage(currentPage - 1);
     }
   };
 
+  const handleTap = (event: MouseEvent<HTMLDivElement>) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return;
+    }
+
+    const x = event.clientX - rect.left;
+    const width = rect.width;
+
+    if (x < width * 0.25) {
+      if (currentPage > 1) {
+        goToPrevPage();
+      }
+      return;
+    }
+
+    if (x > width * 0.75) {
+      if (currentPage < totalPages) {
+        goToNextPage();
+      }
+      return;
+    }
+
+    setShowControls((value) => !value);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-black">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error || !chapterData) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-black px-4">
+        <div className="max-w-md text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary/80">
+            Leitura pública
+          </p>
+          <h1 className="mt-3 text-2xl font-bold text-white">
+            Não foi possível carregar este capítulo
+          </h1>
+          <p className="mt-3 text-sm text-white/60">
+            Tente atualizar o capítulo. Se o erro persistir, volte para a série
+            e abra outro capítulo.
+          </p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={() => void refetch()}
+              className="flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 font-semibold text-white transition-colors hover:bg-primary/90"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Tentar de novo
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={() => router.push(`/serie/${seriesId}`)}
+              className="flex items-center justify-center gap-2 rounded-xl bg-white/10 px-6 py-3 font-semibold text-white transition-colors hover:bg-white/15"
+            >
+              <ArrowLeft className="h-5 w-5" />
+              Voltar
+            </motion.button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed inset-0 bg-black select-none">
-      {/* Controles superiores */}
+    <div className="fixed inset-0 select-none bg-black">
       <AnimatePresence>
         {showControls && (
           <motion.div
@@ -209,73 +435,75 @@ export default function ReaderPage() {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -100, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed top-0 left-0 right-0 z-50 bg-linear-to-b from-black/95 via-black/70 to-transparent backdrop-blur-md"
+            className="fixed left-0 right-0 top-0 z-50 bg-linear-to-b from-black/95 via-black/70 to-transparent backdrop-blur-md"
           >
             <div className="flex items-center justify-between p-4">
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => router.push(`/serie/${seriesId}`)}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10 active:bg-white/20 backdrop-blur-sm transition-all group"
+                aria-label="Voltar para a série"
+                className="group flex items-center gap-2 rounded-xl px-3 py-2 transition-all hover:bg-white/10 active:bg-white/20"
               >
-                <ArrowLeft className="w-5 h-5 text-white group-hover:-translate-x-0.5 transition-transform duration-200" />
+                <ArrowLeft className="h-5 w-5 text-white transition-transform duration-200 group-hover:-translate-x-0.5" />
                 <span className="text-sm font-semibold text-white">Voltar</span>
               </motion.button>
 
-              <div className="flex-1 mx-4 min-w-0">
-                <h1 className="text-white font-semibold text-sm truncate">
-                  {chapterData.title || `Capítulo ${currentPage}`}
+              <div className="mx-4 min-w-0 flex-1">
+                <h1 className="truncate text-sm font-semibold text-white">
+                  {chapterTitle}
                 </h1>
-                <p className="text-white/60 text-xs truncate">
+                <p className="truncate text-xs text-white/60">
                   Página {currentPage} de {totalPages}
                 </p>
               </div>
 
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={() => setShowSettings(!showSettings)}
-                className="p-2.5 rounded-full hover:bg-white/10 transition-colors"
-              >
-                <Settings className="w-6 h-6 text-white" />
-              </motion.button>
+              <div className="flex items-center gap-2">
+                {isFetching && (
+                  <Loader2 className="h-4 w-4 animate-spin text-white/60" />
+                )}
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setShowSettings((value) => !value)}
+                  aria-label="Abrir configurações"
+                  className="rounded-full p-2.5 transition-colors hover:bg-white/10"
+                >
+                  <Settings className="h-6 w-6 text-white" />
+                </motion.button>
+              </div>
             </div>
 
-            {/* Barra de progresso melhorada */}
             <div className="px-4 pb-4">
               <div className="relative">
-                <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
                   <motion.div
-                    className="h-full bg-primary rounded-full"
+                    className="h-full rounded-full bg-primary"
                     initial={{ width: 0 }}
-                    animate={{
-                      width: `${(currentPage / totalPages) * 100}%`,
-                    }}
+                    animate={{ width: `${(currentPage / totalPages) * 100}%` }}
                     transition={{ duration: 0.3 }}
                   />
                 </div>
-                {/* Indicador de páginas */}
-                <div className="flex justify-between mt-2">
-                  <span className="text-white/40 text-xs">1</span>
-                  <span className="text-white/60 text-xs font-medium">
+                <div className="mt-2 flex justify-between">
+                  <span className="text-xs text-white/40">1</span>
+                  <span className="text-xs font-medium text-white/60">
                     {currentPage}
                   </span>
-                  <span className="text-white/40 text-xs">{totalPages}</span>
+                  <span className="text-xs text-white/40">{totalPages}</span>
                 </div>
               </div>
 
-              {/* Navegação entre capítulos no header */}
               {(prevChapter || nextChapter) && (
-                <div className="flex gap-2 mt-4">
+                <div className="mt-4 flex gap-2">
                   {prevChapter && (
                     <motion.button
                       whileTap={{ scale: 0.95 }}
                       onClick={() =>
                         router.push(`/reader/${seriesId}/${prevChapter.id}`)
                       }
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-lg transition-colors group"
+                      className="group flex flex-1 items-center justify-center gap-2 rounded-lg bg-white/10 px-4 py-2.5 backdrop-blur-sm transition-colors hover:bg-white/20"
                     >
-                      <ChevronLeft className="w-4 h-4 text-white group-hover:-translate-x-0.5 transition-transform" />
-                      <span className="text-white text-xs font-medium truncate">
-                        {prevChapter.title || `Cap. ${prevChapter.number}`}
+                      <ChevronLeft className="h-4 w-4 text-white transition-transform group-hover:-translate-x-0.5" />
+                      <span className="truncate text-xs font-medium text-white">
+                        {prevChapter.title}
                       </span>
                     </motion.button>
                   )}
@@ -285,12 +513,12 @@ export default function ReaderPage() {
                       onClick={() =>
                         router.push(`/reader/${seriesId}/${nextChapter.id}`)
                       }
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary/80 hover:bg-primary backdrop-blur-sm rounded-lg transition-colors group"
+                      className="group flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary/80 px-4 py-2.5 backdrop-blur-sm transition-colors hover:bg-primary"
                     >
-                      <span className="text-white text-xs font-medium truncate">
-                        {nextChapter.title || `Cap. ${nextChapter.number}`}
+                      <span className="truncate text-xs font-medium text-white">
+                        {nextChapter.title}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-white group-hover:translate-x-0.5 transition-transform" />
+                      <ChevronRight className="h-4 w-4 text-white transition-transform group-hover:translate-x-0.5" />
                     </motion.button>
                   )}
                 </div>
@@ -300,7 +528,6 @@ export default function ReaderPage() {
         )}
       </AnimatePresence>
 
-      {/* Botões laterais de navegação (desktop/tablet) */}
       <AnimatePresence>
         {showControls && (
           <>
@@ -311,9 +538,9 @@ export default function ReaderPage() {
                 exit={{ x: -100, opacity: 0 }}
                 transition={{ duration: 0.2 }}
                 onClick={goToPrevPage}
-                className="fixed left-4 top-1/2 -translate-y-1/2 z-40 p-3 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full transition-colors hidden md:block"
+                className="fixed left-4 top-1/2 z-40 hidden -translate-y-1/2 rounded-full bg-black/60 p-3 backdrop-blur-md transition-colors hover:bg-black/80 md:block"
               >
-                <ChevronLeft className="w-6 h-6 text-white" />
+                <ChevronLeft className="h-6 w-6 text-white" />
               </motion.button>
             )}
 
@@ -324,40 +551,48 @@ export default function ReaderPage() {
                 exit={{ x: 100, opacity: 0 }}
                 transition={{ duration: 0.2 }}
                 onClick={goToNextPage}
-                className="fixed right-4 top-1/2 -translate-y-1/2 z-40 p-3 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full transition-colors hidden md:block"
+                className="fixed right-4 top-1/2 z-40 hidden -translate-y-1/2 rounded-full bg-black/60 p-3 backdrop-blur-md transition-colors hover:bg-black/80 md:block"
               >
-                <ChevronRight className="w-6 h-6 text-white" />
+                <ChevronRight className="h-6 w-6 text-white" />
               </motion.button>
             )}
           </>
         )}
       </AnimatePresence>
 
-      {/* Área de leitura */}
       <div
         ref={containerRef}
-        className="h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide"
+        className={
+          isHorizontal
+            ? "flex h-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide"
+            : "h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide"
+        }
         onClick={handleTap}
       >
-        {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+        {Array.from({ length: totalPages }, (_, index) => index + 1).map(
           (pageNumber) => (
             <div
               key={pageNumber}
               id={`page-${pageNumber}`}
-              className="relative w-full h-screen snap-start flex items-center justify-center bg-black"
+              data-reader-page
+              data-page-number={pageNumber}
+              className={
+                isHorizontal
+                  ? "relative flex h-full w-full shrink-0 snap-start items-center justify-center bg-black"
+                  : "relative flex h-screen w-full snap-start items-center justify-center bg-black"
+              }
             >
               <AuthImage
                 chapterId={chapterId}
                 pageNumber={pageNumber}
                 alt={`Página ${pageNumber}`}
-                className="max-w-full max-h-full object-contain"
+                className="max-h-full max-w-full object-contain"
                 loading={pageNumber <= 3 ? "eager" : "lazy"}
               />
 
-              {/* Indicador de página (sutil) */}
               {!showControls && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded-full">
-                  <span className="text-white/60 text-xs font-medium">
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm">
+                  <span className="text-xs font-medium text-white/60">
                     {pageNumber} / {totalPages}
                   </span>
                 </div>
@@ -366,57 +601,57 @@ export default function ReaderPage() {
           ),
         )}
 
-        {/* Navegação entre capítulos */}
-        <div className="h-screen snap-start flex flex-col items-center justify-center gap-6 px-8 bg-linear-to-b from-black via-black/95 to-background">
-          <div className="text-center mb-4">
-            <p className="text-white text-lg font-semibold mb-2">
+        <div
+          className={
+            isHorizontal
+              ? "flex h-full w-full shrink-0 snap-start flex-col items-center justify-center gap-6 bg-linear-to-b from-black via-black/95 to-background px-8"
+              : "flex h-screen snap-start flex-col items-center justify-center gap-6 bg-linear-to-b from-black via-black/95 to-background px-8"
+          }
+        >
+          <div className="mb-4 text-center">
+            <p className="mb-2 text-lg font-semibold text-white">
               Fim do Capítulo
             </p>
-            <p className="text-white/60 text-sm">
-              {chapterData.title || "Você chegou ao final"}
-            </p>
+            <p className="text-sm text-white/60">{chapterTitle}</p>
           </div>
 
-          <div className="flex flex-col gap-3 w-full max-w-sm">
-            {/* Botão Próximo Capítulo */}
+          <div className="flex w-full max-w-sm flex-col gap-3">
             {nextChapter && (
               <motion.button
                 whileTap={{ scale: 0.97 }}
                 onClick={() =>
                   router.push(`/reader/${seriesId}/${nextChapter.id}`)
                 }
-                className="flex items-center justify-between gap-3 px-6 py-5 bg-primary hover:bg-primary/90 text-white font-semibold rounded-xl transition-all shadow-lg shadow-primary/20 group"
+                className="group flex items-center justify-between gap-3 rounded-xl bg-primary px-6 py-5 font-semibold text-white shadow-lg shadow-primary/20 transition-all hover:bg-primary/90"
               >
                 <div className="flex-1 text-left">
-                  <p className="text-xs text-white/70 mb-1">Próximo</p>
-                  <p className="text-sm font-bold truncate">
-                    {nextChapter.title || `Capítulo ${nextChapter.number}`}
+                  <p className="mb-1 text-xs text-white/70">Próximo</p>
+                  <p className="truncate text-sm font-bold">
+                    {nextChapter.title}
                   </p>
                 </div>
-                <ChevronRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                <ChevronRight className="h-6 w-6 transition-transform group-hover:translate-x-1" />
               </motion.button>
             )}
 
-            {/* Botão Capítulo Anterior */}
             {prevChapter && (
               <motion.button
                 whileTap={{ scale: 0.97 }}
                 onClick={() =>
                   router.push(`/reader/${seriesId}/${prevChapter.id}`)
                 }
-                className="flex items-center justify-between gap-3 px-6 py-5 bg-surface/50 hover:bg-surface/70 backdrop-blur-md text-white font-semibold rounded-xl transition-all border border-surface group"
+                className="group flex items-center justify-between gap-3 rounded-xl border border-surface bg-surface/50 px-6 py-5 font-semibold text-white backdrop-blur-md transition-all hover:bg-surface/70"
               >
-                <ChevronLeft className="w-6 h-6 group-hover:-translate-x-1 transition-transform" />
+                <ChevronLeft className="h-6 w-6 transition-transform group-hover:-translate-x-1" />
                 <div className="flex-1 text-right">
-                  <p className="text-xs text-white/70 mb-1">Anterior</p>
-                  <p className="text-sm font-bold truncate">
-                    {prevChapter.title || `Capítulo ${prevChapter.number}`}
+                  <p className="mb-1 text-xs text-white/70">Anterior</p>
+                  <p className="truncate text-sm font-bold">
+                    {prevChapter.title}
                   </p>
                 </div>
               </motion.button>
             )}
 
-            {/* Separador */}
             {(nextChapter || prevChapter) && (
               <div className="relative py-2">
                 <div className="absolute inset-0 flex items-center">
@@ -433,25 +668,21 @@ export default function ReaderPage() {
             <motion.button
               whileTap={{ scale: 0.97 }}
               onClick={() => router.push(`/serie/${seriesId}`)}
-              className="flex items-center justify-center gap-2 px-6 py-4 bg-surface/30 hover:bg-surface/50 text-white font-semibold rounded-xl transition-all border border-surface group"
+              className="group flex items-center justify-center gap-2 rounded-xl border border-surface bg-surface/30 px-6 py-4 font-semibold text-white transition-all hover:bg-surface/50"
             >
-              <BookOpen className="w-5 h-5 group-hover:scale-110 transition-transform" />
+              <BookOpen className="h-5 w-5 transition-transform group-hover:scale-110" />
               Ver Todos os Capítulos
-            </motion.button>
-
-            {/* Botão Voltar aos Detalhes */}
-            <motion.button
-              whileTap={{ scale: 0.97 }}
-              onClick={() => router.push(`/serie/${seriesId}`)}
-              className="flex items-center justify-center gap-2 px-6 py-3 text-white/60 hover:text-white font-medium transition-colors group"
-            >
-              <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-              Voltar aos Detalhes
             </motion.button>
           </div>
         </div>
 
-        <section className="min-h-screen snap-start bg-background px-4 py-10">
+        <section
+          className={
+            isHorizontal
+              ? "h-full w-full shrink-0 snap-start overflow-y-auto bg-background px-4 py-10"
+              : "min-h-screen snap-start bg-background px-4 py-10"
+          }
+        >
           <div className="mx-auto max-w-2xl">
             <CommentSection
               scope={{ type: "media", id: chapterId }}
@@ -461,7 +692,6 @@ export default function ReaderPage() {
         </section>
       </div>
 
-      {/* Painel de configurações */}
       <AnimatePresence>
         {showSettings && (
           <>
@@ -470,7 +700,7 @@ export default function ReaderPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/90 backdrop-blur-sm z-40"
+              className="fixed inset-0 z-40 bg-black/90 backdrop-blur-sm"
               onClick={() => setShowSettings(false)}
             />
 
@@ -479,57 +709,62 @@ export default function ReaderPage() {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: "100%", opacity: 0 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
-              className="fixed bottom-0 left-0 right-0 z-50 bg-surface rounded-t-3xl p-6 max-w-lg mx-auto shadow-2xl"
+              className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-w-lg rounded-t-3xl bg-surface p-6 shadow-2xl"
             >
-              <div className="flex items-center justify-between mb-6">
+              <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-textMain">
                   Configurações
                 </h2>
                 <motion.button
                   whileTap={{ scale: 0.9 }}
                   onClick={() => setShowSettings(false)}
-                  className="p-2 rounded-full hover:bg-background transition-colors"
+                  aria-label="Fechar configurações"
+                  className="rounded-full p-2 transition-colors hover:bg-background"
                 >
-                  <X className="w-6 h-6 text-textMain" />
+                  <X className="h-6 w-6 text-textMain" />
                 </motion.button>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-textMain block mb-3">
+                  <label className="mb-3 block text-sm font-medium text-textMain">
                     Modo de Leitura
                   </label>
                   <div className="flex gap-3">
                     <button
                       onClick={() => setReadingMode("vertical")}
-                      className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all ${
+                      className={`flex-1 rounded-xl px-4 py-3 font-medium transition-all ${
                         readingMode === "vertical"
                           ? "bg-primary text-white shadow-lg shadow-primary/20"
-                          : "bg-background text-textDim hover:text-textMain hover:bg-background/80"
+                          : "bg-background text-textDim hover:bg-background/80 hover:text-textMain"
                       }`}
                     >
                       Vertical
                     </button>
                     <button
                       onClick={() => setReadingMode("horizontal")}
-                      className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all ${
+                      className={`flex-1 rounded-xl px-4 py-3 font-medium transition-all ${
                         readingMode === "horizontal"
                           ? "bg-primary text-white shadow-lg shadow-primary/20"
-                          : "bg-background text-textDim hover:text-textMain hover:bg-background/80"
+                          : "bg-background text-textDim hover:bg-background/80 hover:text-textMain"
                       }`}
                     >
                       Horizontal
                     </button>
                   </div>
+                  <p className="mt-2 text-xs text-textDim">
+                    Vertical usa rolagem contínua. Horizontal transforma cada
+                    página em um painel com snap lateral.
+                  </p>
                 </div>
 
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={() => toggleFavorite(seriesId)}
                   disabled={isFavUpdating}
-                  className="w-full flex items-center justify-center gap-2 py-4 bg-background hover:bg-background/80 text-textMain font-medium rounded-xl transition-colors border border-surface disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-surface bg-background py-4 font-medium text-textMain transition-colors hover:bg-background/80 disabled:opacity-50"
                 >
-                  <BookmarkPlus className="w-5 h-5" />
+                  <BookmarkPlus className="h-5 w-5" />
                   {isFavorite(seriesId)
                     ? "Remover dos Favoritos"
                     : "Adicionar aos Favoritos"}

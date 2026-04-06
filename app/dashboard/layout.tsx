@@ -225,6 +225,7 @@ export default function DashboardLayout({
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
+            aria-label="Fechar menu lateral"
             className="text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
           >
             <X className="h-5 w-5" />
@@ -271,6 +272,7 @@ export default function DashboardLayout({
         <header className="sticky top-0 z-30 flex items-center h-16 px-4 bg-[var(--color-surface)]/80 backdrop-blur-xl border-b border-white/5 lg:hidden">
           <button
             onClick={() => setSidebarOpen(true)}
+            aria-label="Abrir menu lateral"
             className="text-[var(--color-textDim)] hover:text-[var(--color-textMain)] mr-4"
           >
             <Menu className="h-6 w-6" />

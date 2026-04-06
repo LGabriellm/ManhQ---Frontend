@@ -9,21 +9,22 @@ import {
   useRefreshSeriesMetadata,
   useReviewSeriesMetadata,
   useSeriesMetadata,
-} from "@/hooks/useMetadataReview";
+} from "@/hooks/useMetadata";
 import {
   buildMetadataReviewDraft,
   joinAliases,
   metadataConfidenceClass,
   parseAliases,
-} from "@/lib/metadata-review";
+} from "@/types/metadata";
 import type {
   AudienceCode,
   CanonicalGenre,
+  MetadataReviewDraft,
   MetadataSource,
   ReviewSeriesMetadataRequest,
   ThemeCode,
   WorkType,
-} from "@/types/metadata-review";
+} from "@/types/metadata";
 import toast from "react-hot-toast";
 import {
   ArrowLeft,
@@ -47,7 +48,9 @@ function FieldCard({
       <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--color-textDim)]/70">
         {label}
       </p>
-      <p className="mt-2 text-sm text-[var(--color-textMain)]">{value || "—"}</p>
+      <p className="mt-2 text-sm text-[var(--color-textMain)]">
+        {value || "—"}
+      </p>
     </div>
   );
 }
@@ -95,7 +98,8 @@ function ToggleGrid<TCode extends string>({
 export default function SeriesMetadataReviewPage() {
   const params = useParams<{ id: string }>();
   const seriesId = params.id;
-  const { data, isLoading, refetch, isRefetching } = useSeriesMetadata(seriesId);
+  const { data, isLoading, isError, refetch, isRefetching } =
+    useSeriesMetadata(seriesId);
   const { data: providersData } = useMetadataProviders();
   const refreshMutation = useRefreshSeriesMetadata();
   const reviewMutation = useReviewSeriesMetadata();
@@ -109,12 +113,11 @@ export default function SeriesMetadataReviewPage() {
   );
 
   const [draftOverride, setDraftOverride] =
-    useState<ReviewSeriesMetadataRequest | null>(null);
+    useState<MetadataReviewDraft | null>(null);
   const [aliasesOverride, setAliasesOverride] = useState<string | null>(null);
   const [searchOverride, setSearchOverride] = useState<string | null>(null);
-  const [workTypeHintOverride, setWorkTypeHintOverride] = useState<WorkType | null>(
-    null,
-  );
+  const [workTypeHintOverride, setWorkTypeHintOverride] =
+    useState<WorkType | null>(null);
   const draft = draftOverride ?? baseDraft;
   const aliasesInput =
     aliasesOverride ?? (draft ? joinAliases(draft.titleAliases || []) : "");
@@ -127,7 +130,7 @@ export default function SeriesMetadataReviewPage() {
   });
 
   const updateDraft = (
-    updater: (current: ReviewSeriesMetadataRequest) => ReviewSeriesMetadataRequest,
+    updater: (current: MetadataReviewDraft) => MetadataReviewDraft,
   ) => {
     setDraftOverride((current) => {
       const nextBase = current ?? baseDraft;
@@ -139,9 +142,7 @@ export default function SeriesMetadataReviewPage() {
     });
   };
 
-  const toggleValue = <
-    TCode extends CanonicalGenre | ThemeCode | AudienceCode,
-  >(
+  const toggleValue = <TCode extends CanonicalGenre | ThemeCode | AudienceCode>(
     field: "canonicalGenres" | "themes" | "audience",
     value: TCode,
   ) => {
@@ -219,7 +220,8 @@ export default function SeriesMetadataReviewPage() {
     if (!suggestion) {
       return {
         label: "Sem sugestão carregada",
-        className: "border-white/10 bg-white/[0.04] text-[var(--color-textDim)]",
+        className:
+          "border-white/10 bg-white/[0.04] text-[var(--color-textDim)]",
       };
     }
 
@@ -235,6 +237,24 @@ export default function SeriesMetadataReviewPage() {
       className: "border-emerald-500/20 bg-emerald-500/10 text-emerald-200",
     };
   }, [suggestion]);
+
+  if (isError) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
+        <p className="text-sm text-[var(--color-textDim)]">
+          Não foi possível carregar os metadados desta série.
+        </p>
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          className="inline-flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--color-primary)]/90"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
 
   if (isLoading || !draft || !metadata || !catalog) {
     return (
@@ -292,7 +312,9 @@ export default function SeriesMetadataReviewPage() {
           </button>
           <button
             type="button"
-            onClick={() => void refreshSuggestions({ searchTitle: searchQuery })}
+            onClick={() =>
+              void refreshSuggestions({ searchTitle: searchQuery })
+            }
             disabled={refreshMutation.isPending}
             className="inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--color-primary)]/90 disabled:opacity-50"
           >
@@ -319,7 +341,11 @@ export default function SeriesMetadataReviewPage() {
             <FieldCard label="Status" value={metadata.current.status} />
             <FieldCard
               label="Tags atuais"
-              value={metadata.current.tags.length ? metadata.current.tags.join(", ") : "—"}
+              value={
+                metadata.current.tags.length
+                  ? metadata.current.tags.join(", ")
+                  : "—"
+              }
             />
           </div>
         </section>
@@ -332,7 +358,10 @@ export default function SeriesMetadataReviewPage() {
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <FieldCard label="Título sugerido" value={suggestion.title} />
               <FieldCard label="Tipo sugerido" value={suggestion.workType} />
-              <FieldCard label="Fonte principal" value={suggestion.primarySource} />
+              <FieldCard
+                label="Fonte principal"
+                value={suggestion.primarySource}
+              />
               <FieldCard
                 label="Último enriquecimento"
                 value={suggestion.lastEnrichedAt}
@@ -425,7 +454,8 @@ export default function SeriesMetadataReviewPage() {
                         {result.title}
                       </p>
                       <p className="mt-1 text-xs text-[var(--color-textDim)]">
-                        {result.source} · score {Math.round(result.matchConfidence)}
+                        {result.source} · score{" "}
+                        {Math.round(result.matchConfidence)}
                       </p>
                       {result.description && (
                         <p className="mt-2 line-clamp-3 text-sm text-[var(--color-textDim)]">
@@ -689,7 +719,9 @@ export default function SeriesMetadataReviewPage() {
                       key={`${tag.label || tag.rawValue || index}-${index}`}
                       className="inline-flex rounded-full border border-white/8 bg-black/10 px-3 py-1.5 text-xs text-[var(--color-textDim)]"
                     >
-                      {String(tag.label || tag.rawValue || tag.mappedLabel || "tag")}
+                      {String(
+                        tag.label || tag.rawValue || tag.mappedLabel || "tag",
+                      )}
                     </span>
                   ))}
                 </div>

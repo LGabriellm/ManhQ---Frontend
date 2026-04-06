@@ -1,3 +1,7 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Metadata Review — Domain Types
+ * ───────────────────────────────────────────────────────────────────────────── */
+
 export type WorkType =
   | "comic"
   | "manga"
@@ -70,6 +74,15 @@ export type MetadataSource =
   | "comicvine"
   | "wikipedia";
 
+export interface MetadataSourceRecord {
+  source: MetadataSource;
+  externalId: string | number;
+  lastFetchedAt: string | null;
+  matchConfidence: number;
+  matchedTitle?: string;
+  sourceUrl?: string;
+}
+
 export interface MetadataCatalogOption<TCode extends string> {
   code: TCode;
   label: string;
@@ -77,10 +90,10 @@ export interface MetadataCatalogOption<TCode extends string> {
 }
 
 export interface MetadataCatalog {
-  workTypes: Array<MetadataCatalogOption<WorkType>>;
-  canonicalGenres: Array<MetadataCatalogOption<CanonicalGenre>>;
-  themes: Array<MetadataCatalogOption<ThemeCode>>;
-  audience: Array<MetadataCatalogOption<AudienceCode>>;
+  workTypes: MetadataCatalogOption<WorkType>[];
+  canonicalGenres: MetadataCatalogOption<CanonicalGenre>[];
+  themes: MetadataCatalogOption<ThemeCode>[];
+  audience: MetadataCatalogOption<AudienceCode>[];
 }
 
 export interface MetadataProviderInfo {
@@ -92,35 +105,6 @@ export interface MetadataProviderInfo {
   policyNotes: string;
   timeoutMs: number;
   available: boolean;
-}
-
-export interface MetadataProvidersResponse {
-  providers: MetadataProviderInfo[];
-  catalog: MetadataCatalog;
-}
-
-export interface MetadataCatalogResponse {
-  catalog: MetadataCatalog;
-}
-
-export interface MetadataSuggestionTag {
-  source?: MetadataSource;
-  label?: string;
-  rawValue?: string;
-  normalizedValue?: string | null;
-  mappedCode?: string | null;
-  mappedLabel?: string | null;
-  confidence?: number | null;
-  [key: string]: unknown;
-}
-
-export interface MetadataSourceRecord {
-  source: MetadataSource;
-  externalId?: string | number | null;
-  matchedTitle?: string | null;
-  sourceUrl?: string | null;
-  confidence?: number | null;
-  [key: string]: unknown;
 }
 
 export interface MetadataProviderCandidate {
@@ -136,7 +120,6 @@ export interface MetadataProviderCandidate {
   canonicalGenres: CanonicalGenre[];
   themes: ThemeCode[];
   audience: AudienceCode[];
-  sourceTags: MetadataSuggestionTag[];
   workTypeHint: WorkType;
   author: string | null;
   artist: string | null;
@@ -159,14 +142,12 @@ export interface MetadataProviderCandidate {
 
 export interface MetadataSuggestion {
   primarySource: MetadataSource | null;
-  primaryExternalId: string | number | null;
   title: string;
   titleEnglish: string | null;
   titleNative: string | null;
   titlePortuguese: string | null;
   titleAliases: string[];
   description: string | null;
-  descriptionSummary: string | null;
   author: string | null;
   artist: string | null;
   status: string | null;
@@ -174,23 +155,25 @@ export interface MetadataSuggestion {
   volumes: number | null;
   startYear: number | null;
   endYear: number | null;
-  averageScore: number | null;
-  popularity: number | null;
   coverUrlLarge: string | null;
   coverUrlMedium: string | null;
-  bannerUrl: string | null;
   isAdult: boolean;
   countryOfOrigin: string | null;
   workType: WorkType;
   canonicalGenres: CanonicalGenre[];
   themes: ThemeCode[];
   audience: AudienceCode[];
-  sourceTags: MetadataSuggestionTag[];
-  metadataSources: MetadataSourceRecord[];
   metadataConfidence: number;
   metadataConfidenceLabel: "low" | "medium" | "high";
-  confidenceReasons: string[];
   reviewRequired: boolean;
+  confidenceReasons: string[];
+  metadataSources: MetadataSourceRecord[];
+  sourceTags: Array<{
+    rawValue?: string;
+    label?: string;
+    mappedLabel?: string;
+    source?: string;
+  }>;
   providerCandidates: MetadataProviderCandidate[];
   legacyTags: string[];
 }
@@ -206,55 +189,84 @@ export interface SeriesMetadataView {
     workType: WorkType;
     tags: string[];
   };
-  suggestion: (MetadataSuggestion & {
-    lastEnrichedAt: string | null;
-    lastReviewedAt: string | null;
-  }) | null;
+  suggestion:
+    | (MetadataSuggestion & {
+        lastEnrichedAt: string | null;
+        lastReviewedAt: string | null;
+      })
+    | null;
 }
 
 export interface SeriesMetadataResponse {
   metadata: SeriesMetadataView;
-  catalog: MetadataCatalog;
-}
-
-export interface RefreshSeriesMetadataRequest {
-  externalId?: string | number;
-  source?: MetadataSource;
-  searchTitle?: string;
-  anilistId?: number;
-  workTypeHint?: WorkType;
-}
-
-export interface RefreshSeriesMetadataResponse {
-  success: true;
-  source: MetadataSource | null;
-  matched: string;
-  confidence: number;
-  metadata: SeriesMetadataView;
+  catalog?: MetadataCatalog;
 }
 
 export interface ReviewSeriesMetadataRequest {
+  title?: string;
+  description?: string;
+  author?: string;
+  artist?: string;
+  status?: string;
+  workType?: WorkType;
+  canonicalGenres?: CanonicalGenre[];
+  themes?: ThemeCode[];
+  audience?: AudienceCode[];
+  titleAliases?: string[];
+}
+
+export interface MetadataReviewDraft {
+  title: string;
+  description: string;
+  author: string;
+  artist: string;
+  status: string;
   workType: WorkType;
   canonicalGenres: CanonicalGenre[];
   themes: ThemeCode[];
   audience: AudienceCode[];
-  titleAliases?: string[];
-  description?: string | null;
-  author?: string | null;
-  artist?: string | null;
-  status?: string | null;
+  titleAliases: string[];
 }
 
-export interface ReviewSeriesMetadataResponse {
-  success: true;
-  metadata: SeriesMetadataView;
+export function buildMetadataReviewDraft(
+  metadata: SeriesMetadataView,
+): MetadataReviewDraft {
+  const suggestion = metadata.suggestion;
+  const current = metadata.current;
+  return {
+    title: current.title || suggestion?.title || "",
+    description: current.description || suggestion?.description || "",
+    author: current.author || suggestion?.author || "",
+    artist: current.artist || suggestion?.artist || "",
+    status: current.status || suggestion?.status || "",
+    workType: current.workType || suggestion?.workType || "manga",
+    canonicalGenres: suggestion?.canonicalGenres ?? [],
+    themes: suggestion?.themes ?? [],
+    audience: suggestion?.audience ?? [],
+    titleAliases: suggestion?.titleAliases ?? [],
+  };
 }
 
-export interface MetadataSearchResponse {
-  query: string;
-  workTypeHint: WorkType | null;
-  count: number;
-  sources: MetadataSource[];
-  suggestion: MetadataSuggestion | null;
-  results: MetadataProviderCandidate[];
+export function parseAliases(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function joinAliases(aliases: string[]): string {
+  return aliases.join(", ");
+}
+
+export function metadataConfidenceClass(
+  label: "low" | "medium" | "high",
+): string {
+  switch (label) {
+    case "high":
+      return "text-emerald-300";
+    case "medium":
+      return "text-amber-300";
+    case "low":
+      return "text-rose-300";
+  }
 }

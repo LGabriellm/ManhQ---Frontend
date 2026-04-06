@@ -60,7 +60,7 @@ export function ContinueReadingCard({
             {title}
           </h3>
           {chapterTitle && (
-            <p className="text-[11px] text-textDim mt-0.5 line-clamp-1">
+            <p className="text-[11px] text-textDim mt-0.5 line-clamp-1" title={chapterTitle}>
               {chapterTitle}
             </p>
           )}

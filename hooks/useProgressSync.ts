@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { readerService } from "@/services/reader.service";
 import { statsService } from "@/services/stats.service";
@@ -36,28 +36,15 @@ export function useProgressSync(
   const statsTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const highestPage = useRef(0);
 
-  // Resetar quando trocar de capítulo
-  if (chapterIdRef.current !== chapterId) {
-    // Flush stats do capítulo anterior antes de resetar
-    const elapsedSec = Math.round((Date.now() - lastStatsFlush.current) / 1000);
-    if (pagesReadInSession.current > 0 || elapsedSec > 2) {
-      statsService
-        .record({
-          pages: pagesReadInSession.current,
-          timeSpent: elapsedSec,
-          chapterCompleted: false,
-        })
-        .catch(() => {});
-    }
-
-    chapterIdRef.current = chapterId;
-    lastSentPage.current = 0;
-    pendingPage.current = 0;
-    pagesReadInSession.current = 0;
-    highestPage.current = 0;
-    sessionStartTime.current = Date.now();
-    lastStatsFlush.current = Date.now();
-  }
+  const invalidateProgressQueries = useCallback((chapter: string) => {
+    queryClient.invalidateQueries({ queryKey: ["progress", chapter] });
+    queryClient.invalidateQueries({
+      queryKey: ["progress", "continue-reading"],
+    });
+    queryClient.invalidateQueries({ queryKey: ["progress", "history"] });
+    queryClient.invalidateQueries({ queryKey: ["progress", "series-list"] });
+    queryClient.invalidateQueries({ queryKey: ["user-stats"] });
+  }, [queryClient]);
 
   // Função para enviar progresso ao backend
   const sendProgress = async (page: number, chapter: string) => {
@@ -72,6 +59,16 @@ export function useProgressSync(
     } finally {
       isSending.current = false;
     }
+  };
+
+  const flushProgressKeepalive = (chapter: string) => {
+    const page = pendingPage.current;
+    if (page < 1 || page === lastSentPage.current) {
+      return;
+    }
+
+    readerService.updateProgressKeepalive(chapter, { page }).catch(() => {});
+    lastSentPage.current = page;
   };
 
   // Flush de estatísticas de leitura
@@ -95,6 +92,50 @@ export function useProgressSync(
       // Silencia — não é crítico
     }
   };
+
+  const flushStatsKeepalive = () => {
+    const elapsedSec = Math.round((Date.now() - lastStatsFlush.current) / 1000);
+    const pages = pagesReadInSession.current;
+
+    if (pages === 0 && elapsedSec < 3) {
+      return;
+    }
+
+    lastStatsFlush.current = Date.now();
+    pagesReadInSession.current = 0;
+
+    statsService
+      .recordKeepalive({
+        pages,
+        timeSpent: elapsedSec,
+        chapterCompleted: false,
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (chapterIdRef.current === chapterId) {
+      return;
+    }
+
+    const previousChapterId = chapterIdRef.current;
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+
+    flushProgressKeepalive(previousChapterId);
+    flushStatsKeepalive();
+    invalidateProgressQueries(previousChapterId);
+
+    chapterIdRef.current = chapterId;
+    lastSentPage.current = 0;
+    pendingPage.current = 0;
+    pagesReadInSession.current = 0;
+    highestPage.current = 0;
+    sessionStartTime.current = Date.now();
+    lastStatsFlush.current = Date.now();
+  }, [chapterId, invalidateProgressQueries]);
 
   // Efeito principal: reage a mudanças de página
   // O backend auto-marca finished em ≥90%, então não precisamos chamar markAsRead separado
@@ -162,32 +203,10 @@ export function useProgressSync(
         statsTimer.current = null;
       }
 
-      // Envio imediato da página pendente se não foi salva ainda
-      const page = pendingPage.current;
       const chapter = chapterIdRef.current;
-      if (page > 0 && page !== lastSentPage.current) {
-        readerService.updateProgressKeepalive(chapter, { page }).catch(() => {});
-      }
-
-      // Flush final de stats com keepalive
-      const elapsedSec = Math.round(
-        (Date.now() - lastStatsFlush.current) / 1000,
-      );
-      const pages = pagesReadInSession.current;
-      if (pages > 0 || elapsedSec > 2) {
-        statsService
-          .recordKeepalive({
-            pages,
-            timeSpent: elapsedSec,
-            chapterCompleted: false,
-          })
-          .catch(() => {});
-      }
-
-      // Invalidar queries para que os dados estejam frescos ao voltar
-      queryClient.invalidateQueries({ queryKey: ["progress"] });
-      queryClient.invalidateQueries({ queryKey: ["history"] });
-      queryClient.invalidateQueries({ queryKey: ["stats"] });
+      flushProgressKeepalive(chapter);
+      flushStatsKeepalive();
+      invalidateProgressQueries(chapter);
     };
-  }, [chapterId, queryClient]);
+  }, [invalidateProgressQueries]);
 }

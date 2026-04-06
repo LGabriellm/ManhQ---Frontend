@@ -1,4 +1,5 @@
 import api from "./api";
+import { getCoverUrl } from "@/lib/utils";
 import type {
   MediaProgress,
   SeriesProgress,
@@ -42,17 +43,35 @@ function asBoolean(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function mapMediaProgress(raw: unknown): MediaProgress {
+  const payload =
+    raw && typeof raw === "object" && "progress" in raw
+      ? (raw as { progress?: unknown }).progress
+      : raw;
+  const item = toRecord(payload);
+
+  return {
+    page: asNumber(item.page, 1),
+    finished: asBoolean(item.finished),
+    startedAt: asString(item.startedAt),
+    lastReadAt: asString(item.lastReadAt),
+    readCount: asNumber(item.readCount),
+  };
+}
+
 function mapContinueReadingItem(raw: unknown): ContinueReadingItem {
   const item = toRecord(raw);
+  const mediaId = asString(item.mediaId);
+  const coverUrl = getCoverUrl(asString(item.coverUrl));
 
   return {
     progressId: asString(item.progressId) || null,
-    mediaId: asString(item.mediaId),
+    mediaId,
     mediaTitle: asString(item.mediaTitle),
     mediaNumber: asNumber(item.mediaNumber),
     seriesId: asString(item.seriesId),
     seriesTitle: asString(item.seriesTitle),
-    coverUrl: asString(item.coverUrl),
+    coverUrl,
     page: asNumber(item.page),
     pageCount: asNumber(item.pageCount),
     percent: asNumber(item.percent),
@@ -65,6 +84,7 @@ function mapContinueReadingItem(raw: unknown): ContinueReadingItem {
 
 function mapHistoryItem(raw: unknown): ProgressHistoryItem {
   const item = toRecord(raw);
+  const coverUrl = getCoverUrl(asString(item.coverUrl));
 
   return {
     progressId: asString(item.progressId) || asString(item.id),
@@ -73,7 +93,7 @@ function mapHistoryItem(raw: unknown): ProgressHistoryItem {
     mediaNumber: asNumber(item.mediaNumber),
     seriesId: asString(item.seriesId),
     seriesTitle: asString(item.seriesTitle),
-    coverUrl: asString(item.coverUrl),
+    coverUrl,
     page: asNumber(item.page),
     pageCount: asNumber(item.pageCount),
     percent: asNumber(item.percent),
@@ -95,10 +115,28 @@ export interface SeriesListItem {
   lastReadAt: string;
 }
 
+function extractCollection(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  const record = toRecord(payload);
+
+  if (Array.isArray(record.items)) {
+    return record.items;
+  }
+
+  if (Array.isArray(record.data)) {
+    return record.data;
+  }
+
+  return [];
+}
+
 export const progressService = {
   async getMediaProgress(mediaId: string): Promise<MediaProgress> {
-    const response = await api.get<MediaProgress>(`/progress/${mediaId}`);
-    return response.data;
+    const response = await api.get<unknown>(`/progress/${mediaId}`);
+    return mapMediaProgress(response.data);
   },
 
   async getSeriesProgress(seriesId: string): Promise<SeriesProgress> {
@@ -131,10 +169,8 @@ export const progressService = {
     const response = await api.get<unknown>("/progress/continue-reading", {
       params,
     });
-    if (!Array.isArray(response.data)) {
-      return [];
-    }
-    return response.data.map(mapContinueReadingItem);
+
+    return extractCollection(response.data).map(mapContinueReadingItem);
   },
 
   async getHistory(
@@ -145,13 +181,7 @@ export const progressService = {
 
     // Backend pode retornar { items, total, hasMore } ou array direto
     const payload = toRecord(raw);
-    const collection = Array.isArray(raw)
-      ? raw
-      : Array.isArray(payload.items)
-        ? payload.items
-        : Array.isArray(payload.data)
-          ? payload.data
-          : [];
+    const collection = extractCollection(raw);
 
     const total = Array.isArray(raw)
       ? raw.length
@@ -167,20 +197,20 @@ export const progressService = {
 
   async getSeriesList(): Promise<SeriesListItem[]> {
     const response = await api.get<unknown>("/progress/series-list");
-    if (!Array.isArray(response.data)) {
-      return [];
-    }
-
-    return response.data.map((item) => {
+    return extractCollection(response.data).map((item) => {
       const series = toRecord(item);
       const seriesId = asString(series.seriesId) || asString(series.id);
+      const coverUrl = getCoverUrl(
+        asString(series.coverUrl) ||
+          (asString(series.coverPath)
+            ? `/public/series/${seriesId}/cover`
+            : ""),
+      );
 
       return {
         seriesId,
         title: asString(series.title),
-        coverUrl:
-          asString(series.coverUrl) ||
-          (asString(series.coverPath) ? `/series/${seriesId}/cover` : ""),
+        coverUrl,
         totalChapters: asNumber(series.totalChapters),
         chaptersRead: asNumber(series.chaptersRead),
         progressPercent: asNumber(series.progressPercent),

@@ -17,7 +17,10 @@ export function useSubscription() {
     queryKey: subscriptionKeys.current(),
     queryFn: () => subscriptionService.getCurrent(),
     enabled: isAuthenticated,
-    staleTime: 1000 * 30,
+    staleTime: 1000 * 60,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
   });
 }
 
@@ -26,7 +29,10 @@ export function useCancelMySubscription() {
 
   return useMutation({
     mutationFn: (data?: CancelSubscriptionRequest) => subscriptionService.cancel(data),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      queryClient.setQueryData(subscriptionKeys.current(), {
+        subscription: result.subscription,
+      });
       queryClient.invalidateQueries({ queryKey: subscriptionKeys.all });
     },
   });

@@ -57,6 +57,8 @@ export function FeedbackState({
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className={`surface-panel rounded-[30px] px-6 py-8 text-center sm:px-8 ${
         className ?? ""
       }`}
@@ -64,7 +66,7 @@ export function FeedbackState({
       <motion.div
         initial={{ opacity: 0, scale: 0.92 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.24 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
         className={`mx-auto flex h-14 w-14 items-center justify-center rounded-2xl ${styles.icon}`}
       >
         {icon}

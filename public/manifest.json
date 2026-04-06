@@ -1,9 +1,13 @@
 {
+  "id": "/",
   "name": "ManHQ - Leitor de Mangás e HQ Comics",
   "short_name": "ManHQ",
   "description": "Leia seus mangás e HQ comics favoritos online. Mobile-first, rápido e gratuito.",
-  "start_url": "/",
+  "lang": "pt-BR",
+  "start_url": "/home",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
   "background_color": "#0f0f0f",
   "theme_color": "#0f0f0f",
   "orientation": "portrait",
@@ -12,8 +16,32 @@
       "src": "/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
     }
   ],
-  "categories": ["entertainment", "books"]
+  "shortcuts": [
+    {
+      "name": "Buscar",
+      "url": "/search",
+      "description": "Buscar mangás e HQs"
+    },
+    {
+      "name": "Minha Biblioteca",
+      "url": "/library",
+      "description": "Ver minha biblioteca"
+    },
+    {
+      "name": "Início",
+      "url": "/home",
+      "description": "Ir para o início"
+    }
+  ],
+  "categories": ["entertainment", "books"],
+  "prefer_related_applications": false
 }

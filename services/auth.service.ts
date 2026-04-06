@@ -1,4 +1,4 @@
-import api from "./api";
+import api, { clearStoredUser } from "./api";
 import { normalizeSubscriptionView } from "@/lib/subscription";
 import type {
   LoginRequest,
@@ -76,18 +76,21 @@ export const authService = {
     return normalizeAuthUser(response.data, {
       subscription: response.data.subscription,
       subscriptionState: response.data.subscriptionState,
-      accessGranted: response.data.subscription?.accessGranted,
+      accessGranted:
+        response.data.accessGranted ?? response.data.subscription?.accessGranted,
     });
   },
 
   // Logout da sessão atual
   async logout(): Promise<void> {
     await api.post("/logout");
+    clearStoredUser();
   },
 
   // Invalidar todas as sessões
   async logoutAll(): Promise<void> {
     await api.post("/logout-all");
+    clearStoredUser();
   },
 
   // Listar sessões ativas

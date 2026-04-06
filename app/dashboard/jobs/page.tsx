@@ -13,7 +13,12 @@ import {
   SquareX,
 } from "lucide-react";
 import { FeedbackState } from "@/components/FeedbackState";
-import { useAdminJobs, useDeleteJob, useJobsStats, useRetryJob } from "@/hooks/useAdmin";
+import {
+  useAdminJobs,
+  useDeleteJob,
+  useJobsStats,
+  useRetryJob,
+} from "@/hooks/useAdmin";
 import { useJobProgressStream } from "@/hooks/useJobProgress";
 import {
   OPERATIONAL_STATE_META,
@@ -21,7 +26,7 @@ import {
   formatDateTime,
   formatDurationMs,
   formatPercent,
-} from "@/lib/upload-workflow";
+} from "@/types/upload";
 import type { AdminJob } from "@/types/api";
 
 type JobConsoleFilter = "all" | "uploads" | "upload-intake" | "scans";
@@ -236,7 +241,8 @@ export default function DashboardJobsPage() {
                 {stats.uploadIntake.active} ativos
               </p>
               <p className="mt-2 text-xs text-[var(--color-textDim)]">
-                {stats.uploadIntake.waiting} na fila · {stats.uploadIntake.failed} falhos
+                {stats.uploadIntake.waiting} na fila ·{" "}
+                {stats.uploadIntake.failed} falhos
               </p>
             </div>
             <div className="surface-panel rounded-[28px] p-5">
@@ -258,7 +264,8 @@ export default function DashboardJobsPage() {
                 {uploadPipeline?.items.active ?? 0} em voo
               </p>
               <p className="mt-2 text-xs text-[var(--color-textDim)]">
-                {uploadPipeline?.items.cancelRequested ?? 0} cancelando · {uploadPipeline?.items.stuck ?? 0} travados
+                {uploadPipeline?.items.cancelRequested ?? 0} cancelando ·{" "}
+                {uploadPipeline?.items.stuck ?? 0} travados
               </p>
             </div>
           </section>
@@ -276,7 +283,11 @@ export default function DashboardJobsPage() {
                   {uploadPipeline?.items.cancelRequested ?? 0}
                 </p>
                 <p className="mt-1 text-xs">
-                  Janela de heartbeat {formatDurationMs(uploadPipeline?.thresholds.heartbeatTimeoutMs ?? 0)} · snapshot{" "}
+                  Janela de heartbeat{" "}
+                  {formatDurationMs(
+                    uploadPipeline?.thresholds.heartbeatTimeoutMs ?? 0,
+                  )}{" "}
+                  · snapshot{" "}
                   {formatDateTime(uploadPipeline?.generatedAt || null)}
                 </p>
               </div>
@@ -288,7 +299,8 @@ export default function DashboardJobsPage() {
                   {lastEvent ? lastEvent.type : "Sem eventos ainda"}
                 </p>
                 <p className="mt-2 text-xs text-[var(--color-textDim)]">
-                  O stream ajuda a detectar conclusão, falha e stalled sem esperar o próximo polling.
+                  O stream ajuda a detectar conclusão, falha e stalled sem
+                  esperar o próximo polling.
                 </p>
               </div>
             </section>
@@ -316,22 +328,22 @@ export default function DashboardJobsPage() {
                 className="w-full rounded-full border border-white/8 bg-white/[0.03] py-2.5 pl-10 pr-4 text-sm text-[var(--color-textMain)] outline-none transition-colors focus:border-[var(--color-primary)]/35"
               />
             </div>
-            {(["all", "uploads", "upload-intake", "scans"] as JobConsoleFilter[]).map(
-              (value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setQueueFilter(value)}
-                  className={`rounded-full border px-4 py-2 text-xs font-medium transition-colors ${
-                    queueFilter === value
-                      ? "border-[var(--color-primary)]/35 bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
-                      : "border-white/10 bg-white/[0.04] text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
-                  }`}
-                >
-                  {value === "all" ? "Tudo" : value}
-                </button>
-              ),
-            )}
+            {(
+              ["all", "uploads", "upload-intake", "scans"] as JobConsoleFilter[]
+            ).map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setQueueFilter(value)}
+                className={`rounded-full border px-4 py-2 text-xs font-medium transition-colors ${
+                  queueFilter === value
+                    ? "border-[var(--color-primary)]/35 bg-[var(--color-primary)]/10 text-[var(--color-primary)]"
+                    : "border-white/10 bg-white/[0.04] text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+                }`}
+              >
+                {value === "all" ? "Tudo" : value}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -347,7 +359,8 @@ export default function DashboardJobsPage() {
           ) : (
             filteredJobs.map((job) => {
               const displayState = getJobDisplayState(job);
-              const canRetry = job.lifecycle?.canRetry || job.state === "failed";
+              const canRetry =
+                job.lifecycle?.canRetry || job.state === "failed";
               const canCancel =
                 job.upload?.operational.canCancel ||
                 (!job.upload && job.lifecycle?.canCancel);
@@ -361,7 +374,9 @@ export default function DashboardJobsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-semibold text-[var(--color-textMain)]">
-                          {job.data?.originalName || job.upload?.originalName || job.name}
+                          {job.data?.originalName ||
+                            job.upload?.originalName ||
+                            job.name}
                         </p>
                         <span
                           className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${TONE_STYLES[displayState.tone]}`}
@@ -376,15 +391,25 @@ export default function DashboardJobsPage() {
                       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--color-textDim)]">
                         <span>Job {job.id}</span>
                         <span>BullMQ {job.lifecycle?.state || job.state}</span>
-                        <span>Progresso {formatPercent(typeof job.progress === "number" ? job.progress : null)}</span>
+                        <span>
+                          Progresso{" "}
+                          {formatPercent(
+                            typeof job.progress === "number"
+                              ? job.progress
+                              : null,
+                          )}
+                        </span>
                         <span>Criado em {formatDateTime(job.createdAt)}</span>
                       </div>
 
                       {job.upload && (
                         <p className="mt-2 text-xs text-[var(--color-textDim)]">
                           Sessão {job.upload.sessionId} · upload runtime{" "}
-                          {job.upload.operational.stage || "sem etapa"} · heartbeat{" "}
-                          {formatDurationMs(job.upload.operational.heartbeatAgeMs)}
+                          {job.upload.operational.stage || "sem etapa"} ·
+                          heartbeat{" "}
+                          {formatDurationMs(
+                            job.upload.operational.heartbeatAgeMs,
+                          )}
                         </p>
                       )}
 

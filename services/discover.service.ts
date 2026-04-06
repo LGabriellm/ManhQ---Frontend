@@ -29,6 +29,24 @@ function normalizeSeriesList(list: unknown, limit: number): Series[] {
   );
 }
 
+function extractSeriesPayload(payload: unknown): unknown {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (payload && typeof payload === "object") {
+    const record = payload as {
+      items?: Series[];
+      data?: Series[];
+      results?: Series[];
+    };
+
+    return record.items ?? record.data ?? record.results ?? [];
+  }
+
+  return [];
+}
+
 function normalizeDiscoverPayload(
   payload: unknown,
   limit: number,
@@ -73,38 +91,42 @@ function normalizeDiscoverPayload(
 
 export const discoverService = {
   /** Retorna todos os carrosséis de uma vez */
-  async getAll(limit?: number): Promise<DiscoverResponse> {
+  async getAll(limit?: number, signal?: AbortSignal): Promise<DiscoverResponse> {
     const normalizedLimit = normalizeLimit(limit);
-    const response = await api.get<unknown>("/discover", {
+    const response = await api.get<unknown>("/discover/home", {
       params: { limit: normalizedLimit },
+      signal,
     });
     return normalizeDiscoverPayload(response.data, normalizedLimit);
   },
 
   /** Séries adicionadas recentemente */
-  async getRecent(limit?: number): Promise<Series[]> {
+  async getRecent(limit?: number, signal?: AbortSignal): Promise<Series[]> {
     const normalizedLimit = normalizeLimit(limit);
-    const response = await api.get<Series[]>("/discover/recent", {
+    const response = await api.get<unknown>("/discover/recent", {
       params: { limit: normalizedLimit },
+      signal,
     });
-    return normalizeCoverList(response.data).slice(0, normalizedLimit);
+    return normalizeSeriesList(extractSeriesPayload(response.data), normalizedLimit);
   },
 
   /** Séries atualizadas recentemente */
-  async getUpdated(limit?: number): Promise<Series[]> {
+  async getUpdated(limit?: number, signal?: AbortSignal): Promise<Series[]> {
     const normalizedLimit = normalizeLimit(limit);
-    const response = await api.get<Series[]>("/discover/updated", {
+    const response = await api.get<unknown>("/discover/updated", {
       params: { limit: normalizedLimit },
+      signal,
     });
-    return normalizeCoverList(response.data).slice(0, normalizedLimit);
+    return normalizeSeriesList(extractSeriesPayload(response.data), normalizedLimit);
   },
 
   /** Séries mais populares (ranking por leitores únicos) */
-  async getPopular(limit?: number): Promise<Series[]> {
+  async getPopular(limit?: number, signal?: AbortSignal): Promise<Series[]> {
     const normalizedLimit = normalizeLimit(limit);
-    const response = await api.get<Series[]>("/discover/popular", {
+    const response = await api.get<unknown>("/discover/popular", {
       params: { limit: normalizedLimit },
+      signal,
     });
-    return normalizeCoverList(response.data).slice(0, normalizedLimit);
+    return normalizeSeriesList(extractSeriesPayload(response.data), normalizedLimit);
   },
 };

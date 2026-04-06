@@ -1,10 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { accountService } from "@/services/account.service";
+import { getStoredUser, setStoredUser } from "@/services/api";
 import type {
+  AccountResponse,
+  AvatarRemoveResponse,
+  AvatarUploadResponse,
   ChangeEmailRequest,
   ChangePasswordRequest,
+  UpdatePreferencesResponse,
   UpdatePreferencesRequest,
+  UpdateProfileResponse,
   UpdateProfileRequest,
+  User,
+  UserPreferences,
 } from "@/types/api";
 
 // ===== QUERY KEYS =====
@@ -14,6 +22,17 @@ export const accountKeys = {
   preferences: () => [...accountKeys.all, "preferences"] as const,
 };
 
+function updateStoredAuthUser(
+  updater: (current: User) => User,
+): void {
+  const currentUser = getStoredUser() as User | null;
+  if (!currentUser) {
+    return;
+  }
+
+  setStoredUser(updater(currentUser));
+}
+
 // ===== HOOKS DE LEITURA =====
 
 export function useAccount() {
@@ -21,6 +40,8 @@ export function useAccount() {
     queryKey: accountKeys.profile(),
     queryFn: () => accountService.getAccount(),
     staleTime: 1000 * 60 * 2, // 2 minutos
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -29,6 +50,8 @@ export function usePreferences() {
     queryKey: accountKeys.preferences(),
     queryFn: () => accountService.getPreferences(),
     staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -39,8 +62,31 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: (data: UpdateProfileRequest) =>
       accountService.updateProfile(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountKeys.profile() });
+    onSuccess: (response: UpdateProfileResponse) => {
+      updateStoredAuthUser((current) => ({
+        ...current,
+        name: response.profile.name ?? current.name,
+        username: response.profile.username ?? current.username,
+        email: response.profile.email ?? current.email,
+        role: response.profile.role ?? current.role,
+        subStatus: response.profile.subStatus ?? current.subStatus,
+        subExpiresAt: response.profile.subExpiresAt ?? current.subExpiresAt,
+        maxDevices: response.profile.maxDevices ?? current.maxDevices,
+        createdAt: response.profile.createdAt ?? current.createdAt,
+      }));
+      queryClient.setQueryData<AccountResponse | undefined>(
+        accountKeys.profile(),
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            account: response.profile,
+          };
+        },
+      );
     },
   });
 }
@@ -50,8 +96,36 @@ export function useUpdatePreferences() {
   return useMutation({
     mutationFn: (data: UpdatePreferencesRequest) =>
       accountService.updatePreferences(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountKeys.preferences() });
+    onSuccess: (response: UpdatePreferencesResponse) => {
+      queryClient.setQueryData<UserPreferences | undefined>(
+        accountKeys.preferences(),
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            ...response.preferences,
+          };
+        },
+      );
+      queryClient.setQueryData<AccountResponse | undefined>(
+        accountKeys.profile(),
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            preferences: {
+              ...current.preferences,
+              ...response.preferences,
+            },
+          };
+        },
+      );
     },
   });
 }
@@ -60,8 +134,29 @@ export function useChangeEmail() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: ChangeEmailRequest) => accountService.changeEmail(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountKeys.profile() });
+    onSuccess: (response) => {
+      updateStoredAuthUser((current) => ({
+        ...current,
+        name: response.account.name ?? current.name,
+        username: response.account.username ?? current.username,
+        email: response.account.email ?? current.email,
+      }));
+      queryClient.setQueryData<AccountResponse | undefined>(
+        accountKeys.profile(),
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            account: {
+              ...current.account,
+              ...response.account,
+            },
+          };
+        },
+      );
     },
   });
 }
@@ -77,8 +172,23 @@ export function useUploadAvatar() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (file: File) => accountService.uploadAvatar(file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountKeys.profile() });
+    onSuccess: (response: AvatarUploadResponse) => {
+      queryClient.setQueryData<AccountResponse | undefined>(
+        accountKeys.profile(),
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            account: {
+              ...current.account,
+              avatarUrl: response.profile.avatarUrl,
+            },
+          };
+        },
+      );
     },
   });
 }
@@ -87,8 +197,23 @@ export function useRemoveAvatar() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () => accountService.removeAvatar(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: accountKeys.profile() });
+    onSuccess: (response: AvatarRemoveResponse) => {
+      queryClient.setQueryData<AccountResponse | undefined>(
+        accountKeys.profile(),
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            account: {
+              ...current.account,
+              avatarUrl: response.profile.avatarUrl ?? null,
+            },
+          };
+        },
+      );
     },
   });
 }

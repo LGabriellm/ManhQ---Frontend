@@ -18,9 +18,11 @@ export function useDiscover(options: UseDiscoverOptions = {}) {
 
   return useQuery<DiscoverResponse>({
     queryKey: ["discover", "home", limit ?? null],
-    queryFn: () => discoverService.getAll(limit),
+    queryFn: ({ signal }) => discoverService.getAll(limit, signal),
     enabled: options.enabled ?? true,
     staleTime: 1000 * 60 * 5, // 5 minutos
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -28,8 +30,10 @@ export function useDiscover(options: UseDiscoverOptions = {}) {
 export function useDiscoverRecent(limit?: number) {
   return useQuery({
     queryKey: ["discover", "recent", limit ?? null],
-    queryFn: () => discoverService.getRecent(limit),
+    queryFn: ({ signal }) => discoverService.getRecent(limit, signal),
     staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -37,8 +41,10 @@ export function useDiscoverRecent(limit?: number) {
 export function useDiscoverUpdated(limit?: number) {
   return useQuery({
     queryKey: ["discover", "updated", limit ?? null],
-    queryFn: () => discoverService.getUpdated(limit),
+    queryFn: ({ signal }) => discoverService.getUpdated(limit, signal),
     staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -46,7 +52,9 @@ export function useDiscoverUpdated(limit?: number) {
 export function useDiscoverPopular(limit?: number) {
   return useQuery({
     queryKey: ["discover", "popular", limit ?? null],
-    queryFn: () => discoverService.getPopular(limit),
+    queryFn: ({ signal }) => discoverService.getPopular(limit, signal),
     staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }

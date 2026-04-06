@@ -1,10 +1,14 @@
 "use client";
 
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, Loader2, RefreshCcw } from "lucide-react";
 import { motion } from "framer-motion";
 import { MangaCard } from "@/components/MangaCard";
-import { useDiscover } from "@/hooks/useDiscover";
+import { discoverService } from "@/services/discover.service";
+import { getPublicCoverUrl } from "@/lib/coverUrl";
+
+const CATEGORY_LIMIT = 50;
 
 const categoryTitles: Record<string, string> = {
   popular: "Mais Populares",
@@ -16,112 +20,171 @@ export default function CategoryPage() {
   const router = useRouter();
   const params = useParams();
   const category = params.category as string;
+  const isValidCategory = category in categoryTitles;
 
-  const { data: discover, isLoading, error } = useDiscover();
+  const {
+    data: series = [],
+    isLoading,
+    isFetching,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["discover", "category", category, CATEGORY_LIMIT],
+    queryFn: async ({ signal }) => {
+      switch (category) {
+        case "popular":
+          return discoverService.getPopular(CATEGORY_LIMIT, signal);
+        case "recent":
+          return discoverService.getRecent(CATEGORY_LIMIT, signal);
+        case "updated":
+          return discoverService.getUpdated(CATEGORY_LIMIT, signal);
+        default:
+          return [];
+      }
+    },
+    enabled: isValidCategory,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  if (!isValidCategory) {
+    return (
+      <main className="min-h-screen bg-background px-4 py-12">
+        <div className="mx-auto flex max-w-xl flex-col items-center justify-center text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary/80">
+            Catálogo público
+          </p>
+          <h1 className="mt-3 text-3xl font-bold text-textMain">
+            Categoria não encontrada
+          </h1>
+          <p className="mt-3 max-w-md text-sm text-textDim">
+            Essa rota não corresponde a uma categoria pública válida. Volte ao
+            catálogo para continuar navegando.
+          </p>
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => router.push("/home")}
+            className="mt-8 flex items-center gap-2 rounded-xl bg-surface px-6 py-3 font-semibold text-primary transition-all hover:bg-surface/80"
+          >
+            <ArrowLeft className="h-5 w-5" />
+            Voltar ao início
+          </motion.button>
+        </div>
+      </main>
+    );
+  }
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="text-center">
-          <p className="text-textMain mb-6 text-lg font-semibold">
-            Erro ao carregar séries
+      <div className="flex min-h-screen items-center justify-center bg-background px-4">
+        <div className="max-w-md text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary/80">
+            Catálogo público
           </p>
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={() => router.push("/home")}
-            className="flex items-center gap-2 px-6 py-3 bg-surface hover:bg-surface/80 rounded-xl transition-all mx-auto group"
-          >
-            <ArrowLeft className="w-5 h-5 text-primary group-hover:-translate-x-0.5 transition-transform duration-200" />
-            <span className="text-primary font-semibold">Voltar</span>
-          </motion.button>
+          <h1 className="mt-3 text-2xl font-bold text-textMain">
+            Não foi possível carregar esta categoria
+          </h1>
+          <p className="mt-3 text-sm text-textDim">
+            Tente recarregar a lista. Se o problema continuar, volte para a home
+            e abra a categoria novamente.
+          </p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={() => void refetch()}
+              className="flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 font-semibold text-white transition-colors hover:bg-primary/90"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Tentar de novo
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.97 }}
+              onClick={() => router.push("/home")}
+              className="flex items-center justify-center gap-2 rounded-xl bg-surface px-6 py-3 font-semibold text-primary transition-all hover:bg-surface/80"
+            >
+              <ArrowLeft className="h-5 w-5" />
+              Voltar
+            </motion.button>
+          </div>
         </div>
       </div>
     );
   }
 
-  const getFilteredSeries = () => {
-    if (!discover) return [];
-
-    switch (category) {
-      case "popular":
-        return discover.mostViewed;
-      case "recent":
-        return discover.recentlyAdded;
-      case "updated":
-        return discover.recentlyUpdated;
-      default:
-        return [
-          ...discover.mostViewed,
-          ...discover.recentlyAdded,
-          ...discover.recentlyUpdated,
-        ].filter((s, i, arr) => arr.findIndex((a) => a.id === s.id) === i);
-    }
-  };
-
-  const series = getFilteredSeries();
-  const title = categoryTitles[category] || "Séries";
+  const title = categoryTitles[category];
 
   return (
-    <main className="min-h-screen pb-20 bg-background">
-      {/* Header */}
-      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur-md border-b border-surface shadow-sm">
-        <div className="flex items-center gap-3 p-4">
+    <main className="min-h-screen bg-background pb-20">
+      <div className="sticky top-0 z-40 border-b border-surface bg-background/95 backdrop-blur-md shadow-sm">
+        <div className="flex items-center justify-between gap-3 p-4">
           <motion.button
             whileTap={{ scale: 0.95 }}
             onClick={() => router.push("/home")}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-surface active:bg-surface/80 transition-all group"
+            className="group flex items-center gap-2 rounded-xl px-3 py-2 transition-all hover:bg-surface active:bg-surface/80"
           >
-            <ArrowLeft className="w-5 h-5 text-textMain group-hover:text-primary transition-colors group-hover:-translate-x-0.5 transform duration-200" />
-            <span className="text-sm font-medium text-textMain group-hover:text-primary transition-colors">
+            <ArrowLeft className="h-5 w-5 text-textMain transition-colors duration-200 group-hover:-translate-x-0.5 group-hover:text-primary" />
+            <span className="text-sm font-medium text-textMain transition-colors group-hover:text-primary">
               Voltar
             </span>
           </motion.button>
+
+          {isFetching && (
+            <div className="flex items-center gap-2 text-xs font-medium text-textDim">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Atualizando
+            </div>
+          )}
         </div>
       </div>
 
       <div className="px-4 py-6">
-        <motion.h1
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-3xl font-bold text-textMain mb-6"
-        >
-          {title}
-        </motion.h1>
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+          <h1 className="text-3xl font-bold text-textMain">{title}</h1>
+          <p className="mt-2 text-sm text-textDim">
+            {series.length > 0
+              ? `${series.length} série(s) públicas disponíveis nesta seleção.`
+              : "Nenhuma série pública disponível nesta seleção agora."}
+          </p>
+        </motion.div>
 
         {series.length > 0 ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.1 }}
-            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"
+            className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
           >
             {series.map((item, index) => (
               <motion.div
                 key={item.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 + index * 0.02 }}
+                transition={{ delay: 0.08 + index * 0.02 }}
               >
                 <MangaCard
                   id={item.id}
                   title={item.title}
-                  coverUrl={item.coverUrl!}
+                  coverUrl={getPublicCoverUrl(item.id, item.coverUrl)}
                   rating={item.rating}
                 />
               </motion.div>
             ))}
           </motion.div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-textDim">Nenhuma série encontrada</p>
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-surface bg-surface/20 px-6 py-16 text-center mt-6">
+            <p className="text-base font-semibold text-textMain">
+              Nada para mostrar por enquanto
+            </p>
+            <p className="mt-2 max-w-md text-sm text-textDim">
+              Essa categoria está vazia no momento ou ainda está sendo atualizada.
+            </p>
           </div>
         )}
       </div>

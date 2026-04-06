@@ -14,25 +14,42 @@ interface SeriesContinueItem {
   page: number;
 }
 
+const MIN_CONTINUE_LIMIT = 100;
+const MIN_HISTORY_LIMIT = 25;
+const MAX_PROGRESS_LIMIT = 500;
+
 /**
  * Hook unificado para progresso de leitura dos capítulos de uma série.
  *
  * Combina dados de "continue reading" e histórico para fornecer:
  * - Mapa de progresso por capítulo (lido/em progresso/não lido)
  * - Item de continuação da leitura (se houver capítulo em andamento)
- *
- * Dados do histórico fornecem cobertura ampla (capítulos antigos concluídos),
- * enquanto dados de "continue reading" fornecem informações mais recentes e
- * sobrescrevem o histórico quando disponíveis.
  */
 export function useSeriesChapterProgress(
   seriesId: string | undefined,
   medias?: Media[],
 ) {
-  // Limitar buscas ao essencial — os dados são filtrados por série abaixo
-  const { data: continueReadingItems } = useContinueReading({ limit: 50 });
+  const chapterCount = medias?.length ?? 0;
+  const enabled = Boolean(seriesId && chapterCount > 0);
+  const continueReadingLimit = Math.min(
+    Math.max(chapterCount * 2, MIN_CONTINUE_LIMIT),
+    MAX_PROGRESS_LIMIT,
+  );
+  const historyLimit = Math.min(
+    Math.max(chapterCount, MIN_HISTORY_LIMIT),
+    MAX_PROGRESS_LIMIT,
+  );
+
+  const { data: continueReadingItems } = useContinueReading({
+    limit: continueReadingLimit,
+    onlyInProgress: true,
+  }, {
+    enabled,
+  });
   const { data: historyData } = useProgressHistory({
-    limit: medias?.length ?? 100,
+    limit: historyLimit,
+  }, {
+    enabled,
   });
 
   return useMemo(() => {
@@ -42,9 +59,8 @@ export function useSeriesChapterProgress(
       return { progressMap, continueItem: null as SeriesContinueItem | null };
     }
 
-    const chapterIds = new Set(medias.map((m) => m.id));
+    const chapterIds = new Set(medias.map((media) => media.id));
 
-    // 1. Preencher com dados do histórico (cobertura ampla, inclui capítulos antigos)
     if (historyData?.items) {
       for (const item of historyData.items) {
         if (chapterIds.has(item.mediaId)) {
@@ -56,7 +72,6 @@ export function useSeriesChapterProgress(
       }
     }
 
-    // 2. Sobrescrever com dados de "continue reading" (mais recentes e precisos)
     if (continueReadingItems) {
       for (const item of continueReadingItems) {
         if (chapterIds.has(item.mediaId)) {
@@ -68,17 +83,21 @@ export function useSeriesChapterProgress(
       }
     }
 
-    // 3. Encontrar item de continuação para esta série específica
-    const crItem = continueReadingItems?.find(
-      (item) => item.seriesId === seriesId && !item.finished,
-    );
+    const continueCandidates = (continueReadingItems ?? [])
+      .filter((item) => item.seriesId === seriesId && !item.finished)
+      .sort(
+        (left, right) =>
+          new Date(right.lastReadAt).getTime() -
+          new Date(left.lastReadAt).getTime(),
+      );
 
-    const continueItem: SeriesContinueItem | null = crItem
+    const current = continueCandidates[0];
+    const continueItem: SeriesContinueItem | null = current
       ? {
-          mediaId: crItem.mediaId,
-          mediaTitle: crItem.mediaTitle,
-          mediaNumber: crItem.mediaNumber,
-          page: crItem.page,
+          mediaId: current.mediaId,
+          mediaTitle: current.mediaTitle,
+          mediaNumber: current.mediaNumber,
+          page: current.page,
         }
       : null;
 

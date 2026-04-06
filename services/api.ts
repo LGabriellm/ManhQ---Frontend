@@ -1,12 +1,39 @@
-import axios, { AxiosError, AxiosInstance } from "axios";
+import axios, {
+  AxiosError,
+  AxiosHeaderValue,
+  AxiosHeaders,
+  AxiosInstance,
+  InternalAxiosRequestConfig,
+} from "axios";
 import type { User } from "@/types/api";
 
 // Proxy via Next.js Route Handler (mesmo domínio, sem CORS)
 const API_BASE_URL = "/api";
+const API_TIMEOUT_MS = 30_000;
+const MAX_IDEMPOTENT_RETRIES = 1;
+const RETRYABLE_STATUS_CODES = new Set([502, 503, 504]);
+const RETRYABLE_METHODS = new Set(["get", "head"]);
+const STORED_USER_KEY = "user";
+export const STORED_USER_EVENT = "manhq:stored-user";
+
+interface RetriableRequestConfig extends InternalAxiosRequestConfig {
+  __retryCount?: number;
+}
+
+function supportsAbortListeners(
+  signal: RetriableRequestConfig["signal"],
+): signal is AbortSignal {
+  return Boolean(
+    signal &&
+    typeof signal.addEventListener === "function" &&
+    typeof signal.removeEventListener === "function",
+  );
+}
 
 // Criar instância do axios
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
+  timeout: API_TIMEOUT_MS,
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
@@ -23,6 +50,14 @@ function getHeaderValue(
 
 function isBlob(value: unknown): value is Blob {
   return typeof Blob !== "undefined" && value instanceof Blob;
+}
+
+function isFormData(value: unknown): value is FormData {
+  return typeof FormData !== "undefined" && value instanceof FormData;
+}
+
+function isUrlSearchParams(value: unknown): value is URLSearchParams {
+  return typeof URLSearchParams !== "undefined" && value instanceof URLSearchParams;
 }
 
 function isJsonLikeContentType(contentType?: string): boolean {
@@ -102,6 +137,154 @@ async function parseResponsePayload(
   return null;
 }
 
+function normalizeHeaders(
+  headers: AxiosHeaders | Record<string, unknown> | undefined,
+): AxiosHeaders {
+  if (headers instanceof AxiosHeaders) {
+    return headers;
+  }
+
+  if (!headers) {
+    return new AxiosHeaders();
+  }
+
+  const normalizedEntries = Object.entries(headers).filter(
+    (
+      entry,
+    ): entry is [string, AxiosHeaderValue] => {
+      const value = entry[1];
+      if (value === null) return true;
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        return true;
+      }
+      if (Array.isArray(value)) {
+        return value.every((item) => typeof item === "string");
+      }
+      return false;
+    },
+  );
+
+  return new AxiosHeaders(Object.fromEntries(normalizedEntries));
+}
+
+function getRetryAfterSeconds(
+  value: unknown,
+): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value <= 60_000 ? value : Math.ceil(value / 1000);
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const parsedSeconds = Number.parseInt(trimmed, 10);
+  if (Number.isFinite(parsedSeconds) && parsedSeconds > 0) {
+    return parsedSeconds;
+  }
+
+  const retryAt = Date.parse(trimmed);
+  if (Number.isNaN(retryAt)) {
+    return undefined;
+  }
+
+  const deltaMs = retryAt - Date.now();
+  if (deltaMs <= 0) {
+    return undefined;
+  }
+
+  return Math.max(1, Math.ceil(deltaMs / 1000));
+}
+
+function shouldRetryRequest(error: AxiosError): boolean {
+  const config = error.config as RetriableRequestConfig | undefined;
+  if (!config?.method || !RETRYABLE_METHODS.has(config.method.toLowerCase())) {
+    return false;
+  }
+
+  if ((config.__retryCount ?? 0) >= MAX_IDEMPOTENT_RETRIES) {
+    return false;
+  }
+
+  if (config.signal?.aborted) {
+    return false;
+  }
+
+  if (!error.response) {
+    return true;
+  }
+
+  return RETRYABLE_STATUS_CODES.has(error.response.status);
+}
+
+async function retryRequest(error: AxiosError): Promise<unknown> {
+  const config = error.config as RetriableRequestConfig | undefined;
+  if (!config) {
+    return Promise.reject(error);
+  }
+
+  config.__retryCount = (config.__retryCount ?? 0) + 1;
+  const retryAfterSeconds =
+    getRetryAfterSeconds(error.response?.headers?.["retry-after"]) ?? 0;
+  const delayMs =
+    retryAfterSeconds > 0 ? retryAfterSeconds * 1000 : 250 * config.__retryCount;
+
+  await new Promise<void>((resolve, reject) => {
+    const abortSignal = config.signal;
+    const canListenToAbort = supportsAbortListeners(abortSignal);
+    const timeoutId = setTimeout(() => {
+      if (canListenToAbort) {
+        abortSignal.removeEventListener("abort", onAbort);
+      }
+      resolve();
+    }, delayMs);
+
+    const onAbort = () => {
+      clearTimeout(timeoutId);
+      if (canListenToAbort) {
+        abortSignal.removeEventListener("abort", onAbort);
+      }
+      reject(error);
+    };
+
+    if (abortSignal?.aborted) {
+      onAbort();
+      return;
+    }
+
+    if (canListenToAbort) {
+      abortSignal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+
+  return api.request(config);
+}
+
+api.interceptors.request.use((config) => {
+  const headers = normalizeHeaders(config.headers);
+  const hasBody = config.data !== undefined && config.data !== null;
+
+  if (isFormData(config.data)) {
+    // Let the browser/axios set the multipart boundary automatically.
+    headers.delete("Content-Type");
+  } else if (isUrlSearchParams(config.data)) {
+    headers.set(
+      "Content-Type",
+      "application/x-www-form-urlencoded;charset=UTF-8",
+    );
+  } else if (!hasBody || config.method?.toLowerCase() === "get") {
+    headers.delete("Content-Type");
+  }
+
+  config.headers = headers;
+  return config;
+});
+
 // Interceptor para tratar erros
 api.interceptors.response.use(
   async (response) => {
@@ -138,10 +321,15 @@ api.interceptors.response.use(
     return response;
   },
   async (error: AxiosError<Record<string, unknown>>) => {
+    if (shouldRetryRequest(error)) {
+      return retryRequest(error);
+    }
+
     // Erro de rede (sem conexão ou servidor inacessível)
     if (!error.response) {
+      const isBrowser = typeof navigator !== "undefined";
       const apiError = {
-        message: navigator.onLine
+        message: isBrowser && navigator.onLine
           ? "Não foi possível conectar ao servidor. Tente novamente mais tarde."
           : "Sem conexão com a internet. Verifique sua rede.",
         statusCode: 0,
@@ -188,9 +376,14 @@ api.interceptors.response.use(
     const responseData =
       parsedPayload && typeof parsedPayload === "object" ? parsedPayload : {};
     const fallbackMessage = extractMessageFromPayload(parsedPayload, contentType);
-    const requestId = responseData.requestId as string | undefined;
+    const requestId =
+      (responseData.requestId as string | undefined) ||
+      getHeaderValue(responseHeaders, "x-request-id");
     const endpoint = requestUrl || undefined;
     const method = error.config?.method?.toUpperCase();
+    const retryAfter =
+      (responseData.retryAfter as number | undefined) ??
+      getRetryAfterSeconds(getHeaderValue(responseHeaders, "retry-after"));
     const apiError = {
       message:
         (responseData.message as string) ||
@@ -201,10 +394,12 @@ api.interceptors.response.use(
       statusCode: error.response.status || 500,
       error: responseData.error as string | undefined,
       details: responseData.details as string[] | undefined,
-      retryAfter: responseData.retryAfter as number | undefined,
+      retryAfter,
       data: responseData,
       authRequired: responseData.authRequired as boolean | undefined,
-      errorCode: responseData.errorCode as string | undefined,
+      errorCode:
+        (responseData.errorCode as string | undefined) ||
+        getHeaderValue(responseHeaders, "x-error-code"),
       googleDrive: responseData.googleDrive as Record<string, unknown> | undefined,
       requestId,
       endpoint,
@@ -244,27 +439,49 @@ export function clearStoredToken(): void {
   // No-op: autenticação baseada em cookie de sessão (httpOnly)
 }
 
+function isValidUserShape(value: unknown): value is User {
+  if (!value || typeof value !== "object") return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.id === "string" && typeof obj.email === "string";
+}
+
 // Funções auxiliares para gerenciar usuário
-export function getStoredUser() {
+export function getStoredUser(): User | null {
   if (typeof window === "undefined") return null;
-  const userStr = localStorage.getItem("user");
+  const userStr = localStorage.getItem(STORED_USER_KEY);
   if (!userStr) return null;
   try {
-    return JSON.parse(userStr);
+    const parsed: unknown = JSON.parse(userStr);
+    if (!isValidUserShape(parsed)) {
+      localStorage.removeItem(STORED_USER_KEY);
+      return null;
+    }
+    return parsed;
   } catch {
-    localStorage.removeItem("user");
+    localStorage.removeItem(STORED_USER_KEY);
     return null;
   }
 }
 
+function dispatchStoredUserEvent(user: User | null): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent<User | null>(STORED_USER_EVENT, {
+      detail: user,
+    }),
+  );
+}
+
 export function setStoredUser(user: User): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem("user", JSON.stringify(user));
+  localStorage.setItem(STORED_USER_KEY, JSON.stringify(user));
+  dispatchStoredUserEvent(user);
 }
 
 export function clearStoredUser(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem("user");
+  localStorage.removeItem(STORED_USER_KEY);
+  dispatchStoredUserEvent(null);
 }
 
 export default api;

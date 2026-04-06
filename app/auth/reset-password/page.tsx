@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -16,19 +16,23 @@ import {
 import { authService } from "@/services/auth.service";
 import type { ApiError } from "@/types/api";
 
-function PasswordStrength({ password }: { password: string }) {
-  const checks = [
+function passwordChecks(password: string) {
+  return [
     { label: "8+ caracteres", ok: password.length >= 8 },
     { label: "Letra maiúscula", ok: /[A-Z]/.test(password) },
+    { label: "Letra minúscula", ok: /[a-z]/.test(password) },
     { label: "Número", ok: /\d/.test(password) },
   ];
+}
+
+function PasswordStrength({ password }: { password: string }) {
+  const checks = passwordChecks(password);
   const passed = checks.filter((c) => c.ok).length;
-  const strength =
-    passed === 0 ? 0 : passed === 1 ? 33 : passed === 2 ? 66 : 100;
+  const strength = Math.round((passed / checks.length) * 100);
   const color =
-    strength <= 33
+    strength <= 25
       ? "bg-red-500"
-      : strength <= 66
+      : strength <= 50
         ? "bg-yellow-500"
         : "bg-emerald-500";
 
@@ -73,6 +77,24 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState("");
   const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const [success, setSuccess] = useState(false);
+  const redirectTimeoutRef = useRef<number | null>(null);
+  const validation = useMemo(() => passwordChecks(password), [password]);
+  const isPasswordValid = validation.every((item) => item.ok);
+  const isSubmitDisabled =
+    isLoading ||
+    !token ||
+    !password ||
+    !confirmPassword ||
+    password !== confirmPassword ||
+    !isPasswordValid;
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimeoutRef.current !== null) {
+        window.clearTimeout(redirectTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,8 +106,8 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    if (password.length < 8) {
-      setError("A senha deve ter no mínimo 8 caracteres");
+    if (!isPasswordValid) {
+      setError("Sua senha ainda não atende aos requisitos mínimos.");
       return;
     }
 
@@ -94,7 +116,7 @@ export default function ResetPasswordPage() {
     try {
       await authService.resetPassword({ token, password });
       setSuccess(true);
-      setTimeout(() => {
+      redirectTimeoutRef.current = window.setTimeout(() => {
         router.push("/auth/login");
       }, 3000);
     } catch (err) {
@@ -117,7 +139,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-5 relative overflow-hidden">
+    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-5">
       <div className="pointer-events-none absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-primary/8 rounded-full blur-[128px]" />
 
       <AnimatePresence mode="wait">
@@ -141,6 +163,7 @@ export default function ResetPasswordPage() {
             </p>
             <motion.button
               whileTap={{ scale: 0.97 }}
+              type="button"
               onClick={() => router.push("/auth/forgot-password")}
               className="px-6 py-3 bg-surface/80 backdrop-blur-sm text-textMain rounded-xl text-sm font-medium hover:bg-surface transition-colors border border-white/5"
             >
@@ -171,7 +194,7 @@ export default function ResetPasswordPage() {
             <h1 className="text-2xl font-bold text-textMain mb-2">
               Senha Redefinida!
             </h1>
-            <p className="text-textDim text-sm mb-1">
+            <p className="text-textDim text-sm mb-1" aria-live="polite">
               Sua senha foi alterada com sucesso.
             </p>
             <div className="flex items-center justify-center gap-1.5 mt-4 text-textDim/50 text-xs">
@@ -197,7 +220,7 @@ export default function ResetPasswordPage() {
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
               <div>
                 <label
                   htmlFor="password"
@@ -209,18 +232,24 @@ export default function ResetPasswordPage() {
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-textDim/50" />
                   <input
                     id="password"
+                    name="password"
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Mínimo 8 caracteres"
+                    placeholder="Mínimo 8 caracteres…"
                     required
                     minLength={8}
+                    autoComplete="new-password"
+                    aria-invalid={Boolean(error)}
+                    aria-describedby={error ? "reset-password-error" : undefined}
                     className="w-full pl-11 pr-11 py-3 bg-surface/60 backdrop-blur-sm text-textMain rounded-xl border border-white/6 focus:border-primary/40 focus:ring-1 focus:ring-primary/20 focus:outline-none transition-all text-sm placeholder:text-textDim/30"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-textDim/40 hover:text-textDim transition-colors"
+                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    aria-pressed={showPassword}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-textDim/40 hover:text-textDim transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                   >
                     {showPassword ? (
                       <EyeOff className="w-[18px] h-[18px]" />
@@ -243,16 +272,30 @@ export default function ResetPasswordPage() {
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-textDim/50" />
                   <input
                     id="confirmPassword"
+                    name="confirmPassword"
                     type={showPassword ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repita a senha"
+                    placeholder="Repita a senha…"
                     required
+                    autoComplete="new-password"
+                    aria-invalid={Boolean(error) || (confirmPassword.length > 0 && password !== confirmPassword)}
+                    aria-describedby={
+                      confirmPassword && password !== confirmPassword
+                        ? "reset-password-match-error"
+                        : error
+                          ? "reset-password-error"
+                          : undefined
+                    }
                     className="w-full pl-11 pr-4 py-3 bg-surface/60 backdrop-blur-sm text-textMain rounded-xl border border-white/6 focus:border-primary/40 focus:ring-1 focus:ring-primary/20 focus:outline-none transition-all text-sm placeholder:text-textDim/30"
                   />
                 </div>
                 {confirmPassword && password !== confirmPassword && (
-                  <p className="text-[11px] text-red-400 mt-1.5 flex items-center gap-1">
+                  <p
+                    id="reset-password-match-error"
+                    className="text-[11px] text-red-400 mt-1.5 flex items-center gap-1"
+                    role="alert"
+                  >
                     <X className="w-3 h-3" />
                     As senhas não coincidem
                   </p>
@@ -261,9 +304,12 @@ export default function ResetPasswordPage() {
 
               {error && (
                 <motion.div
+                  id="reset-password-error"
                   initial={{ opacity: 0, y: -8 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="p-3 bg-red-500/8 border border-red-500/15 rounded-xl"
+                  role="alert"
+                  aria-live="polite"
                 >
                   <p className="text-sm text-red-400 font-medium">{error}</p>
                   {errorDetails.length > 0 && (
@@ -285,7 +331,8 @@ export default function ResetPasswordPage() {
               <motion.button
                 whileTap={{ scale: 0.98 }}
                 type="submit"
-                disabled={isLoading}
+                disabled={isSubmitDisabled}
+                aria-busy={isLoading}
                 className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20 text-sm"
               >
                 {isLoading ? (
@@ -303,6 +350,7 @@ export default function ResetPasswordPage() {
               <p className="text-textDim/50 text-xs">
                 Lembrou a senha?{" "}
                 <button
+                  type="button"
                   onClick={() => router.push("/auth/login")}
                   className="text-primary hover:text-primary/80 font-medium transition-colors"
                 >
@@ -313,6 +361,6 @@ export default function ResetPasswordPage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </main>
   );
 }

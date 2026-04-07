@@ -15,6 +15,7 @@ import type {
   ResetPasswordRequest,
   ResetPasswordResponse,
   SubscriptionState,
+  UsernameCheckResponse,
 } from "@/types/api";
 
 function normalizeAuthUser(
@@ -127,6 +128,14 @@ export const authService = {
     data: ActivateAccountRequest,
   ): Promise<ActivateAccountResponse> {
     const response = await api.post<ActivateAccountResponse>("/activate", data);
+    return response.data;
+  },
+
+  // Verificar disponibilidade de username (público, sem auth)
+  async checkUsernamePublic(username: string): Promise<UsernameCheckResponse> {
+    const response = await api.get<UsernameCheckResponse>("/username/check", {
+      params: { username },
+    });
     return response.data;
   },
 

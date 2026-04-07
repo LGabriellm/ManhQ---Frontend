@@ -27,6 +27,7 @@ const ALLOWED_PREFIXES = [
   "subscription",
   "sessions",
   "activate",
+  "username",
   "forgot-password",
   "reset-password",
   "validate-activation-token",

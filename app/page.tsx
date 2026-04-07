@@ -2,15 +2,19 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { motion } from "framer-motion";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
+  ArrowRight,
   Check,
+  ChevronDown,
   ChevronRight,
-  Library,
+  Lock,
   Play,
-  ShieldCheck,
   Smartphone,
-  Sparkles,
+  Star,
+  Trophy,
+  Tv,
   Zap,
 } from "lucide-react";
 import {
@@ -21,93 +25,201 @@ import { useAuth } from "@/contexts/AuthContext";
 import { trackFacebookPixel } from "@/lib/facebookPixel";
 
 const LandingCarousel = dynamic(
-  () => import("@/components/InfiniteCarousel").then((mod) => mod.InfiniteCarousel),
+  () =>
+    import("@/components/InfiniteCarousel").then((mod) => mod.InfiniteCarousel),
   { ssr: false },
 );
 
-const benefits = [
+/* ─── Data ────────────────────────────────────────────────────────────────── */
+
+const FOUNDER_SLOTS = 100;
+const FOUNDER_FILLED = 87;
+
+const features = [
   {
-    icon: Library,
-    title: "Tudo em um só lugar",
+    icon: Tv,
+    title: "Interface estilo Netflix",
     description:
-      "Mangás, HQs e conteúdo geek organizados para você encontrar mais rápido o que quer ler.",
+      "Navegação fluida, sem anúncio no meio do capítulo, sem popup de cadastro. Você abre e lê. Simples assim.",
+  },
+  {
+    icon: Trophy,
+    title: "Ranking entre leitores",
+    description:
+      "Seu histórico de leitura vira pontuação. Todo domingo o ranking atualiza — você compete com leitores de todo o Brasil.",
+  },
+  {
+    icon: Star,
+    title: "Conquistas de leitura",
+    description:
+      "Terminou uma saga? Maratonou um arco? A ManHQ reconhece. Badges exclusivos no seu perfil que mostram sua jornada.",
   },
   {
     icon: Zap,
-    title: "Continue de onde parou",
+    title: "HQs, Mangás e Manhwas",
     description:
-      "Retome sua leitura sem perder tempo procurando capítulos ou obras.",
+      "Marvel, DC, Naruto, One Piece, Solo Levelling e muito mais. Os três formatos em uma plataforma. Um preço.",
   },
   {
     icon: Smartphone,
-    title: "Experiência feita para maratonar",
+    title: "Otimizada para celular",
     description:
-      "Interface rápida, visual limpa e leitura confortável no celular e no computador.",
+      "Leitura vertical nativa para manhwas, zoom suave em HQs e mangás. A experiência que o celular merecia.",
   },
   {
-    icon: Sparkles,
-    title: "Descubra novas obras com facilidade",
+    icon: Lock,
+    title: "Cancele quando quiser",
     description:
-      "Explore títulos e encontre sua próxima obsessão geek em menos tempo.",
+      "Sem fidelidade, sem multa, sem burocracia. Seu dinheiro, sua decisão. Se não curtir, é só cancelar.",
   },
 ];
 
-const trustPoints = [
-  "Navegação fluida para descobrir e acompanhar obras",
-  "Leitura prática em celular e desktop",
-  "Catálogo em expansão com experiência consistente",
-  "Fluxo simples para entrar e começar a ler rápido",
+const pricingBenefits = [
+  "Acesso completo — HQs, mangás e manhwas sem limite",
+  "Badge exclusivo de Fundador no seu perfil com número da vaga",
+  "Ranking semanal, conquistas de leitura e histórico completo",
+  "Interface sem anúncio, sem popup, otimizada para celular",
+  "Preço de R$14,99 travado para sempre — mesmo quando subir",
+  "Cancele quando quiser, sem multa, sem complicação",
 ];
 
-function GlassCard({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+const testimonials = [
+  {
+    name: "Gabriel L.",
+    badge: "Fundador #9",
+    role: "Leitor de HQ há 8 anos",
+    initials: "GL",
+    text: "Finalmente uma plataforma que trata quem lê HQ como adulto. Sem anúncio, sem travamento, sem popup. Só leitura.",
+  },
+  {
+    name: "Julio S.",
+    badge: "Fundador #23",
+    role: "Fã de mangá desde 2016",
+    initials: "JS",
+    text: "O ranking me viciou de um jeito que eu não esperava. Semana passada li 3 arcos de One Piece só para subir de posição.",
+  },
+  {
+    name: "Rafael M.",
+    badge: "Fundador #41",
+    role: "Leitor de manhwa",
+    initials: "RM",
+    text: "Vim pelo manhwa e fiquei pela plataforma. Interface perfeita para leitura vertical. Nunca mais volto para site com popup.",
+  },
+];
+
+const faqs = [
+  {
+    q: "O preço de R$14,99 realmente fica travado para sempre?",
+    a: "Sim. Sem asterisco, sem condição escondida. Enquanto você mantiver a assinatura ativa, paga R$14,99 independente de qualquer reajuste futuro no preço da plataforma.",
+  },
+  {
+    q: "Posso cancelar quando quiser?",
+    a: "Sim, a qualquer momento. Sem multa, sem burocracia, sem precisar ligar para ninguém. Basta cancelar pelo painel da conta em menos de 1 minuto.",
+  },
+  {
+    q: "O que tem no acervo — tem o que eu leio?",
+    a: "Temos HQs (Marvel, DC e independentes), mangás (Naruto, One Piece, JJK, Dragon Ball e mais) e manhwas (Solo Levelling, Tower of God, Omniscient Reader e outros). O acervo cresce semanalmente.",
+  },
+  {
+    q: "O que é o badge de Fundador?",
+    a: "Um badge exclusivo e permanente no seu perfil com o número da sua vaga (#001 a #100). É a marca de quem esteve desde o começo — não será disponibilizado para nenhum assinante que entrar depois.",
+  },
+  {
+    q: "Como funciona o ranking?",
+    a: "Você ganha pontos lendo — cada capítulo, cada saga, cada conquista desbloqueada. Todo domingo o ranking atualiza e você vê onde está entre todos os leitores da plataforma.",
+  },
+  {
+    q: "Funciona bem no celular?",
+    a: "Sim, foi feita para o celular. Leitura vertical nativa para manhwas, zoom suave para HQs e mangás, navegação fluida sem travar. Sem anúncio no meio do capítulo.",
+  },
+  {
+    q: "O que acontece quando as 100 vagas fecharem?",
+    a: "O Plano Fundador encerra e o preço sobe. Novos assinantes pagarão o preço cheio — que será maior. Quem entrou como Fundador mantém R$14,99 para sempre.",
+  },
+  {
+    q: "Tem cobrança automática?",
+    a: "Sim, a renovação é mensal e automática como qualquer assinatura. Você pode cancelar antes da próxima cobrança a qualquer momento pelo painel, sem precisar falar com ninguém.",
+  },
+];
+
+/* ─── Helpers ─────────────────────────────────────────────────────────────── */
+
+const sectionReveal = {
+  hidden: { opacity: 0, y: 32 },
+  visible: { opacity: 1, y: 0 },
+};
+
+function FaqItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div
-      className={`rounded-[28px] border border-white/8 bg-white/4 shadow-[0_20px_80px_rgba(0,0,0,0.38)] backdrop-blur-xl ${className}`}
-    >
-      {children}
+    <div className="border-b border-white/8 last:border-b-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-start justify-between gap-4 py-5 text-left"
+      >
+        <span className="text-sm font-semibold text-white sm:text-base">
+          {q}
+        </span>
+        <ChevronDown
+          className={`mt-0.5 h-4 w-4 shrink-0 text-white/40 transition-transform duration-300 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            <p className="pb-5 text-sm leading-relaxed text-white/60">{a}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-export default function HomePage() {
+/* ─── Page ────────────────────────────────────────────────────────────────── */
+
+export default function LandingPage() {
   const { isAuthenticated, user } = useAuth();
   const authenticatedPath = getDefaultAuthenticatedPath(user);
   const primaryCtaHref = isAuthenticated
     ? authenticatedPath
     : SUBSCRIPTION_CHECKOUT_URL;
-  const primaryCtaLabel = isAuthenticated ? "Abrir minha área" : "Começar agora";
+  const primaryCtaLabel = isAuthenticated
+    ? "Abrir minha área"
+    : "Garantir minha vaga de Fundador";
   const primaryCtaTarget = isAuthenticated ? undefined : "_blank";
   const primaryCtaRel = isAuthenticated ? undefined : "noreferrer";
 
-  const handleStartNowClick = (placement: string) => {
-    if (isAuthenticated) {
-      return;
-    }
-
+  const handleCta = (placement: string) => {
+    if (isAuthenticated) return;
     trackFacebookPixel("InitiateCheckout", {
       content_name: "Landing Page CTA",
       content_category: "subscription",
       source: "landing_page",
       placement,
-      cta_label: "Começar agora",
+      cta_label: primaryCtaLabel,
       destination: SUBSCRIPTION_CHECKOUT_URL,
     });
   };
 
+  const founderPercent = Math.round((FOUNDER_FILLED / FOUNDER_SLOTS) * 100);
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-background text-textMain">
+      {/* ── Ambient glow ──────────────────────────────────────────────── */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute left-1/2 top-0 h-128 w-lg -translate-x-1/2 rounded-full bg-primary/18 blur-[140px]" />
         <div className="absolute -right-32 top-40 h-80 w-80 rounded-full bg-primary/10 blur-[120px]" />
         <div className="absolute -left-32 top-128 h-72 w-72 rounded-full bg-primary/8 blur-[120px]" />
       </div>
 
+      {/* ── Background carousel ───────────────────────────────────────── */}
       <div className="pointer-events-none absolute inset-x-0 top-36 z-0 opacity-40 [mask-image:linear-gradient(to_bottom,transparent_0%,black_18%,black_78%,transparent_100%)]">
         <LandingCarousel
           sort="popular"
@@ -118,284 +230,388 @@ export default function HomePage() {
         />
       </div>
 
+      {/* ── Content ───────────────────────────────────────────────────── */}
       <div className="relative z-10">
-        <section className="relative px-5 pb-14 pt-6 sm:px-8 lg:px-12">
-          <div className="mx-auto max-w-7xl">
-            <div className="mb-10 flex items-center justify-between">
-              <p className="font-display text-2xl font-bold tracking-tight text-primary sm:text-3xl">
-                ManHQ
+        {/* ── Header ──────────────────────────────────────────────────── */}
+        <header className="px-5 py-5 sm:px-8 lg:px-12">
+          <div className="mx-auto flex max-w-6xl items-center justify-between">
+            <p className="font-display text-2xl font-bold tracking-tight text-primary sm:text-3xl">
+              ManHQ
+            </p>
+            <a
+              href={primaryCtaHref}
+              target={primaryCtaTarget}
+              rel={primaryCtaRel}
+              onClick={() => handleCta("header")}
+              className="rounded-full border border-white/12 px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-white/5 sm:text-sm"
+            >
+              {isAuthenticated
+                ? "Abrir minha área"
+                : "Plano Fundador · vagas abertas"}
+            </a>
+          </div>
+        </header>
+
+        {/* ── Hero ────────────────────────────────────────────────────── */}
+        <section className="px-5 pb-20 pt-16 sm:px-8 sm:pt-24 lg:px-12 lg:pt-28">
+          <div className="mx-auto max-w-4xl text-center">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.22em] text-primary sm:text-xs">
+                <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(229,9,20,0.7)]" />
+                Plano Fundador — {FOUNDER_SLOTS} vagas
+              </div>
+            </motion.div>
+
+            <motion.h1
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.08 }}
+              className="mx-auto max-w-3xl font-display text-[2.6rem] font-extrabold leading-[0.92] tracking-[-0.04em] text-white sm:text-[4.2rem] lg:text-[5.4rem]"
+            >
+              HQs, Mangás e Manhwas.{" "}
+              <span className="text-primary">Experiência Netflix.</span>
+            </motion.h1>
+
+            <motion.p
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.18 }}
+              className="mx-auto mt-6 max-w-2xl text-sm leading-relaxed text-white/60 sm:text-base sm:leading-7"
+            >
+              A plataforma com{" "}
+              <strong className="text-white/80">ranking entre leitores</strong>,
+              conquistas e interface limpa — sem anúncio, sem popup. Seja um dos{" "}
+              {FOUNDER_SLOTS} Fundadores e garanta o preço de{" "}
+              <strong className="text-white/80">R$14,99 para sempre</strong>.
+            </motion.p>
+
+            {/* Founder progress bar */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+              className="mx-auto mt-8 max-w-xs"
+            >
+              <div className="h-2 overflow-hidden rounded-full bg-white/8">
+                <motion.div
+                  className="h-full rounded-full bg-primary"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${founderPercent}%` }}
+                  transition={{ duration: 1.2, delay: 0.5, ease: "easeOut" }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-white/50">
+                <span className="font-bold text-primary">{FOUNDER_FILLED}</span>{" "}
+                de {FOUNDER_SLOTS} vagas de Fundador preenchidas
               </p>
-              <a
+            </motion.div>
+
+            {/* CTA */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+              className="mt-8"
+            >
+              <motion.a
                 href={primaryCtaHref}
                 target={primaryCtaTarget}
                 rel={primaryCtaRel}
-                onClick={() => handleStartNowClick("header")}
-                className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-[0_14px_38px_rgba(229,9,20,0.34)] transition-transform hover:scale-[1.02]"
+                onClick={() => handleCta("hero")}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                className="inline-flex items-center gap-2 rounded-2xl bg-primary px-8 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)] transition-shadow duration-300 hover:shadow-[0_24px_56px_rgba(229,9,20,0.5)] sm:text-base"
               >
                 {primaryCtaLabel}
-              </a>
-            </div>
+                <ArrowRight className="h-4 w-4" />
+              </motion.a>
+              <p className="mt-3 text-xs text-white/40">
+                R$14,99/mês · preço travado para sempre · cancele quando quiser
+              </p>
+            </motion.div>
+          </div>
+        </section>
 
-            <div className="grid items-center gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:gap-12">
-              <motion.div
-                initial={{ opacity: 0, y: 24 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45 }}
-              >
-                <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-                  <span className="h-2.5 w-2.5 rounded-full bg-primary shadow-[0_0_14px_rgba(229,9,20,0.7)]" />
-                  plataforma para fãs de mangá e hq
+        {/* ── Features Grid ───────────────────────────────────────────── */}
+        <section className="px-5 py-16 sm:px-8 sm:py-24 lg:px-12">
+          <div className="mx-auto max-w-5xl">
+            <motion.div
+              variants={sectionReveal}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.5 }}
+              className="mb-10"
+            >
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-primary/80">
+                Por que a ManHQ
+              </p>
+              <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.03em] text-white sm:text-5xl">
+                Feita para quem leva
+                <br />
+                leitura a sério.
+              </h2>
+            </motion.div>
+
+            <div className="grid gap-px overflow-hidden rounded-2xl border border-white/8 bg-white/8 sm:grid-cols-2 lg:grid-cols-3">
+              {features.map((feat, index) => (
+                <motion.div
+                  key={feat.title}
+                  variants={sectionReveal}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true, amount: 0.2 }}
+                  transition={{
+                    duration: 0.4,
+                    delay: index * 0.06,
+                  }}
+                  className="bg-background/80 p-6 backdrop-blur-sm transition-colors duration-300 hover:bg-white/[0.03] sm:p-7"
+                >
+                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <feat.icon className="h-5 w-5" />
+                  </div>
+                  <h3 className="text-sm font-bold text-white sm:text-base">
+                    {feat.title}
+                  </h3>
+                  <p className="mt-2 text-xs leading-relaxed text-white/50 sm:text-sm sm:leading-relaxed">
+                    {feat.description}
+                  </p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── Pricing Card ────────────────────────────────────────────── */}
+        <section className="px-5 py-16 sm:px-8 sm:py-24 lg:px-12">
+          <div className="mx-auto max-w-2xl">
+            <motion.div
+              variants={sectionReveal}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.5 }}
+              className="overflow-hidden rounded-3xl border border-white/8 bg-white/[0.03] shadow-[0_30px_80px_rgba(0,0,0,0.4)] backdrop-blur-sm"
+            >
+              <div className="border-b border-white/8 px-6 pb-8 pt-8 text-center sm:px-10 sm:pt-10">
+                <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
+                  Oferta limitada · {FOUNDER_SLOTS} vagas
+                </div>
+                <h2 className="font-display text-3xl font-extrabold tracking-[-0.03em] text-white sm:text-5xl">
+                  Garanta por apenas R$14,99{" "}
+                  <span className="text-primary">para sempre.</span>
+                </h2>
+                <p className="mx-auto mt-4 max-w-md text-sm leading-relaxed text-white/55">
+                  Os 100 primeiros assinantes são Fundadores. Quando a ManHQ
+                  crescer e o preço subir —{" "}
+                  <strong className="text-white/80">
+                    você continua pagando R$14,99 para sempre
+                  </strong>
+                  . Sem asterisco. Sem condição escondida.
+                </p>
+              </div>
+
+              <div className="px-6 py-8 sm:px-10">
+                <div className="mb-6 text-center">
+                  <p className="text-4xl font-extrabold text-white sm:text-5xl">
+                    R$ <span className="text-6xl sm:text-7xl">14,99</span>
+                    <span className="ml-1 text-base font-normal text-white/50">
+                      /mês
+                    </span>
+                  </p>
+                  <p className="mt-1 text-xs text-primary/70">
+                    Preço de Fundador · travado enquanto você for assinante
+                  </p>
                 </div>
 
-                <h1 className="max-w-4xl font-display text-[2.8rem] font-bold leading-[0.95] tracking-[-0.05em] text-white sm:text-[4.4rem] lg:text-[5.3rem]">
-                  Leia mangás e HQs em um só lugar.
-                </h1>
+                <div className="space-y-3">
+                  {pricingBenefits.map((benefit) => (
+                    <div
+                      key={benefit}
+                      className="flex items-start gap-3 text-sm text-white/65"
+                    >
+                      <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                        <Check className="h-3 w-3" />
+                      </div>
+                      {benefit}
+                    </div>
+                  ))}
+                </div>
 
-                <p className="mt-6 max-w-2xl text-base leading-7 text-white/68 sm:text-lg">
-                  Descubra novas obras, continue de onde parou e tenha uma
-                  experiência de leitura rápida, elegante e feita para fãs de
-                  verdade.
-                </p>
-
-                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
                   <motion.a
                     href={primaryCtaHref}
                     target={primaryCtaTarget}
                     rel={primaryCtaRel}
-                    onClick={() => handleStartNowClick("hero")}
+                    onClick={() => handleCta("pricing")}
                     whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)] transition-shadow duration-300 hover:shadow-[0_24px_56px_rgba(229,9,20,0.5)]"
+                    whileTap={{ scale: 0.97 }}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)] sm:w-auto sm:flex-1"
                   >
-                    <Play className="h-4 w-4 fill-white" />
                     {primaryCtaLabel}
+                    <ArrowRight className="h-4 w-4" />
                   </motion.a>
-
-                  <Link href={isAuthenticated ? authenticatedPath : "/auth/login"}>
-                    <motion.div
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.95 }}
-                      className="flex items-center justify-center gap-2 rounded-2xl border border-white/8 bg-white/4 px-6 py-4 text-sm font-semibold text-textMain backdrop-blur-xl transition-[border-color,background-color] duration-300 hover:border-primary/30 hover:bg-white/8"
-                    >
-                      Explorar catálogo
-                      <ChevronRight className="h-4 w-4" />
-                    </motion.div>
-                  </Link>
-                </div>
-
-                <p className="mt-4 text-sm text-white/55">
-                  Leitura prática, catálogo em expansão e experiência pensada
-                  para maratonar.
-                </p>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 24 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.45, delay: 0.08 }}
-              >
-                <GlassCard className="p-5 sm:p-6">
-                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary/80">
-                    por que entrar na manhq?
+                  <p className="text-xs text-white/35">
+                    <span className="font-semibold text-primary">
+                      {FOUNDER_FILLED}
+                    </span>{" "}
+                    de {FOUNDER_SLOTS} vagas preenchidas · quando fechar, o
+                    preço sobe
                   </p>
-                  <div className="mt-4 space-y-3">
-                    {benefits.slice(0, 3).map((item) => (
-                      <div key={item.title} className="flex items-start gap-3">
-                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
-                          <item.icon className="h-4.5 w-4.5" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-white">
-                            {item.title}
-                          </p>
-                          <p className="mt-1 text-xs leading-6 text-white/58">
-                            {item.description}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </GlassCard>
-              </motion.div>
-            </div>
-          </div>
-        </section>
-
-        <section className="relative px-5 py-10 sm:px-8 lg:px-12">
-          <div className="mx-auto max-w-7xl">
-            <div className="mb-8 max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">
-                por que entrar na manhq?
-              </p>
-              <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
-                Benefícios claros para quem quer ler mais e melhor.
-              </h2>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              {benefits.map((item, index) => (
-                <motion.div
-                  key={item.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, amount: 0.35 }}
-                  transition={{ delay: index * 0.05, duration: 0.35 }}
-                >
-                  <GlassCard className="group h-full p-6 transition-[border-color,box-shadow] duration-300 hover:border-primary/40 hover:shadow-[0_20px_60px_rgba(229,9,20,0.2)]">
-                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12 text-primary transition-[transform,background-color] duration-300 group-hover:bg-primary/20 group-hover:scale-110">
-                      <item.icon className="h-5 w-5" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-white">
-                      {item.title}
-                    </h3>
-                    <p className="mt-2 text-sm leading-7 text-white/58">
-                      {item.description}
-                    </p>
-                  </GlassCard>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="px-5 py-12 sm:px-8 lg:px-12">
-          <div className="mx-auto max-w-7xl">
-            <GlassCard className="overflow-hidden p-6 sm:p-8 lg:p-10">
-              <div className="grid gap-8 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">
-                    seu próximo universo geek começa aqui
-                  </p>
-                  <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
-                    Se você curte mangás, HQs e boas histórias, a ManHQ foi
-                    feita para você.
-                  </h2>
-                  <p className="mt-4 max-w-xl text-sm leading-7 text-white/60 sm:text-base">
-                    Entre agora e conheça uma plataforma criada para facilitar
-                    sua experiência, organizar sua leitura e aproximar você de
-                    novas obras.
-                  </p>
-                </div>
-
-                <div className="rounded-[28px] border border-white/8 bg-black/30 p-6">
-                  <p className="text-sm font-semibold text-white">
-                    Assinatura premium
-                  </p>
-                  <p className="mt-1 text-xs text-white/52">
-                    Acesso imediato para começar a explorar e ler sem atrito
-                  </p>
-
-                  <div className="mt-5 space-y-3">
-                    {[
-                      "Acesso ao ecossistema completo da ManHQ",
-                      "Leitura contínua e organizada",
-                      "Descoberta e favoritos no mesmo fluxo",
-                      "Interface rápida e elegante para maratonar",
-                    ].map((item) => (
-                      <div
-                        key={item}
-                        className="flex items-center gap-3 text-sm text-white/72"
-                      >
-                        <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-primary/12 text-primary">
-                          <ShieldCheck className="h-4 w-4" />
-                        </div>
-                        {item}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                    <a
-                      href={primaryCtaHref}
-                      target={primaryCtaTarget}
-                      rel={primaryCtaRel}
-                      onClick={() => handleStartNowClick("pricing")}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-primary px-5 py-3.5 text-center text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.33)]"
-                    >
-                      {primaryCtaLabel}
-                    </a>
-                    <Link
-                      href={isAuthenticated ? authenticatedPath : "/auth/login"}
-                      className="flex-1"
-                    >
-                      <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/8 bg-white/4 px-5 py-3.5 text-sm font-semibold text-textMain">
-                        {isAuthenticated
-                          ? "Abrir minha área"
-                          : "Já tenho acesso"}
-                      </div>
-                    </Link>
-                  </div>
                 </div>
               </div>
-            </GlassCard>
+            </motion.div>
           </div>
         </section>
 
-        <section className="px-5 py-6 sm:px-8 lg:px-12">
-          <div className="mx-auto max-w-7xl">
-            <div className="mb-6 max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">
-                feita para quem realmente consome conteúdo geek
+        {/* ── Testimonials ────────────────────────────────────────────── */}
+        <section className="px-5 py-16 sm:px-8 sm:py-24 lg:px-12">
+          <div className="mx-auto max-w-5xl">
+            <motion.div
+              variants={sectionReveal}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.5 }}
+              className="mb-10"
+            >
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-primary/80">
+                Quem já está dentro
               </p>
-              <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
-                Experiência criada para leitores que valorizam praticidade.
+              <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.03em] text-white sm:text-5xl">
+                Os primeiros
+                <br />
+                Fundadores falam.
               </h2>
-            </div>
+            </motion.div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              {trustPoints.map((point, index) => (
+            <div className="grid gap-4 sm:grid-cols-3">
+              {testimonials.map((item, index) => (
                 <motion.div
-                  key={point}
-                  initial={{ opacity: 0, y: 16 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, amount: 0.35 }}
-                  transition={{ delay: index * 0.04, duration: 0.35 }}
+                  key={item.name}
+                  variants={sectionReveal}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true, amount: 0.2 }}
+                  transition={{ duration: 0.4, delay: index * 0.08 }}
+                  className="rounded-2xl border border-white/8 bg-white/[0.03] p-6 backdrop-blur-sm"
                 >
-                  <GlassCard className="flex items-start gap-3 p-5">
-                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
-                      <Check className="h-4 w-4" />
+                  <div className="mb-4 flex gap-0.5 text-amber-400">
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Star key={s} className="h-3.5 w-3.5 fill-amber-400" />
+                    ))}
+                  </div>
+                  <p className="text-sm leading-relaxed text-white/65">
+                    &ldquo;{item.text}&rdquo;
+                  </p>
+                  <div className="mt-5 flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
+                      {item.initials}
                     </div>
-                    <p className="text-sm leading-7 text-white/70">{point}</p>
-                  </GlassCard>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-white">
+                          {item.name}
+                        </span>
+                        <span className="rounded-md bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-primary">
+                          {item.badge}
+                        </span>
+                      </div>
+                      <p className="text-xs text-white/40">{item.role}</p>
+                    </div>
+                  </div>
                 </motion.div>
               ))}
             </div>
           </div>
         </section>
 
-        <section className="px-5 pb-18 pt-10 sm:px-8 lg:px-12">
-          <div className="mx-auto max-w-6xl">
-            <GlassCard className="relative overflow-hidden border-primary/16 bg-linear-to-br from-primary/16 via-white/5 to-white/2 p-8 text-center sm:p-10 lg:p-12">
+        {/* ── FAQ ─────────────────────────────────────────────────────── */}
+        <section className="px-5 py-16 sm:px-8 sm:py-24 lg:px-12">
+          <div className="mx-auto max-w-3xl">
+            <motion.div
+              variants={sectionReveal}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.5 }}
+              className="mb-10"
+            >
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-primary/80">
+                Dúvidas frequentes
+              </p>
+              <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.03em] text-white sm:text-5xl">
+                Tudo que você precisa saber
+                <br />
+                antes de entrar.
+              </h2>
+            </motion.div>
+
+            <motion.div
+              variants={sectionReveal}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.1 }}
+              transition={{ duration: 0.5 }}
+              className="rounded-2xl border border-white/8 bg-white/[0.02] px-6 sm:px-8"
+            >
+              {faqs.map((faq) => (
+                <FaqItem key={faq.q} q={faq.q} a={faq.a} />
+              ))}
+            </motion.div>
+          </div>
+        </section>
+
+        {/* ── Final CTA ───────────────────────────────────────────────── */}
+        <section className="px-5 pb-20 pt-8 sm:px-8 lg:px-12">
+          <div className="mx-auto max-w-4xl">
+            <motion.div
+              variants={sectionReveal}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, amount: 0.3 }}
+              transition={{ duration: 0.5 }}
+              className="relative overflow-hidden rounded-3xl border border-primary/16 bg-linear-to-br from-primary/12 via-white/4 to-white/2 p-8 text-center shadow-[0_30px_80px_rgba(0,0,0,0.3)] sm:p-12 lg:p-16"
+            >
               <div className="pointer-events-none absolute left-1/2 top-0 h-48 w-48 -translate-x-1/2 rounded-full bg-primary/20 blur-[110px]" />
-              <p className="relative text-xs font-semibold uppercase tracking-[0.24em] text-primary/80">
+
+              <p className="relative text-xs font-bold uppercase tracking-[0.24em] text-primary/80">
                 pronto para entrar na manhq?
               </p>
-              <h2 className="relative mt-4 font-display text-3xl font-bold tracking-[-0.05em] text-white sm:text-5xl">
+              <h2 className="relative mt-4 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-5xl">
                 {isAuthenticated
                   ? `Bora continuar, ${user?.name?.split(" ")[0] || "leitor"}?`
-                  : "Explore mangás, HQs e conteúdo geek em uma plataforma feita para fãs de verdade."}
+                  : "As vagas de Fundador estão acabando."}
               </h2>
-              <p className="relative mx-auto mt-4 max-w-3xl text-sm leading-7 text-white/64 sm:text-base">
-                Entre agora e comece com uma experiência elegante, rápida e
-                pronta para quem quer ler sem fricção.
+              <p className="relative mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
+                {isAuthenticated
+                  ? "Sua experiência de leitura está esperando."
+                  : "Entre agora, garanta R$14,99 para sempre e faça parte dos primeiros 100 leitores da ManHQ."}
               </p>
+
               <div className="relative mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                 <motion.a
                   href={primaryCtaHref}
                   target={primaryCtaTarget}
                   rel={primaryCtaRel}
-                  onClick={() => handleStartNowClick("final_cta")}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="flex items-center justify-center gap-2 rounded-2xl bg-primary px-6 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)]"
+                  onClick={() => handleCta("final_cta")}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-primary px-8 py-4 text-sm font-bold text-white shadow-[0_18px_44px_rgba(229,9,20,0.35)]"
                 >
                   <Play className="h-4 w-4 fill-white" />
                   {primaryCtaLabel}
                 </motion.a>
-                <Link href={isAuthenticated ? authenticatedPath : "/auth/login"}>
+                <Link
+                  href={isAuthenticated ? authenticatedPath : "/auth/login"}
+                >
                   <motion.div
                     whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.95 }}
+                    whileTap={{ scale: 0.97 }}
                     className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-sm font-semibold text-textMain backdrop-blur-xl"
                   >
                     {isAuthenticated ? "Abrir minha área" : "Já sou assinante"}
@@ -403,9 +619,32 @@ export default function HomePage() {
                   </motion.div>
                 </Link>
               </div>
-            </GlassCard>
+            </motion.div>
           </div>
         </section>
+
+        {/* ── Footer ──────────────────────────────────────────────────── */}
+        <footer className="border-t border-white/5 px-5 py-8 sm:px-8 lg:px-12">
+          <div className="mx-auto flex max-w-6xl flex-col items-center gap-4 text-xs text-white/30 sm:flex-row sm:justify-between">
+            <p>
+              © {new Date().getFullYear()} ManHQ. Todos os direitos reservados.
+            </p>
+            <div className="flex gap-6">
+              <Link
+                href="/termos-de-servico"
+                className="transition-colors hover:text-white/50"
+              >
+                Termos de Serviço
+              </Link>
+              <Link
+                href="/politica-de-privacidade"
+                className="transition-colors hover:text-white/50"
+              >
+                Política de Privacidade
+              </Link>
+            </div>
+          </div>
+        </footer>
       </div>
     </main>
   );

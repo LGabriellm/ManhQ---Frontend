@@ -100,6 +100,12 @@ export default function ActivatePage() {
   const [invalidMessage, setInvalidMessage] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
+  const [usernameStatus, setUsernameStatus] = useState<
+    "idle" | "checking" | "available" | "unavailable"
+  >("idle");
+  const [usernameSuggestions, setUsernameSuggestions] = useState<string[]>([]);
+  const usernameDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const usernameRequestRef = useRef(0);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -108,6 +114,50 @@ export default function ActivatePage() {
   const [error, setError] = useState("");
   const [errorDetails, setErrorDetails] = useState<string[]>([]);
   const hasRedirectedRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (usernameDebounceRef.current) {
+        clearTimeout(usernameDebounceRef.current);
+      }
+      usernameRequestRef.current += 1;
+    };
+  }, []);
+
+  const handleUsernameChange = (value: string) => {
+    setUsername(value);
+    setUsernameSuggestions([]);
+
+    const normalizedValue = value.trim();
+
+    if (usernameDebounceRef.current) {
+      clearTimeout(usernameDebounceRef.current);
+      usernameDebounceRef.current = null;
+    }
+
+    if (normalizedValue.length < 3) {
+      usernameRequestRef.current += 1;
+      setUsernameStatus("idle");
+      return;
+    }
+
+    setUsernameStatus("checking");
+    const requestId = usernameRequestRef.current + 1;
+    usernameRequestRef.current = requestId;
+    usernameDebounceRef.current = setTimeout(() => {
+      authService
+        .checkUsernamePublic(normalizedValue)
+        .then((result) => {
+          if (usernameRequestRef.current !== requestId) return;
+          setUsernameStatus(result.available ? "available" : "unavailable");
+          setUsernameSuggestions(result.suggestions || []);
+        })
+        .catch(() => {
+          if (usernameRequestRef.current !== requestId) return;
+          setUsernameStatus("idle");
+        });
+    }, 400);
+  };
 
   const passwordValidation = useMemo(
     () => passwordChecks(password),
@@ -182,6 +232,11 @@ export default function ActivatePage() {
 
     if (username.trim().length > 0 && username.trim().length < 3) {
       setError("O username precisa ter pelo menos 3 caracteres.");
+      return;
+    }
+
+    if (usernameStatus === "unavailable") {
+      setError("O username escolhido já está em uso. Escolha outro ou deixe em branco.");
       return;
     }
 
@@ -430,27 +485,56 @@ export default function ActivatePage() {
               <span className="mb-2 block text-sm font-medium text-textMain">
                 Username
               </span>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder={`${validation?.suggestedUsername || "seu_username"}…`}
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                aria-invalid={Boolean(error)}
-                aria-describedby="activate-username-hint"
-                className="field-input rounded-[24px] px-4 py-3 text-sm"
-              />
-              <p
-                id="activate-username-hint"
-                className="mt-2 text-xs leading-6 text-textDim"
-              >
-                Opcional. Se preferir, use a sugestão inicial ou deixe em branco
-                para aceitarmos um username automático.
-              </p>
+              <div className="relative">
+                <input
+                  id="username"
+                  name="username"
+                  type="text"
+                  value={username}
+                  onChange={(event) => handleUsernameChange(event.target.value)}
+                  placeholder={`${validation?.suggestedUsername || "seu_username"}…`}
+                  maxLength={24}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-invalid={usernameStatus === "unavailable" || Boolean(error)}
+                  aria-describedby="activate-username-hint"
+                  className="field-input rounded-[24px] px-4 py-3 pr-10 text-sm"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  {usernameStatus === "checking" ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-textDim" />
+                  ) : usernameStatus === "available" ? (
+                    <Check className="h-4 w-4 text-emerald-400" />
+                  ) : usernameStatus === "unavailable" ? (
+                    <AlertTriangle className="h-4 w-4 text-rose-400" />
+                  ) : null}
+                </div>
+              </div>
+              {usernameStatus === "unavailable" && usernameSuggestions.length > 0 ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-textDim">Tente:</span>
+                  {usernameSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => handleUsernameChange(suggestion)}
+                      className="rounded-lg bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p
+                  id="activate-username-hint"
+                  className="mt-2 text-xs leading-6 text-textDim"
+                >
+                  {usernameStatus === "unavailable"
+                    ? "Este username já está em uso. Tente outro."
+                    : "Opcional. 3–24 caracteres, minúsculas, números, `.`, `_`, `-`."}
+                </p>
+              )}
             </label>
 
             <label className="block">

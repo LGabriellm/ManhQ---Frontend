@@ -96,14 +96,12 @@ function SectionRow({
     rating?: number | null;
   }>;
   loading: boolean;
-  renderCard: (
-    item: {
-      id: string;
-      title: string;
-      coverUrl?: string | null;
-      rating?: number | null;
-    },
-  ) => ReactNode;
+  renderCard: (item: {
+    id: string;
+    title: string;
+    coverUrl?: string | null;
+    rating?: number | null;
+  }) => ReactNode;
 }) {
   return loading ? (
     <HorizontalScroll>
@@ -123,8 +121,12 @@ function SectionRow({
 }
 
 export default function HomePage() {
-  const { isAuthenticated, isLoading: authLoading, subscription, user } =
-    useAuth();
+  const {
+    isAuthenticated,
+    isLoading: authLoading,
+    subscription,
+    user,
+  } = useAuth();
   const {
     data: discover,
     isLoading: discoverLoading,
@@ -132,7 +134,10 @@ export default function HomePage() {
     refetch: refetchDiscover,
   } = useDiscover({ enabled: isAuthenticated, limit: 16 });
   const { data: continueReading, isLoading: continueLoading } =
-    useContinueReading({ limit: 5 }, { enabled: isAuthenticated });
+    useContinueReading(
+      { limit: 5, onlyInProgress: true },
+      { enabled: isAuthenticated },
+    );
 
   const firstName = user?.name?.split(" ")[0] ?? "Leitor";
   const discoverData = discover ?? EMPTY_DISCOVER;
@@ -229,7 +234,25 @@ export default function HomePage() {
   if (authLoading) {
     return (
       <main className="min-h-screen bg-background pb-28">
+        <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl">
+          <div className="flex h-14 items-center justify-between px-5">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shadow-lg shadow-primary/25">
+                <span className="select-none text-sm font-black leading-none text-white">
+                  M
+                </span>
+              </div>
+              <span className="text-[15px] font-bold tracking-tight text-textMain">
+                ManHQ
+              </span>
+            </div>
+          </div>
+        </div>
         <div className="space-y-8 pt-5">
+          <div className="px-5">
+            <div className="h-4 w-24 animate-pulse rounded-full bg-surface/50" />
+            <div className="mt-2 h-7 w-40 animate-pulse rounded-full bg-surface/50" />
+          </div>
           <div className="mx-4 h-52 animate-pulse rounded-3xl bg-surface/60" />
           <div className="space-y-2.5">
             <ContinueSkeleton />
@@ -326,7 +349,12 @@ export default function HomePage() {
       </div>
 
       <div className="space-y-8 pt-5">
-        <div className="px-5">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="px-5"
+        >
           <p className="text-sm text-textDim">
             Olá,{" "}
             <span className="font-semibold capitalize text-textMain">
@@ -338,7 +366,7 @@ export default function HomePage() {
             <br />
             ler hoje?
           </h1>
-        </div>
+        </motion.div>
 
         <div className="px-4">
           <SubscriptionAlertBanner subscription={subscription} />
@@ -387,11 +415,16 @@ export default function HomePage() {
         {discoverLoading ? (
           <div className="mx-4 h-52 animate-pulse rounded-3xl bg-surface/60" />
         ) : featured ? (
-          <div className="px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut", delay: 0.1 }}
+            className="px-4"
+          >
             <Link href={`/serie/${featured.id}`}>
               <motion.div
                 whileTap={{ scale: 0.97 }}
-                className="group relative h-52 overflow-hidden rounded-3xl"
+                className="group relative h-52 overflow-hidden rounded-3xl shadow-lg shadow-black/20 hover:shadow-xl hover:shadow-black/30 transition-shadow duration-300"
               >
                 <div className="absolute inset-0 transition-transform duration-700 group-hover:scale-105">
                   <AuthCover
@@ -435,15 +468,16 @@ export default function HomePage() {
                 </div>
               </motion.div>
             </Link>
-          </div>
+          </motion.div>
         ) : null}
 
         {(continueLoading ||
           (continueReading != null && continueReading.length > 0)) && (
           <motion.section
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.2 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
           >
             <RowTitle label="Continuar lendo" />
             <div className="space-y-2.5">
@@ -475,9 +509,10 @@ export default function HomePage() {
           discoverLoading || section.items.length > 0 ? (
             <motion.section
               key={section.key}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, ease: "easeOut", delay: index * 0.07 }}
+              initial={{ opacity: 0, y: 14 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
             >
               <RowTitle
                 label={section.label}
@@ -504,6 +539,24 @@ export default function HomePage() {
             </p>
           </div>
         ) : null}
+
+        {!discoverLoading && hasAnyDiscoverContent && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true, amount: 0.5 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="mx-4 flex items-center justify-center pt-2 pb-4"
+          >
+            <Link
+              href="/search"
+              className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/4 px-5 py-3 text-sm font-semibold text-textDim transition-colors hover:border-white/12 hover:bg-white/6 hover:text-textMain"
+            >
+              <Search className="h-4 w-4" />
+              Explorar todo o catálogo
+            </Link>
+          </motion.div>
+        )}
       </div>
     </main>
   );

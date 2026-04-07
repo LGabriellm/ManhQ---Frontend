@@ -227,6 +227,18 @@ export function formatSubscriptionDateTime(date?: string | null): string {
   });
 }
 
+export function getPaymentMethodLabel(method?: string | null): string {
+  if (!method) return "Não informado";
+
+  const labels: Record<string, string> = {
+    CREDIT_CARD: "Cartão de crédito",
+    PIX: "PIX (renovação manual)",
+    AUTO_PIX: "PIX automático",
+  };
+
+  return labels[method] ?? method;
+}
+
 export function getSubscriptionStateLabel(state?: SubscriptionState): string {
   const labels: Record<SubscriptionState, string> = {
     inactive: "Sem assinatura",

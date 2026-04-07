@@ -1,19 +1,24 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { readerService } from "@/services/reader.service";
+import { progressService } from "@/services/progress.service";
 import { statsService } from "@/services/stats.service";
 
 /**
- * Hook otimizado para sincronizar progresso de leitura.
+ * Hook para sincronizar progresso de leitura com o backend.
  *
- * - Salva via services (sem React Query mutation) para evitar re-renders
- * - Debounce de 1s para não disparar a cada pixel de scroll
- * - Deduplica: só envia se a página realmente mudou desde o último envio
- * - Flush imediato no unmount (troca de capítulo, saída do reader)
- * - Marca como lido automaticamente ao chegar na última página
- * - Invalida queries de progresso apenas no unmount (não durante a leitura)
- * - Registra estatísticas de leitura (páginas + tempo) a cada 30s e no unmount
- * - Fluxo de rede centralizado na camada de services
+ * Responsabilidades:
+ * 1. Salvar progresso de página (POST /read/:id/progress) com debounce de 1s
+ * 2. Salvar progresso periodicamente a cada 15s (inatividade / leitura longa)
+ * 3. Marcar capítulo como lido (POST /progress/:mediaId/mark-read) na última página
+ * 4. Enviar estatísticas de leitura (POST /stats/record) com deltas acumulados a cada 30s
+ * 5. Salvar dados pendentes ao sair (unmount, tab hide, page unload)
+ * 6. Invalidar queries de progresso ao sair do reader
+ *
+ * Regras de stats (backend):
+ * - /stats/record é aditivo: envia deltas, nunca totais cumulativos
+ * - Requer pages > 0 e timeSpent > 0 — flush só quando ambos são positivos
+ * - chapterCompleted: true enviado uma única vez por capítulo/sessão
  */
 export function useProgressSync(
   chapterId: string,
@@ -22,31 +27,36 @@ export function useProgressSync(
 ) {
   const queryClient = useQueryClient();
 
-  // Refs para manter valores atualizados sem causar re-execução do effect
+  // --- Progress refs ---
   const lastSentPage = useRef(0);
   const pendingPage = useRef(0);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSending = useRef(false);
   const chapterIdRef = useRef(chapterId);
 
-  // Stats tracking refs
-  const pagesReadInSession = useRef(0);
-  const sessionStartTime = useRef(Date.now());
+  // --- Stats tracking refs (delta accumulation) ---
+  const uniquePagesVisited = useRef(new Set<number>());
   const lastStatsFlush = useRef(Date.now());
   const statsTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const highestPage = useRef(0);
+  const chapterCompletedSent = useRef(false);
 
-  const invalidateProgressQueries = useCallback((chapter: string) => {
-    queryClient.invalidateQueries({ queryKey: ["progress", chapter] });
-    queryClient.invalidateQueries({
-      queryKey: ["progress", "continue-reading"],
-    });
-    queryClient.invalidateQueries({ queryKey: ["progress", "history"] });
-    queryClient.invalidateQueries({ queryKey: ["progress", "series-list"] });
-    queryClient.invalidateQueries({ queryKey: ["user-stats"] });
-  }, [queryClient]);
+  // --- Periodic progress save ---
+  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Função para enviar progresso ao backend
+  const invalidateProgressQueries = useCallback(
+    (chapter: string) => {
+      queryClient.removeQueries({ queryKey: ["progress", chapter] });
+      queryClient.invalidateQueries({
+        queryKey: ["progress", "continue-reading"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["progress", "history"] });
+      queryClient.invalidateQueries({ queryKey: ["progress", "series-list"] });
+      queryClient.invalidateQueries({ queryKey: ["user-stats"] });
+    },
+    [queryClient],
+  );
+
+  // Envia progresso ao backend via axios
   const sendProgress = async (page: number, chapter: string) => {
     if (isSending.current || page === lastSentPage.current || page < 1) return;
 
@@ -55,68 +65,90 @@ export function useProgressSync(
       await readerService.updateProgress(chapter, { page });
       lastSentPage.current = page;
     } catch {
-      // Silencia erros de rede — será tentado novamente na próxima mudança
+      // Será tentado novamente na próxima mudança
     } finally {
       isSending.current = false;
     }
   };
 
+  // Envia progresso via sendBeacon (para unmount / visibilitychange)
   const flushProgressKeepalive = (chapter: string) => {
     const page = pendingPage.current;
-    if (page < 1 || page === lastSentPage.current) {
-      return;
-    }
+    if (page < 1 || page === lastSentPage.current) return;
 
     readerService.updateProgressKeepalive(chapter, { page }).catch(() => {});
     lastSentPage.current = page;
   };
 
-  // Flush de estatísticas de leitura
-  const flushStats = async () => {
+  // Marca capítulo como lido explicitamente (POST /progress/:mediaId/mark-read)
+  const markChapterRead = async (chapter: string) => {
+    if (chapterCompletedSent.current) return;
+    try {
+      await progressService.markAsRead(chapter);
+    } catch {
+      // Será contabilizado pelo auto-finish do backend em ≥90%
+    }
+  };
+
+  // Flush de stats com acumulação de deltas
+  // Backend requer pages > 0 e timeSpent > 0
+  const flushStats = async (forceChapterCompleted = false) => {
     const now = Date.now();
     const elapsedSec = Math.round((now - lastStatsFlush.current) / 1000);
-    const pages = pagesReadInSession.current;
+    const pages = uniquePagesVisited.current.size;
 
-    if (pages === 0 && elapsedSec < 3) return; // Nada significativo para enviar
+    if (pages <= 0 || elapsedSec <= 0) return;
+
+    const chapterCompleted =
+      forceChapterCompleted && !chapterCompletedSent.current;
 
     lastStatsFlush.current = now;
-    pagesReadInSession.current = 0;
+    uniquePagesVisited.current = new Set<number>();
+
+    if (chapterCompleted) {
+      chapterCompletedSent.current = true;
+    }
 
     try {
       await statsService.record({
         pages,
         timeSpent: elapsedSec,
-        chapterCompleted: false,
+        ...(chapterCompleted ? { chapterCompleted: true } : {}),
       });
     } catch {
-      // Silencia — não é crítico
+      // Não é crítico
     }
   };
 
-  const flushStatsKeepalive = () => {
+  // Flush de stats via sendBeacon (para unmount / visibilitychange)
+  const flushStatsKeepalive = (forceChapterCompleted = false) => {
     const elapsedSec = Math.round((Date.now() - lastStatsFlush.current) / 1000);
-    const pages = pagesReadInSession.current;
+    const pages = uniquePagesVisited.current.size;
 
-    if (pages === 0 && elapsedSec < 3) {
-      return;
-    }
+    if (pages <= 0 || elapsedSec <= 0) return;
+
+    const chapterCompleted =
+      forceChapterCompleted && !chapterCompletedSent.current;
 
     lastStatsFlush.current = Date.now();
-    pagesReadInSession.current = 0;
+    uniquePagesVisited.current = new Set<number>();
+
+    if (chapterCompleted) {
+      chapterCompletedSent.current = true;
+    }
 
     statsService
       .recordKeepalive({
         pages,
         timeSpent: elapsedSec,
-        chapterCompleted: false,
+        ...(chapterCompleted ? { chapterCompleted: true } : {}),
       })
       .catch(() => {});
   };
 
+  // Troca de capítulo: flush do capítulo anterior e reset de estado
   useEffect(() => {
-    if (chapterIdRef.current === chapterId) {
-      return;
-    }
+    if (chapterIdRef.current === chapterId) return;
 
     const previousChapterId = chapterIdRef.current;
     if (debounceTimer.current) {
@@ -131,36 +163,29 @@ export function useProgressSync(
     chapterIdRef.current = chapterId;
     lastSentPage.current = 0;
     pendingPage.current = 0;
-    pagesReadInSession.current = 0;
-    highestPage.current = 0;
-    sessionStartTime.current = Date.now();
+    uniquePagesVisited.current = new Set<number>();
     lastStatsFlush.current = Date.now();
+    chapterCompletedSent.current = false;
   }, [chapterId, invalidateProgressQueries]);
 
   // Efeito principal: reage a mudanças de página
-  // O backend auto-marca finished em ≥90%, então não precisamos chamar markAsRead separado
   useEffect(() => {
     if (currentPage < 1) return;
 
     pendingPage.current = currentPage;
+    uniquePagesVisited.current.add(currentPage);
 
-    // Contar páginas lidas (só conta se avançou para uma página nova)
-    if (currentPage > highestPage.current) {
-      pagesReadInSession.current += currentPage - highestPage.current;
-      highestPage.current = currentPage;
-    }
-
-    // Não envia se é a mesma página que já foi salva
     if (currentPage === lastSentPage.current) return;
 
-    // Cancelar debounce anterior
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
 
-    // Na última página, enviar imediatamente (sem debounce) para capturar a conclusão
+    // Na última página: envio imediato + mark-read explícito + stats com completion
     if (currentPage >= totalPages && totalPages > 1) {
       sendProgress(currentPage, chapterId);
+      markChapterRead(chapterId);
+      flushStats(true);
     } else {
       // Debounce de 1s para páginas intermediárias
       debounceTimer.current = setTimeout(() => {
@@ -176,7 +201,7 @@ export function useProgressSync(
     };
   }, [currentPage, chapterId, totalPages]);
 
-  // Timer periódico para enviar stats a cada 30s durante leitura ativa
+  // Timer periódico para enviar stats a cada 30s
   useEffect(() => {
     statsTimer.current = setInterval(() => {
       flushStats();
@@ -190,10 +215,42 @@ export function useProgressSync(
     };
   }, [chapterId]);
 
-  // Flush + invalidação no unmount do reader ou troca de capítulo
+  // Timer periódico para salvar progresso a cada 15s (inatividade / leitura longa)
+  useEffect(() => {
+    progressTimer.current = setInterval(() => {
+      const page = pendingPage.current;
+      if (page > 0 && page !== lastSentPage.current) {
+        sendProgress(page, chapterIdRef.current);
+      }
+    }, 15_000);
+
+    return () => {
+      if (progressTimer.current) {
+        clearInterval(progressTimer.current);
+        progressTimer.current = null;
+      }
+    };
+  }, [chapterId]);
+
+  // Salvar ao esconder a tab (visibilitychange)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        const chapter = chapterIdRef.current;
+        flushProgressKeepalive(chapter);
+        flushStatsKeepalive();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  // Flush + invalidação no unmount do reader
   useEffect(() => {
     return () => {
-      // Cancelar timers pendentes
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
         debounceTimer.current = null;
@@ -201,6 +258,10 @@ export function useProgressSync(
       if (statsTimer.current) {
         clearInterval(statsTimer.current);
         statsTimer.current = null;
+      }
+      if (progressTimer.current) {
+        clearInterval(progressTimer.current);
+        progressTimer.current = null;
       }
 
       const chapter = chapterIdRef.current;

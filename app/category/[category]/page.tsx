@@ -155,18 +155,14 @@ export default function CategoryPage() {
         </motion.div>
 
         {series.length > 0 ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
-          >
-            {series.map((item, index) => (
+          <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {series.map((item) => (
               <motion.div
                 key={item.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.08 + index * 0.02 }}
+                initial={{ opacity: 0, y: 14 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, amount: 0.15 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
               >
                 <MangaCard
                   id={item.id}
@@ -176,7 +172,7 @@ export default function CategoryPage() {
                 />
               </motion.div>
             ))}
-          </motion.div>
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-surface bg-surface/20 px-6 py-16 text-center mt-6">
             <p className="text-base font-semibold text-textMain">

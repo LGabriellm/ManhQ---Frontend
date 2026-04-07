@@ -307,9 +307,10 @@ export default function MangaDetailsPage() {
 
         {series.genres && series.genres.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
             className="mb-6 flex flex-wrap gap-2"
           >
             {series.genres.map((genre) => (
@@ -324,9 +325,10 @@ export default function MangaDetailsPage() {
         )}
 
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
+          initial={{ opacity: 0, y: 14 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
           className="mb-6 grid grid-cols-3 gap-3"
         >
           <div className="rounded-xl border border-surface bg-surface/50 p-4 text-center backdrop-blur-sm">
@@ -383,9 +385,10 @@ export default function MangaDetailsPage() {
 
         {series.description && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.3 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
             className="mb-6 rounded-xl border border-surface bg-surface/30 p-4 backdrop-blur-sm"
           >
             <h2 className="mb-3 flex items-center gap-2 text-lg font-bold text-textMain">
@@ -400,9 +403,10 @@ export default function MangaDetailsPage() {
 
         {chapters.length > 0 ? (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.1 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
             className="mb-8"
           >
             <h2 className="mb-4 flex items-center gap-2 text-xl font-bold text-textMain">
@@ -432,9 +436,10 @@ export default function MangaDetailsPage() {
                     href={`/reader/${series.id}/${chapter.id}`}
                   >
                     <motion.div
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.5 + index * 0.04 }}
+                      initial={{ opacity: 0, x: -10 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true, amount: 0.3 }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
                       whileTap={{ scale: 0.98 }}
                       className={`group relative my-4 flex items-center overflow-hidden rounded-xl p-4 transition-all ${
                         isCurrent
@@ -529,9 +534,10 @@ export default function MangaDetailsPage() {
         )}
 
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.55 }}
+          initial={{ opacity: 0, y: 14 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.1 }}
+          transition={{ duration: 0.35, ease: "easeOut" }}
           className="mb-8"
         >
           <CommentSection

@@ -318,14 +318,20 @@ export default function SearchPage() {
           ) : (
             <>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
-                {filteredSeries.map((series) => (
-                  <MangaCard
+                {filteredSeries.map((series, index) => (
+                  <motion.div
                     key={series.id}
-                    id={series.id}
-                    title={series.title}
-                    coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
-                    rating={series.rating}
-                  />
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, ease: "easeOut", delay: index * 0.03 }}
+                  >
+                    <MangaCard
+                      id={series.id}
+                      title={series.title}
+                      coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
+                      rating={series.rating}
+                    />
+                  </motion.div>
                 ))}
               </div>
 

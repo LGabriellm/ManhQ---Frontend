@@ -64,8 +64,11 @@ export default function ReaderPage() {
     isFetching,
   } = useChapterInfo(chapterId);
   const { data: seriesData } = useSeriesById(seriesId);
-  const { data: savedProgress, isLoading: isProgressLoading } =
-    useMediaProgress(chapterId);
+  const {
+    data: savedProgress,
+    isLoading: isProgressLoading,
+    isFetching: isProgressFetching,
+  } = useMediaProgress(chapterId);
   const {
     isFavorite,
     toggleFavorite,
@@ -171,8 +174,10 @@ export default function ReaderPage() {
       return;
     }
 
-    // When there's no explicit ?page= param, wait for savedProgress to load
-    if (!hasExplicitPageParam && isProgressLoading) {
+    // When there's no explicit ?page= param, wait for fresh progress data.
+    // Check both isLoading (initial fetch) and isFetching (background refetch
+    // after stale cache) to avoid restoring with outdated cached progress.
+    if (!hasExplicitPageParam && (isProgressLoading || isProgressFetching)) {
       return;
     }
 
@@ -199,6 +204,7 @@ export default function ReaderPage() {
     chapterData,
     chapterId,
     hasExplicitPageParam,
+    isProgressFetching,
     isProgressLoading,
     savedProgress,
     scrollToPage,

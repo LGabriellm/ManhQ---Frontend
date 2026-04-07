@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Check,
+  CreditCard,
   Eye,
   EyeOff,
   Loader2,
@@ -18,6 +19,7 @@ import {
   Smartphone,
   Trash2,
   Upload,
+  UserRound,
   X,
 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -35,7 +37,12 @@ import {
   useUploadAvatar,
 } from "@/hooks/useAccount";
 import { UserAvatar } from "@/components/community/UserAvatar";
+import { SubscriptionStateBadge } from "@/components/subscription/SubscriptionStateBadge";
 import { accountService } from "@/services/account.service";
+import {
+  formatSubscriptionDate,
+  getPaymentMethodLabel,
+} from "@/lib/subscription";
 
 function relativeTime(dateString: string) {
   const diff = Date.now() - new Date(dateString).getTime();
@@ -83,7 +90,7 @@ function getActionErrorMessage(error: unknown, fallback: string) {
 
 export default function EditProfilePage() {
   const router = useRouter();
-  const { user, refreshUser, logout } = useAuth();
+  const { user, refreshUser, logout, subscription } = useAuth();
   const account = useAccount();
 
   const updateProfile = useUpdateProfile();
@@ -96,6 +103,13 @@ export default function EditProfilePage() {
   const logoutAllSessions = useLogoutAllSessions();
 
   const profile = account.data?.account;
+
+  const [displayNameInput, setDisplayNameInput] = useState<string | undefined>(
+    undefined,
+  );
+  const currentDisplayName = (profile?.name || "").trim();
+  const displayName = displayNameInput ?? currentDisplayName;
+  const hasDisplayNameChanged = displayName.trim() !== currentDisplayName;
 
   const [usernameInput, setUsernameInput] = useState<string | undefined>(
     undefined,
@@ -159,12 +173,36 @@ export default function EditProfilePage() {
   const handleRefresh = async () => {
     try {
       await Promise.all([refreshUser(), account.refetch(), sessions.refetch()]);
+      setDisplayNameInput(undefined);
       setUsernameInput(undefined);
       setUsernameStatus("idle");
       setUsernameSuggestions([]);
       toast.success("Dados atualizados.");
     } catch {
       toast.error("Não foi possível atualizar os dados.");
+    }
+  };
+
+  const saveDisplayName = async () => {
+    const trimmed = displayName.trim();
+    if (!trimmed) {
+      toast.error("O nome de exibição não pode ficar vazio.");
+      return;
+    }
+    if (!hasDisplayNameChanged) {
+      toast("Nenhuma alteração para salvar.");
+      return;
+    }
+
+    try {
+      await updateProfile.mutateAsync({ name: trimmed });
+      await Promise.all([refreshUser(), account.refetch()]);
+      setDisplayNameInput(trimmed);
+      toast.success("Nome de exibição atualizado.");
+    } catch (error) {
+      toast.error(
+        getActionErrorMessage(error, "Não foi possível atualizar o nome."),
+      );
     }
   };
 
@@ -353,10 +391,17 @@ export default function EditProfilePage() {
         </div>
 
         <section className="rounded-4xl border border-white/6 bg-surface/30 p-5">
-          <h1 className="text-2xl font-bold text-textMain">Perfil</h1>
-          <p className="mt-1 text-sm text-textDim">
-            Gerencie foto de perfil e username.
-          </p>
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-primary/10 p-2 text-primary">
+              <UserRound className="h-4 w-4" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-textMain">Perfil</h1>
+              <p className="mt-1 text-sm text-textDim">
+                Foto, nome de exibição e username.
+              </p>
+            </div>
+          </div>
 
           <div className="mt-5 flex flex-wrap items-center gap-4 rounded-3xl border border-white/6 bg-background/55 p-4">
             <UserAvatar
@@ -368,9 +413,11 @@ export default function EditProfilePage() {
             />
             <div className="min-w-0 flex-1">
               <p className="truncate text-base font-semibold text-textMain">
-                @{profile?.username || "usuario"}
+                {profile?.name || user?.name || "Sem nome"}
               </p>
-              <p className="truncate text-sm text-textDim">{user?.email}</p>
+              <p className="truncate text-sm text-textDim">
+                @{profile?.username || "usuario"} · {user?.email}
+              </p>
             </div>
             <div className="flex gap-2">
               <input
@@ -416,6 +463,39 @@ export default function EditProfilePage() {
           <div className="mt-5 space-y-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-textMain">
+                Nome de exibição
+              </label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(event) => setDisplayNameInput(event.target.value)}
+                maxLength={100}
+                className="block w-full rounded-2xl border border-white/8 bg-background/60 px-4 py-3 text-sm text-textMain outline-none focus:border-primary/50"
+                placeholder="Como você aparece no ManHQ"
+              />
+              <p className="mt-1 text-xs text-textDim">
+                O nome que aparece nos comentários e no seu perfil.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void saveDisplayName()}
+              disabled={updateProfile.isPending || !hasDisplayNameChanged || !displayName.trim()}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-3xl bg-primary py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              {updateProfile.isPending && hasDisplayNameChanged ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Salvar nome
+            </button>
+          </div>
+
+          <div className="mt-5 border-t border-white/6 pt-5 space-y-4">
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-textMain">
                 Username
               </label>
               <div className="relative">
@@ -424,7 +504,7 @@ export default function EditProfilePage() {
                   value={username}
                   onChange={(event) => handleUsernameChange(event.target.value)}
                   maxLength={24}
-                  className="block w-full rounded-2xl border border-white/8 bg-background/60 px-4 py-3 text-sm text-textMain outline-none focus:border-primary/50"
+                  className="block w-full rounded-2xl border border-white/8 bg-background/60 px-4 py-3 pr-10 text-sm text-textMain outline-none focus:border-primary/50"
                   placeholder="seu_username"
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -464,13 +544,60 @@ export default function EditProfilePage() {
               disabled={updateProfile.isPending || !canSaveUsername}
               className="inline-flex w-full items-center justify-center gap-2 rounded-3xl bg-primary py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
             >
-              {updateProfile.isPending ? (
+              {updateProfile.isPending && hasUsernameChanged ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
               Salvar username
             </button>
+          </div>
+        </section>
+
+        <section className="rounded-4xl border border-white/6 bg-surface/25 p-5">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-primary/10 p-2 text-primary">
+              <CreditCard className="h-4 w-4" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-lg font-semibold text-textMain">Assinatura</h2>
+              <p className="mt-1 text-sm text-textDim">
+                Resumo rápido do seu plano.
+              </p>
+
+              <div className="mt-4 rounded-2xl border border-white/6 bg-background/55 p-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <SubscriptionStateBadge state={subscription?.state} />
+                  {subscription?.plan ? (
+                    <span className="text-xs font-medium text-textDim">
+                      {subscription.plan}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-textDim">Pagamento</p>
+                    <p className="mt-0.5 text-sm font-medium text-textMain">
+                      {getPaymentMethodLabel(subscription?.paymentMethod)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-textDim">Próximo vencimento</p>
+                    <p className="mt-0.5 text-sm font-medium text-textMain">
+                      {formatSubscriptionDate(subscription?.currentPeriodEnd)}
+                    </p>
+                  </div>
+                </div>
+
+                <Link
+                  href="/subscription"
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/8 bg-background/60 px-4 py-2.5 text-xs font-semibold text-textMain hover:bg-background"
+                >
+                  Gerenciar assinatura
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
 

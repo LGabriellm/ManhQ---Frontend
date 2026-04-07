@@ -25,6 +25,7 @@ import {
   SUBSCRIPTION_CHECKOUT_URL,
   formatSubscriptionDate,
   formatSubscriptionDateTime,
+  getPaymentMethodLabel,
   getRenewalHref,
   getSubscriptionStateLabel,
   getSubscriptionStateMeta,
@@ -300,7 +301,7 @@ export default function SubscriptionPage() {
                 Plano: {subscription.plan ?? "premium"}
               </span>
               <span className="badge-soft text-textMain">
-                Pagamento: {subscription.paymentMethod ?? "Não informado"}
+                Pagamento: {getPaymentMethodLabel(subscription.paymentMethod)}
               </span>
               <span className="badge-soft text-textMain">
                 {subscription.isRecurring ? "Recorrente" : "Renovação manual"}
@@ -606,11 +607,11 @@ export default function SubscriptionPage() {
                 value={cancelReason}
                 onChange={(event) => setCancelReason(event.target.value)}
                 placeholder="Opcional, mas útil para melhorarmos a experiência."
-                maxLength={500}
+                maxLength={1000}
                 className="field-textarea min-h-28 rounded-[22px] px-4 py-3 text-sm"
               />
               <p className="mt-2 text-xs text-textDim" aria-live="polite">
-                {cancelReasonLength}/500 caracteres
+                {cancelReasonLength}/1000 caracteres
               </p>
             </label>
 

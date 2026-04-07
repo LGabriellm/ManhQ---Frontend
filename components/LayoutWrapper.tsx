@@ -25,16 +25,20 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     isPublicRoute;
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated && !isPublicRoute) {
-      router.replace("/auth/login");
+    if (isLoading) return;
+
+    // PWA opens at /home — redirect unauthenticated users to landing page
+    if (!isAuthenticated && pathname === "/home") {
+      router.replace("/");
+      return;
     }
 
-    if (
-      !isLoading &&
-      isAuthenticated &&
-      !accessGranted &&
-      needsActiveSubscription
-    ) {
+    if (!isAuthenticated && !isPublicRoute) {
+      router.replace("/auth/login");
+      return;
+    }
+
+    if (isAuthenticated && !accessGranted && needsActiveSubscription) {
       router.replace(SUBSCRIPTION_MANAGEMENT_ROUTE);
     }
   }, [
@@ -43,6 +47,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
     isAuthenticated,
     isPublicRoute,
     needsActiveSubscription,
+    pathname,
     router,
   ]);
 

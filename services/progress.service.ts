@@ -50,8 +50,11 @@ function mapMediaProgress(raw: unknown): MediaProgress {
       : raw;
   const item = toRecord(payload);
 
+  // Backend pode retornar page: 0 como fallback — normaliza para 1
+  const rawPage = asNumber(item.page, 1);
+
   return {
-    page: asNumber(item.page, 1),
+    page: rawPage > 0 ? rawPage : 1,
     finished: asBoolean(item.finished),
     startedAt: asString(item.startedAt),
     lastReadAt: asString(item.lastReadAt),

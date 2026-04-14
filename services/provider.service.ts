@@ -26,6 +26,8 @@ import type {
   SuwayomiUninstallResponse,
   SuwayomiReloadResponse,
   RetryFailedResponse,
+  RetryChapterResponse,
+  ChapterStatusResponse,
 } from "@/types/api";
 
 export const providerService = {
@@ -158,6 +160,24 @@ export const providerService = {
   async retryFailedChapters(id: string): Promise<RetryFailedResponse> {
     const res = await api.post<RetryFailedResponse>(
       `/admin/providers/tracked/${id}/retry-failed`,
+    );
+    return res.data;
+  },
+
+  async retryChapter(chapterId: string): Promise<RetryChapterResponse> {
+    const res = await api.post<RetryChapterResponse>(
+      `/admin/providers/chapters/${chapterId}/retry`,
+    );
+    return res.data;
+  },
+
+  async getChapterStatus(
+    chapterId: string,
+    signal?: AbortSignal,
+  ): Promise<ChapterStatusResponse> {
+    const res = await api.get<ChapterStatusResponse>(
+      `/admin/providers/chapters/${chapterId}/status`,
+      { signal },
     );
     return res.data;
   },

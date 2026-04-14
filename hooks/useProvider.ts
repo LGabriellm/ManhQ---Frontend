@@ -16,6 +16,7 @@ import type {
   KeiyoushiParams,
   BulkImportRequest,
   SuwayomiExtensionsParams,
+  ChapterStatusResponse,
 } from "@/types/api";
 
 // ===== Query Keys =====
@@ -34,6 +35,8 @@ export const providerKeys = {
   keiyoushiStats: () => [...providerKeys.all, "keiyoushi", "stats"] as const,
   keiyoushiSources: (params?: KeiyoushiParams) =>
     [...providerKeys.all, "keiyoushi", "sources", params] as const,
+  chapterStatus: (chapterId: string) =>
+    [...providerKeys.all, "chapter", "status", chapterId] as const,
   suwayomiHealth: () => [...providerKeys.all, "suwayomi", "health"] as const,
   suwayomiExtensions: () =>
     [...providerKeys.all, "suwayomi", "extensions"] as const,
@@ -218,6 +221,36 @@ export function useRetryFailedChapters() {
         providerKeys.stats(),
       ]),
   });
+}
+
+// ===== Per-Chapter Retry & Status =====
+export function useRetryChapter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (chapterId: string) => providerService.retryChapter(chapterId),
+    onSuccess: () =>
+      syncProviderQueries(qc, [
+        providerKeys.all,
+      ]),
+  });
+}
+
+export function useChapterStatus(
+  chapterId: string,
+  enabled = true,
+): { data: ChapterStatusResponse | undefined; isLoading: boolean; refetch: () => void } {
+  const result = useQuery({
+    queryKey: providerKeys.chapterStatus(chapterId),
+    queryFn: ({ signal }) => providerService.getChapterStatus(chapterId, signal),
+    enabled: enabled && !!chapterId,
+    staleTime: 1000 * 10,
+    refetchInterval: (query) => {
+      const state = query.state.data?.job?.state;
+      if (state === "active" || state === "waiting") return 3000;
+      return false;
+    },
+  });
+  return { data: result.data, isLoading: result.isLoading, refetch: result.refetch };
 }
 
 // ===== Suwayomi =====

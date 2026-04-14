@@ -12,9 +12,10 @@ import {
   useDeleteTrackedTitle,
   useRefreshTitle,
   useRetryFailedChapters,
+  useRetryChapter,
 } from "@/hooks/useProvider";
 import { ImportStatusBadge } from "@/components/provider/ImportStatusBadge";
-import type { ChapterImportStatus } from "@/types/api";
+import type { ChapterImportStatus, ApiError } from "@/types/api";
 import toast from "react-hot-toast";
 import {
   ArrowLeft,
@@ -38,6 +39,16 @@ import {
   AlertTriangle,
   RotateCcw,
 } from "lucide-react";
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  const apiErr = err as { response?: { data?: ApiError }; message?: string };
+  return (
+    apiErr?.response?.data?.message ||
+    apiErr?.response?.data?.error ||
+    apiErr?.message ||
+    fallback
+  );
+}
 
 const CHAPTER_FILTER_OPTIONS: {
   value: ChapterImportStatus | "";
@@ -76,6 +87,10 @@ export default function TrackedTitleDetailPage() {
   const deleteTitle = useDeleteTrackedTitle();
   const refreshTitle = useRefreshTitle();
   const retryFailed = useRetryFailedChapters();
+  const retryChapter = useRetryChapter();
+  const [retryingChapters, setRetryingChapters] = useState<Set<string>>(
+    new Set(),
+  );
 
   const title = data?.providerTitle;
 
@@ -105,7 +120,7 @@ export default function TrackedTitleDetailPage() {
             ? `Erro parcial: ${res.error}`
             : `${res.newChaptersFound} novos capítulos encontrados`,
         ),
-      onError: () => toast.error("Erro ao sincronizar"),
+      onError: (err) => toast.error(getErrorMessage(err, "Erro ao sincronizar")),
     });
   }
 
@@ -117,7 +132,8 @@ export default function TrackedTitleDetailPage() {
             ? `${res.newChaptersFound} novos capítulos detectados`
             : "Nenhum novo capítulo encontrado",
         ),
-      onError: () => toast.error("Erro ao verificar atualizações"),
+      onError: (err) =>
+        toast.error(getErrorMessage(err, "Erro ao verificar atualizações")),
     });
   }
 
@@ -131,9 +147,33 @@ export default function TrackedTitleDetailPage() {
           toast.error(res.error || "Erro ao importar");
         }
       },
-      onError: () => toast.error("Erro ao importar capítulo"),
+      onError: (err) =>
+        toast.error(getErrorMessage(err, "Erro ao importar capítulo")),
       onSettled: () =>
         setImportingChapters((prev) => {
+          const next = new Set(prev);
+          next.delete(chapterId);
+          return next;
+        }),
+    });
+  }
+
+  function handleRetryChapter(chapterId: string) {
+    setRetryingChapters((prev) => new Set(prev).add(chapterId));
+    retryChapter.mutate(chapterId, {
+      onSuccess: (res) => {
+        if (res.queued) {
+          toast.success(
+            res.previousError
+              ? `Retentar enfileirado (erro anterior: ${res.previousError.slice(0, 80)})`
+              : "Capítulo enfileirado para reimportação",
+          );
+        }
+      },
+      onError: (err) =>
+        toast.error(getErrorMessage(err, "Erro ao retentar capítulo")),
+      onSettled: () =>
+        setRetryingChapters((prev) => {
           const next = new Set(prev);
           next.delete(chapterId);
           return next;
@@ -154,7 +194,8 @@ export default function TrackedTitleDetailPage() {
       {
         onSuccess: (res) =>
           toast.success(`${res.queued} capítulo(s) enfileirado(s)`),
-        onError: () => toast.error("Erro ao importar capítulos"),
+        onError: (err) =>
+          toast.error(getErrorMessage(err, "Erro ao importar capítulos")),
       },
     );
   }
@@ -174,7 +215,8 @@ export default function TrackedTitleDetailPage() {
           toast.success(`${res.queued} capítulo(s) enfileirado(s)`);
           setSelectedChapters(new Set());
         },
-        onError: () => toast.error("Erro ao importar capítulos"),
+        onError: (err) =>
+          toast.error(getErrorMessage(err, "Erro ao importar capítulos")),
       },
     );
   }
@@ -445,7 +487,8 @@ export default function TrackedTitleDetailPage() {
             refreshTitle.mutate(id, {
               onSuccess: () =>
                 toast.success("Metadados atualizados com sucesso"),
-              onError: () => toast.error("Erro ao atualizar metadados"),
+              onError: (err) =>
+                toast.error(getErrorMessage(err, "Erro ao atualizar metadados")),
             });
           }}
           disabled={refreshTitle.isPending}
@@ -473,7 +516,10 @@ export default function TrackedTitleDetailPage() {
                   toast.success(
                     `${res.reset} capítulo(s) resetado(s) para reimportação`,
                   ),
-                onError: () => toast.error("Erro ao retentar capítulos falhos"),
+                onError: (err) =>
+                  toast.error(
+                    getErrorMessage(err, "Erro ao retentar capítulos falhos"),
+                  ),
               });
             }}
             disabled={retryFailed.isPending}
@@ -786,23 +832,51 @@ export default function TrackedTitleDetailPage() {
                             : "—"}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          {ch.importStatus === "IMPORTED" ? (
-                            <CheckCircle2 className="ml-auto h-4 w-4 text-emerald-400" />
-                          ) : ch.importStatus === "PENDING" ||
-                            ch.importStatus === "FAILED" ? (
-                            <button
-                              onClick={() => handleImportChapter(ch.id)}
-                              disabled={importingChapters.has(ch.id)}
-                              title="Importar capítulo"
-                              className="rounded-lg p-1.5 text-[var(--color-textDim)] hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors ml-auto"
-                            >
-                              {importingChapters.has(ch.id) ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Download className="h-4 w-4" />
-                              )}
-                            </button>
-                          ) : null}
+                          <div className="flex items-center justify-end gap-1">
+                            {ch.importStatus === "IMPORTED" ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                            ) : ch.importStatus === "FAILED" ? (
+                              <>
+                                <button
+                                  onClick={() => handleRetryChapter(ch.id)}
+                                  disabled={retryingChapters.has(ch.id)}
+                                  title="Retentar importação"
+                                  className="rounded-lg p-1.5 text-orange-400 hover:bg-orange-500/10 transition-colors"
+                                >
+                                  {retryingChapters.has(ch.id) ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="h-4 w-4" />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={() => handleImportChapter(ch.id)}
+                                  disabled={importingChapters.has(ch.id)}
+                                  title="Importar capítulo"
+                                  className="rounded-lg p-1.5 text-[var(--color-textDim)] hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors"
+                                >
+                                  {importingChapters.has(ch.id) ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Download className="h-4 w-4" />
+                                  )}
+                                </button>
+                              </>
+                            ) : ch.importStatus === "PENDING" ? (
+                              <button
+                                onClick={() => handleImportChapter(ch.id)}
+                                disabled={importingChapters.has(ch.id)}
+                                title="Importar capítulo"
+                                className="rounded-lg p-1.5 text-[var(--color-textDim)] hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors"
+                              >
+                                {importingChapters.has(ch.id) ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Download className="h-4 w-4" />
+                                )}
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -855,22 +929,49 @@ export default function TrackedTitleDetailPage() {
                       </div>
                     </div>
 
-                    {ch.importStatus === "IMPORTED" ? (
-                      <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-400" />
-                    ) : ch.importStatus === "PENDING" ||
-                      ch.importStatus === "FAILED" ? (
-                      <button
-                        onClick={() => handleImportChapter(ch.id)}
-                        disabled={importingChapters.has(ch.id)}
-                        className="shrink-0 rounded-lg p-2 text-[var(--color-textDim)] hover:bg-emerald-500/10 hover:text-emerald-400"
-                      >
-                        {importingChapters.has(ch.id) ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Download className="h-4 w-4" />
-                        )}
-                      </button>
-                    ) : null}
+                    <div className="flex shrink-0 items-center gap-1">
+                      {ch.importStatus === "IMPORTED" ? (
+                        <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                      ) : ch.importStatus === "FAILED" ? (
+                        <>
+                          <button
+                            onClick={() => handleRetryChapter(ch.id)}
+                            disabled={retryingChapters.has(ch.id)}
+                            title="Retentar"
+                            className="rounded-lg p-2 text-orange-400 hover:bg-orange-500/10"
+                          >
+                            {retryingChapters.has(ch.id) ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-4 w-4" />
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleImportChapter(ch.id)}
+                            disabled={importingChapters.has(ch.id)}
+                            className="rounded-lg p-2 text-[var(--color-textDim)] hover:bg-emerald-500/10 hover:text-emerald-400"
+                          >
+                            {importingChapters.has(ch.id) ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
+                          </button>
+                        </>
+                      ) : ch.importStatus === "PENDING" ? (
+                        <button
+                          onClick={() => handleImportChapter(ch.id)}
+                          disabled={importingChapters.has(ch.id)}
+                          className="rounded-lg p-2 text-[var(--color-textDim)] hover:bg-emerald-500/10 hover:text-emerald-400"
+                        >
+                          {importingChapters.has(ch.id) ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })}

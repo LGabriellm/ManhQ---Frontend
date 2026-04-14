@@ -2927,6 +2927,34 @@ export interface RetryFailedResponse {
   reset: number;
 }
 
+export interface RetryChapterResponse {
+  queued: boolean;
+  jobId?: string;
+  providerChapterId?: string;
+  previousError?: string | null;
+}
+
+export interface ChapterStatusResponse {
+  chapter: {
+    id: string;
+    chapter: number;
+    importStatus: ChapterImportStatus;
+    importError: string | null;
+    mediaId: string | null;
+    importedAt: string | null;
+  };
+  job: {
+    id: string;
+    state: string;
+    progress: number;
+    error: string | null;
+    logs: string[];
+    attempts: number;
+    createdAt: number;
+    finishedAt: number | null;
+  } | null;
+}
+
 export interface SuwayomiReloadResponse {
   reloaded: boolean;
   sourcesRegistered: number;

@@ -18,6 +18,7 @@ import {
   Loader2,
   History,
   Workflow,
+  Globe,
 } from "lucide-react";
 
 type DashboardRole = "ADMIN" | "EDITOR";
@@ -57,6 +58,12 @@ const navItems: Array<{
     label: "Jobs",
     icon: Workflow,
     roles: ["ADMIN", "EDITOR"],
+  },
+  {
+    href: "/dashboard/providers",
+    label: "Provedores",
+    icon: Globe,
+    roles: ["ADMIN"],
   },
   {
     href: "/dashboard/users",

@@ -2621,3 +2621,314 @@ export interface CheckExpiredResponse {
 export interface ApprovalDetail extends ApprovalItem {
   fileExists: boolean;
 }
+
+// ===== Provider / Ingestion System =====
+export type TitleImportStatus =
+  | "TRACKED"
+  | "IMPORTING"
+  | "IMPORTED"
+  | "PAUSED"
+  | "FAILED";
+
+export type ChapterImportStatus =
+  | "PENDING"
+  | "DOWNLOADING"
+  | "DOWNLOADED"
+  | "IMPORTED"
+  | "FAILED"
+  | "SKIPPED";
+
+export interface CatalogTitle {
+  provider: string;
+  externalId: string;
+  title: string;
+  titleOriginal?: string | null;
+  titlePortuguese?: string | null;
+  description?: string | null;
+  descriptionPtBr?: string | null;
+  author?: string | null;
+  artist?: string | null;
+  coverUrl?: string | null;
+  status?: string | null;
+  tags?: string[];
+  contentRating?: string | null;
+  year?: number | null;
+  lastChapter?: number | null;
+  chaptersAvailable?: number | null;
+  availableLanguages?: string[];
+  initialized?: boolean;
+  sourceUrl?: string | null;
+}
+
+export interface ProviderChapter {
+  id: string;
+  providerTitleId: string;
+  externalId: string;
+  chapter: number;
+  volume?: number | null;
+  title?: string | null;
+  language: string;
+  pages?: number | null;
+  scanlationGroup?: string | null;
+  importStatus: ChapterImportStatus;
+  importError?: string | null;
+  mediaId?: string | null;
+  importedAt?: string | null;
+  publishedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChapterStats {
+  total: number;
+  imported: number;
+  pending: number;
+  failed: number;
+  downloading: number;
+  skipped?: number;
+}
+
+export interface ProviderTitle {
+  id: string;
+  provider: string;
+  externalId: string;
+  seriesId?: string | null;
+  title: string;
+  titleOriginal?: string;
+  titlePortuguese?: string;
+  description?: string;
+  descriptionPtBr?: string;
+  author?: string;
+  artist?: string;
+  coverUrl?: string;
+  status?: string;
+  tags?: string[];
+  contentRating?: string;
+  year?: number;
+  lastChapter?: number;
+  importStatus: TitleImportStatus;
+  language: string;
+  chaptersImported: number;
+  chaptersAvailable: number;
+  syncEnabled: boolean;
+  checkIntervalMs: number;
+  lastCheckedAt?: string | null;
+  lastNewChapterAt?: string | null;
+  syncError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  chapters?: ProviderChapter[];
+  series?: {
+    id: string;
+    title: string;
+    coverUrl?: string;
+    coverPath?: string;
+    coverS3Key?: string | null;
+  } | null;
+  chapterStats?: ChapterStats;
+  hasCover?: boolean;
+  _count?: { chapters: number };
+}
+
+export interface CatalogSearchParams {
+  q?: string;
+  language?: string;
+  availableLanguage?: string;
+  limit?: number;
+  offset?: number;
+  status?: string;
+  contentRating?: string;
+}
+
+export interface CatalogSearchResponse {
+  titles: CatalogTitle[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface CatalogTitleResponse {
+  title: CatalogTitle;
+}
+
+export interface TrackTitleRequest {
+  provider: string;
+  externalId: string;
+  language?: string;
+  seriesId?: string;
+}
+
+export interface TrackTitleResponse {
+  providerTitle: ProviderTitle;
+  created: boolean;
+}
+
+export interface TrackedTitlesParams {
+  provider?: string;
+  importStatus?: TitleImportStatus;
+  syncEnabled?: boolean;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface TrackedTitlesResponse {
+  titles: ProviderTitle[];
+  total: number;
+}
+
+export interface TrackedTitleResponse {
+  providerTitle: ProviderTitle;
+}
+
+export interface UpdateTrackedTitleRequest {
+  syncEnabled?: boolean;
+  checkIntervalMs?: number;
+  importStatus?: "TRACKED" | "IMPORTING" | "IMPORTED" | "PAUSED";
+  seriesId?: string | null;
+}
+
+export interface SyncChaptersResponse {
+  providerTitleId: string;
+  newChaptersFound: number;
+  chaptersCreated: number;
+  error?: string;
+}
+
+export interface ImportChapterResponse {
+  queued: boolean;
+  jobId?: string;
+  providerChapterId?: string;
+  error?: string;
+}
+
+export interface BulkImportRequest {
+  chapterIds?: string[];
+}
+
+export interface BulkImportResponse {
+  queued: number;
+}
+
+export type ProviderCapability =
+  | "search"
+  | "title_metadata"
+  | "chapter_list"
+  | "chapter_pages"
+  | "update_check";
+
+export interface ProviderInfo {
+  name: string;
+  displayName: string;
+  capabilities: ProviderCapability[];
+  defaultLanguage: string;
+}
+
+export interface ProvidersListResponse {
+  providers: ProviderInfo[];
+}
+
+export interface ProviderStatsResponse {
+  titles: {
+    total: number;
+    importing: number;
+    imported: number;
+    paused: number;
+    failed: number;
+  };
+  chapters: {
+    total: number;
+    imported: number;
+    pending: number;
+    failed: number;
+    downloading: number;
+  };
+}
+
+export interface KeiyoushiSource {
+  pkgName: string;
+  name: string;
+  lang: string;
+  description?: string;
+  version: string;
+  baseUrl?: string;
+  sourceId?: number;
+  extensionPkg?: string;
+  extensionVersion?: string;
+  nsfw?: boolean;
+}
+
+export interface KeiyoushiStatsResponse {
+  totalSources: number;
+  totalExtensions: number;
+  ptBrSources: number;
+  languages: number;
+  lastFetchedAt?: string;
+}
+
+export interface KeiyoushiSourcesResponse {
+  sources: KeiyoushiSource[];
+}
+
+export interface KeiyoushiParams {
+  lang?: string;
+  search?: string;
+}
+
+// ===== Suwayomi Sidecar =====
+export interface SuwayomiHealthResponse {
+  configured: boolean;
+  url?: string;
+  reachable: boolean;
+  sources: number;
+  sourcesTotal?: number;
+  defaultLang?: string;
+}
+
+export interface SuwayomiExtension {
+  pkgName: string;
+  name: string;
+  lang: string;
+  versionName: string;
+  versionCode: number;
+  isInstalled: boolean;
+  hasUpdate: boolean;
+  isNsfw: boolean;
+  isObsolete?: boolean;
+  repo?: string | null;
+  iconUrl?: string;
+}
+
+export interface SuwayomiExtensionsParams {
+  installed?: boolean;
+}
+
+export interface SuwayomiExtensionsResponse {
+  extensions: SuwayomiExtension[];
+}
+
+export interface SuwayomiFetchResponse {
+  success: boolean;
+  message: string;
+}
+
+export interface SuwayomiInstallResponse {
+  extension: SuwayomiExtension;
+  sourcesRegistered?: number;
+  pending: boolean;
+  message?: string;
+}
+
+export interface SuwayomiUninstallResponse {
+  extension: SuwayomiExtension;
+  sourcesRegistered: number;
+}
+
+export interface RetryFailedResponse {
+  reset: number;
+}
+
+export interface SuwayomiReloadResponse {
+  reloaded: boolean;
+  sourcesRegistered: number;
+  providers: ProviderInfo[];
+}

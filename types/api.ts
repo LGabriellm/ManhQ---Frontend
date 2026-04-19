@@ -2842,6 +2842,7 @@ export interface ProviderStatsResponse {
     failed: number;
     downloading: number;
   };
+  staleReset?: number;
 }
 
 export interface KeiyoushiSource {
@@ -2953,6 +2954,33 @@ export interface ChapterStatusResponse {
     createdAt: number;
     finishedAt: number | null;
   } | null;
+}
+
+export interface CleanupStaleResponse {
+  reset: number;
+  staleDurationMinutes: number;
+}
+
+export interface UpdateChapterRequest {
+  importStatus: ChapterImportStatus;
+}
+
+export interface UpdateChapterResponse {
+  chapter: ProviderChapter;
+}
+
+export interface ReimportFromRequest {
+  provider: string;
+  externalChapterId: string;
+}
+
+export interface ReimportFromResponse {
+  queued: boolean;
+  jobId?: string;
+  providerChapterId?: string;
+  alternativeProvider: string;
+  alternativeExternalChapterId: string;
+  previousError?: string | null;
 }
 
 export interface SuwayomiReloadResponse {

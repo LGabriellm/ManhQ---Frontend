@@ -17,6 +17,8 @@ import type {
   BulkImportRequest,
   SuwayomiExtensionsParams,
   ChapterStatusResponse,
+  UpdateChapterRequest,
+  ReimportFromRequest,
 } from "@/types/api";
 
 // ===== Query Keys =====
@@ -48,6 +50,20 @@ async function syncProviderQueries(qc: QueryClient, queryKeys: QueryKey[]) {
   );
 }
 
+/**
+ * Schedule a follow-up invalidation of all tracked title detail queries.
+ * This bridges the gap between import/retry mutations (chapter is PENDING)
+ * and the BullMQ worker picking up the job (chapter becomes DOWNLOADING),
+ * which then activates the polling in `useTrackedTitle`.
+ */
+function scheduleDetailRefetch(qc: QueryClient, delayMs = 3000) {
+  setTimeout(() => {
+    qc.invalidateQueries({
+      queryKey: [...providerKeys.all, "tracked", "detail"],
+    });
+  }, delayMs);
+}
+
 // ===== Provider Discovery =====
 export function useProviders() {
   return useQuery({
@@ -61,8 +77,16 @@ export function useProviderStats() {
   return useQuery({
     queryKey: providerKeys.stats(),
     queryFn: ({ signal }) => providerService.getStats(signal),
-    staleTime: 1000 * 60 * 2,
-    refetchInterval: 1000 * 60 * 5,
+    staleTime: 1000 * 15,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasActiveImports =
+        data &&
+        (data.chapters.downloading > 0 ||
+          data.chapters.pending > 0 ||
+          data.titles.importing > 0);
+      return hasActiveImports ? 1000 * 10 : 1000 * 60 * 2;
+    },
   });
 }
 
@@ -118,7 +142,30 @@ export function useTrackedTitle(id: string, enabled = true) {
     queryKey: providerKeys.trackedDetail(id),
     queryFn: ({ signal }) => providerService.getTracked(id, signal),
     enabled: enabled && !!id,
-    staleTime: 1000 * 30,
+    staleTime: 1000 * 15,
+    refetchInterval: (query) => {
+      const pt = query.state.data?.providerTitle;
+      if (!pt) return false;
+
+      // Poll when the title itself is importing (bulk import flow)
+      if (pt.importStatus === "IMPORTING") return 1000 * 5;
+
+      // Poll when ANY chapter is actively being processed by a worker.
+      // This is the core fix: single-chapter imports and retries don't
+      // change title.importStatus, so we must check chapter-level
+      // statuses to keep the UI in sync with the backend.
+      const hasActiveChapters = pt.chapters?.some(
+        (ch) =>
+          ch.importStatus === "DOWNLOADING" || ch.importStatus === "DOWNLOADED",
+      );
+      if (hasActiveChapters) return 1000 * 5;
+
+      // Stats-based fallback (for responses without the chapters array)
+      const stats = pt.chapterStats;
+      if (stats && stats.downloading > 0) return 1000 * 5;
+
+      return false;
+    },
   });
 }
 
@@ -180,7 +227,15 @@ export function useImportChapter() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (chapterId: string) => providerService.importChapter(chapterId),
-    onSuccess: () => syncProviderQueries(qc, [providerKeys.all]),
+    onSuccess: () =>
+      syncProviderQueries(qc, [providerKeys.tracked(), providerKeys.stats()]),
+    onSettled: () => {
+      qc.invalidateQueries({
+        queryKey: [...providerKeys.all, "tracked", "detail"],
+      });
+      // Follow-up refetch to catch PENDING → DOWNLOADING transition
+      scheduleDetailRefetch(qc);
+    },
   });
 }
 
@@ -189,12 +244,14 @@ export function useBulkImportChapters() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data?: BulkImportRequest }) =>
       providerService.bulkImportChapters(id, data),
-    onSuccess: (_result, variables) =>
+    onSuccess: (_result, variables) => {
       syncProviderQueries(qc, [
         providerKeys.trackedDetail(variables.id),
         providerKeys.tracked(),
         providerKeys.stats(),
-      ]),
+      ]);
+      scheduleDetailRefetch(qc);
+    },
   });
 }
 
@@ -214,12 +271,14 @@ export function useRetryFailedChapters() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => providerService.retryFailedChapters(id),
-    onSuccess: (_result, id) =>
+    onSuccess: (_result, id) => {
       syncProviderQueries(qc, [
         providerKeys.trackedDetail(id),
         providerKeys.tracked(),
         providerKeys.stats(),
-      ]),
+      ]);
+      scheduleDetailRefetch(qc);
+    },
   });
 }
 
@@ -229,19 +288,81 @@ export function useRetryChapter() {
   return useMutation({
     mutationFn: (chapterId: string) => providerService.retryChapter(chapterId),
     onSuccess: () =>
-      syncProviderQueries(qc, [
-        providerKeys.all,
-      ]),
+      syncProviderQueries(qc, [providerKeys.tracked(), providerKeys.stats()]),
+    onSettled: () => {
+      qc.invalidateQueries({
+        queryKey: [...providerKeys.all, "tracked", "detail"],
+      });
+      scheduleDetailRefetch(qc);
+    },
+  });
+}
+
+export function useReimportFrom() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      chapterId,
+      data,
+    }: {
+      chapterId: string;
+      data: ReimportFromRequest;
+    }) => providerService.reimportFrom(chapterId, data),
+    onSuccess: () =>
+      syncProviderQueries(qc, [providerKeys.tracked(), providerKeys.stats()]),
+    onSettled: () => {
+      qc.invalidateQueries({
+        queryKey: [...providerKeys.all, "tracked", "detail"],
+      });
+      scheduleDetailRefetch(qc);
+    },
+  });
+}
+
+export function useUpdateChapter() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      chapterId,
+      data,
+    }: {
+      chapterId: string;
+      data: UpdateChapterRequest;
+    }) => providerService.updateChapter(chapterId, data),
+    onSuccess: () =>
+      syncProviderQueries(qc, [providerKeys.tracked(), providerKeys.stats()]),
+    onSettled: () =>
+      qc.invalidateQueries({
+        queryKey: [...providerKeys.all, "tracked", "detail"],
+      }),
+  });
+}
+
+export function useCleanupStale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (minutes?: number) => providerService.cleanupStale(minutes),
+    onSuccess: () =>
+      syncProviderQueries(qc, [providerKeys.tracked(), providerKeys.stats()]),
+    onSettled: () =>
+      qc.invalidateQueries({
+        queryKey: [...providerKeys.all, "tracked", "detail"],
+      }),
   });
 }
 
 export function useChapterStatus(
   chapterId: string,
   enabled = true,
-): { data: ChapterStatusResponse | undefined; isLoading: boolean; refetch: () => void } {
+): {
+  data: ChapterStatusResponse | undefined;
+  isLoading: boolean;
+  refetch: () => void;
+} {
   const result = useQuery({
     queryKey: providerKeys.chapterStatus(chapterId),
-    queryFn: ({ signal }) => providerService.getChapterStatus(chapterId, signal),
+    queryFn: ({ signal }) =>
+      providerService.getChapterStatus(chapterId, signal),
     enabled: enabled && !!chapterId,
     staleTime: 1000 * 10,
     refetchInterval: (query) => {
@@ -250,7 +371,11 @@ export function useChapterStatus(
       return false;
     },
   });
-  return { data: result.data, isLoading: result.isLoading, refetch: result.refetch };
+  return {
+    data: result.data,
+    isLoading: result.isLoading,
+    refetch: result.refetch,
+  };
 }
 
 // ===== Suwayomi =====

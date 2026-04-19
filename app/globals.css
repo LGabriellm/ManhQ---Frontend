@@ -12,16 +12,26 @@
 
 :root {
   color-scheme: dark;
+
+  /* Safe area insets para dispositivos com notch (iPhone X+, iPad Pro) */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 body {
   background-color: var(--color-background);
   color: var(--color-textMain);
   min-height: 100vh;
+  /* Suporta safe area em telas com notch */
+  min-height: 100dvh;
   /* Isso evita que a página faça o "bounce" chato do iOS Safari */
   overscroll-behavior-y: none;
   /* Esconde a barra de rolagem mas permite rolar */
   scrollbar-width: none;
+  /* Previne zoom indesejado ao tocar em inputs no iOS (font-size < 16px) */
+  -webkit-text-size-adjust: 100%;
 }
 
 body::-webkit-scrollbar {
@@ -350,4 +360,63 @@ summary:focus-visible,
 input[type="checkbox"]:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--color-primary) 62%, white 38%);
   outline-offset: 2px;
+}
+
+/* ─── Safe area insets para notch/home indicator ─── */
+
+.safe-top {
+  padding-top: var(--safe-top);
+}
+
+.safe-bottom {
+  padding-bottom: var(--safe-bottom);
+}
+
+.safe-x {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+.safe-all {
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+/* ─── Modo standalone (PWA instalado no iOS/Android) ─── */
+
+@media (display-mode: standalone) {
+  /* Ajusta o page-shell para respeitar a status bar */
+  .page-shell {
+    padding-top: calc(1.25rem + var(--safe-top));
+  }
+
+  /* Ajusta o bottom nav para respeitar o home indicator */
+  .standalone-bottom {
+    padding-bottom: calc(0.5rem + var(--safe-bottom));
+  }
+}
+
+/* ─── iOS-specific: previne pull-to-refresh e gestos indesejados ─── */
+
+@supports (-webkit-touch-callout: none) {
+  /* Previne callout (context menu longo) em imagens no Safari */
+  img {
+    -webkit-touch-callout: none;
+  }
+
+  /* Previne seleção indesejada em leitura */
+  .no-callout {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* ─── Dynamic viewport height para iOS Safari ─── */
+
+.h-dvh {
+  height: 100dvh;
+}
+
+.min-h-dvh {
+  min-height: 100dvh;
 }

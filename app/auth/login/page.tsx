@@ -7,6 +7,7 @@ import { Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck, WifiOff } from "lucide-r
 import { useRouter } from "next/navigation";
 import { getDefaultAuthenticatedPath } from "@/lib/subscription";
 import { useAuth } from "@/contexts/AuthContext";
+import { Logo } from "@/components/Logo";
 import type { ApiError } from "@/types/api";
 
 export default function LoginPage() {
@@ -112,6 +113,10 @@ export default function LoginPage() {
         animate={{ opacity: 1, y: 0 }}
         className="surface-panel relative w-full max-w-md rounded-[32px] p-6 sm:p-7"
       >
+        <div className="mb-5">
+          <Logo size="md" href="/" />
+        </div>
+
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="section-kicker">Acesso</p>

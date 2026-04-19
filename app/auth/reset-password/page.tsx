@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { authService } from "@/services/auth.service";
+import { Logo } from "@/components/Logo";
 import type { ApiError } from "@/types/api";
 
 function passwordChecks(password: string) {
@@ -211,9 +212,9 @@ export default function ResetPasswordPage() {
             className="w-full max-w-sm relative"
           >
             <div className="text-center mb-8">
-              <h1 className="text-4xl font-bold text-primary tracking-tight mb-1">
-                ManHQ
-              </h1>
+              <div className="flex justify-center mb-3">
+                <Logo size="lg" href="/" />
+              </div>
               <p className="text-textMain font-medium">Redefinir Senha</p>
               <p className="text-textDim text-sm mt-1.5 leading-relaxed">
                 Escolha uma nova senha para sua conta.

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Loader2 } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Loader2, RefreshCcw } from "lucide-react";
 import { readerService } from "@/services/reader.service";
 
 interface AuthImageProps {
@@ -10,6 +10,7 @@ interface AuthImageProps {
   alt: string;
   className?: string;
   loading?: "eager" | "lazy";
+  preloadMargin?: string;
 }
 
 export function AuthImage({
@@ -18,11 +19,13 @@ export function AuthImage({
   alt,
   className,
   loading = "lazy",
+  preloadMargin = "800px",
 }: AuthImageProps) {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(false);
   const [shouldLoad, setShouldLoad] = useState(loading === "eager");
+  const [retryCount, setRetryCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // IntersectionObserver para lazy loading
@@ -38,7 +41,7 @@ export function AuthImage({
         });
       },
       {
-        rootMargin: "400px", // Começar a carregar 400px antes de entrar na viewport
+        rootMargin: preloadMargin,
       },
     );
 
@@ -47,7 +50,7 @@ export function AuthImage({
     }
 
     return () => observer.disconnect();
-  }, [loading, shouldLoad]);
+  }, [loading, shouldLoad, preloadMargin]);
 
   // Carregar a imagem quando shouldLoad for true
   useEffect(() => {
@@ -78,31 +81,44 @@ export function AuthImage({
 
     return () => {
       isMounted = false;
-      // Liberar o blob URL quando o componente desmontar
       if (blobUrl) {
         URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [chapterId, pageNumber, shouldLoad]);
+  }, [chapterId, pageNumber, shouldLoad, retryCount]);
+
+  const handleRetry = useCallback(() => {
+    setError(false);
+    setImageSrc(null);
+    setShouldLoad(true);
+    setRetryCount((c) => c + 1);
+  }, []);
 
   return (
     <div
       ref={containerRef}
-      className="w-full h-full flex items-center justify-center"
+      className="flex h-full w-full items-center justify-center"
     >
       {error && (
-        <div className="flex items-center justify-center w-full h-full bg-surface/20">
-          <p className="text-white/50 text-sm">Erro ao carregar imagem</p>
+        <div className="flex flex-col items-center justify-center gap-3">
+          <p className="text-sm text-white/50">Erro ao carregar imagem</p>
+          <button
+            onClick={handleRetry}
+            className="flex items-center gap-1.5 rounded-lg bg-white/10 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-white/20"
+          >
+            <RefreshCcw className="h-3.5 w-3.5" />
+            Tentar novamente
+          </button>
         </div>
       )}
 
       {!error && (isLoading || !imageSrc) && (
-        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       )}
 
       {!error && imageSrc && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageSrc} alt={alt} className={className} />
+        <img src={imageSrc} alt={alt} className={className} draggable={false} />
       )}
     </div>
   );

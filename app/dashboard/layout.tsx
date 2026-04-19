@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
+import { Logo } from "@/components/Logo";
 import {
   LayoutDashboard,
   BookOpen,
@@ -162,13 +163,8 @@ export default function DashboardLayout({
       <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 z-30">
         <div className="flex flex-col flex-1 bg-[var(--color-surface)] border-r border-white/5">
           {/* Logo */}
-          <div className="flex items-center gap-3 h-16 px-6 border-b border-white/5">
-            <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)] flex items-center justify-center">
-              <span className="text-white font-bold text-sm">M</span>
-            </div>
-            <span className="text-[var(--color-textMain)] font-semibold text-lg">
-              ManhQ Admin
-            </span>
+          <div className="flex items-center h-16 px-6 border-b border-white/5">
+            <Logo size="sm" href="/dashboard" />
           </div>
 
           {/* Nav Links */}
@@ -222,14 +218,7 @@ export default function DashboardLayout({
         }`}
       >
         <div className="flex items-center justify-between h-16 px-6 border-b border-white/5">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)] flex items-center justify-center">
-              <span className="text-white font-bold text-sm">M</span>
-            </div>
-            <span className="text-[var(--color-textMain)] font-semibold">
-              ManhQ Admin
-            </span>
-          </div>
+          <Logo size="sm" href="/dashboard" />
           <button
             onClick={() => setSidebarOpen(false)}
             aria-label="Fechar menu lateral"

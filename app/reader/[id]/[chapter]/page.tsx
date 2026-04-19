@@ -20,6 +20,9 @@ import {
   ChevronRight,
   BookOpen,
   RefreshCcw,
+  Columns,
+  AlignVerticalSpaceAround,
+  ScrollText,
 } from "lucide-react";
 import {
   useChapterInfo,
@@ -27,9 +30,15 @@ import {
   useMediaProgress,
 } from "@/hooks/useApi";
 import { useProgressSync } from "@/hooks/useProgressSync";
+import { useReaderZoom } from "@/hooks/useReaderZoom";
 import { useFavorites } from "@/hooks/useFavoritesApi";
 import { AuthImage } from "@/components/AuthImage";
+import { ProgressSlider } from "@/components/reader/ProgressSlider";
 import { CommentSection } from "@/components/community/CommentSection";
+
+// ─── Types ───────────────────────────────────────────────────────────
+
+type ReadingMode = "vertical" | "webtoon" | "horizontal";
 
 interface ChapterNavigationItem {
   id: string;
@@ -37,13 +46,27 @@ interface ChapterNavigationItem {
   title: string;
 }
 
-function clampPage(page: number, totalPages: number): number {
-  if (!Number.isFinite(page)) {
-    return 1;
-  }
+// ─── Helpers ─────────────────────────────────────────────────────────
 
+function clampPage(page: number, totalPages: number): number {
+  if (!Number.isFinite(page)) return 1;
   return Math.min(totalPages, Math.max(1, Math.trunc(page)));
 }
+
+function getStoredMode(): ReadingMode {
+  if (typeof window === "undefined") return "vertical";
+  const stored = localStorage.getItem("manhq:reader:mode");
+  if (stored === "horizontal" || stored === "webtoon") return stored;
+  return "vertical";
+}
+
+const READING_MODES: { value: ReadingMode; label: string; icon: typeof Columns }[] = [
+  { value: "vertical", label: "Vertical", icon: AlignVerticalSpaceAround },
+  { value: "webtoon", label: "Contínuo", icon: ScrollText },
+  { value: "horizontal", label: "Horizontal", icon: Columns },
+];
+
+// ─── Component ───────────────────────────────────────────────────────
 
 export default function ReaderPage() {
   const router = useRouter();
@@ -56,6 +79,7 @@ export default function ReaderPage() {
     rawPageParam !== null && rawPageParam.trim() !== "";
   const urlPage = hasExplicitPageParam ? Number(rawPageParam) : null;
 
+  // ─── Data fetching ────────────────────────────────────────────
   const {
     data: chapterData,
     isLoading,
@@ -75,16 +99,11 @@ export default function ReaderPage() {
     isUpdating: isFavUpdating,
   } = useFavorites(seriesId);
 
+  // ─── UI state ─────────────────────────────────────────────────
   const [showControls, setShowControls] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [readingMode, setReadingMode] = useState<"vertical" | "horizontal">(
-    () => {
-      if (typeof window === "undefined") return "vertical";
-      const stored = localStorage.getItem("manhq:reader:mode");
-      return stored === "horizontal" ? "horizontal" : "vertical";
-    },
-  );
+  const [readingMode, setReadingMode] = useState<ReadingMode>(getStoredMode);
   const containerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -92,6 +111,44 @@ export default function ReaderPage() {
   const restoredForChapter = useRef<string | null>(null);
   const latestPageRef = useRef(1);
 
+  // ─── Zoom ─────────────────────────────────────────────────────
+  const zoomContainerRef = useRef<HTMLDivElement | null>(null);
+  const cleanupZoomRef = useRef<(() => void) | null>(null);
+
+  const { isZoomed, resetZoom, bindZoomRef, zoomStyle } = useReaderZoom({
+    onZoomChange: (zoomed) => {
+      // Disable snap while zoomed
+      const container = containerRef.current;
+      if (!container) return;
+      if (zoomed) {
+        container.style.scrollSnapType = "none";
+      } else if (readingMode !== "webtoon") {
+        container.style.scrollSnapType = "";
+      }
+    },
+  });
+
+  // Bind zoom listeners to the current page's zoom wrapper
+  const setZoomRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      if (cleanupZoomRef.current) {
+        cleanupZoomRef.current();
+        cleanupZoomRef.current = null;
+      }
+      zoomContainerRef.current = el;
+      if (el) {
+        cleanupZoomRef.current = bindZoomRef(el) ?? null;
+      }
+    },
+    [bindZoomRef],
+  );
+
+  // Reset zoom on page change
+  useEffect(() => {
+    resetZoom();
+  }, [currentPage, resetZoom]);
+
+  // ─── Derived data ─────────────────────────────────────────────
   const totalPages = chapterData?.pageCount ?? 1;
   const chapters = useMemo(
     () => seriesData?.medias ?? [],
@@ -102,15 +159,18 @@ export default function ReaderPage() {
     [chapterId, chapters],
   );
   const isHorizontal = readingMode === "horizontal";
+  const isWebtoon = readingMode === "webtoon";
   const chapterTitle =
     chapterData?.title || `Capítulo ${chapterData?.number ?? "-"}`;
 
+  // ─── Progress sync ────────────────────────────────────────────
   useProgressSync(chapterId, currentPage, totalPages);
 
   useEffect(() => {
     latestPageRef.current = currentPage;
   }, [currentPage]);
 
+  // ─── Scroll helpers ───────────────────────────────────────────
   const scrollToPage = useCallback(
     (page: number, behavior: ScrollBehavior = "smooth") => {
       const targetPage = clampPage(page, totalPages);
@@ -124,6 +184,7 @@ export default function ReaderPage() {
     [totalPages],
   );
 
+  // ─── Chapter navigation ───────────────────────────────────────
   const resolveAdjacentChapter = useCallback(
     (
       target: { id: string; number: number } | null | undefined,
@@ -137,7 +198,6 @@ export default function ReaderPage() {
           title: chapter?.title || `Capítulo ${target.number}`,
         };
       }
-
       if (fallbackIndex >= 0 && fallbackIndex < chapters.length) {
         const chapter = chapters[fallbackIndex];
         return {
@@ -146,7 +206,6 @@ export default function ReaderPage() {
           title: chapter.title || `Capítulo ${chapter.number}`,
         };
       }
-
       return null;
     },
     [chapters],
@@ -163,20 +222,21 @@ export default function ReaderPage() {
     [chapterData?.nextChapter, currentChapterIndex, resolveAdjacentChapter],
   );
 
-  useEffect(() => {
-    restoredForChapter.current = null;
+  // ─── Reset UI when chapter changes ──────────────────────────
+  const [prevChapterId, setPrevChapterId] = useState(chapterId);
+  if (prevChapterId !== chapterId) {
+    setPrevChapterId(chapterId);
     setShowControls(true);
     setShowSettings(false);
+  }
+
+  useEffect(() => {
+    restoredForChapter.current = null;
   }, [chapterId]);
 
   useEffect(() => {
-    if (!chapterData || restoredForChapter.current === chapterId) {
-      return;
-    }
+    if (!chapterData || restoredForChapter.current === chapterId) return;
 
-    // When there's no explicit ?page= param, wait for fresh progress data.
-    // Check both isLoading (initial fetch) and isFetching (background refetch
-    // after stale cache) to avoid restoring with outdated cached progress.
     if (!hasExplicitPageParam && (isProgressLoading || isProgressFetching)) {
       return;
     }
@@ -197,9 +257,7 @@ export default function ReaderPage() {
       scrollToPage(targetPage, "auto");
     });
 
-    return () => {
-      cancelAnimationFrame(frame);
-    };
+    return () => cancelAnimationFrame(frame);
   }, [
     chapterData,
     chapterId,
@@ -212,95 +270,77 @@ export default function ReaderPage() {
     urlPage,
   ]);
 
+  // Re-scroll when mode changes
   useEffect(() => {
-    if (!chapterData) {
-      return;
-    }
-
+    if (!chapterData) return;
     const frame = requestAnimationFrame(() => {
       scrollToPage(latestPageRef.current, "auto");
     });
-
-    return () => {
-      cancelAnimationFrame(frame);
-    };
+    return () => cancelAnimationFrame(frame);
   }, [chapterData, readingMode, scrollToPage]);
 
+  // ─── Controls auto-hide ────────────────────────────────────────
   useEffect(() => {
-    if (!showControls || showSettings) {
-      return;
-    }
+    if (!showControls || showSettings) return;
 
-    timeoutRef.current = setTimeout(() => {
-      setShowControls(false);
-    }, 3000);
-
+    timeoutRef.current = setTimeout(() => setShowControls(false), 4000);
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [showControls, showSettings]);
 
+  // ─── IntersectionObserver for page tracking ────────────────────
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || totalPages < 1) {
-      return;
-    }
+    if (!container || totalPages < 1) return;
 
     const observedPages = Array.from(
       container.querySelectorAll<HTMLElement>("[data-reader-page]"),
     );
-    if (observedPages.length === 0) {
-      return;
-    }
+    if (observedPages.length === 0) return;
+
+    // For webtoon mode, use lower thresholds since pages can be taller
+    const thresholds = isWebtoon
+      ? [0.1, 0.3, 0.5]
+      : [0.55, 0.7, 0.85];
 
     const observer = new IntersectionObserver(
       (entries) => {
         let bestMatch: { page: number; ratio: number } | null = null;
 
         for (const entry of entries) {
-          if (!entry.isIntersecting) {
-            continue;
-          }
-
+          if (!entry.isIntersecting) continue;
           const rawPage = Number(
             (entry.target as HTMLElement).dataset.pageNumber,
           );
-          if (!Number.isFinite(rawPage)) {
-            continue;
-          }
-
+          if (!Number.isFinite(rawPage)) continue;
           if (!bestMatch || entry.intersectionRatio > bestMatch.ratio) {
             bestMatch = { page: rawPage, ratio: entry.intersectionRatio };
           }
         }
 
         if (bestMatch) {
-          setCurrentPage((previousPage) =>
-            previousPage === bestMatch?.page ? previousPage : bestMatch.page,
+          setCurrentPage((prev) =>
+            prev === bestMatch?.page ? prev : bestMatch.page,
           );
         }
       },
-      {
-        root: container,
-        threshold: [0.55, 0.7, 0.85],
-      },
+      { root: container, threshold: thresholds },
     );
 
     for (const page of observedPages) {
       observer.observe(page);
     }
 
-    return () => {
-      observer.disconnect();
-    };
-  }, [chapterId, readingMode, totalPages]);
+    return () => observer.disconnect();
+  }, [chapterId, readingMode, totalPages, isWebtoon]);
 
+  // ─── Persist reading mode ──────────────────────────────────────
   useEffect(() => {
     localStorage.setItem("manhq:reader:mode", readingMode);
   }, [readingMode]);
 
+  // ─── Keyboard navigation ──────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const active = document.activeElement;
@@ -326,10 +366,14 @@ export default function ReaderPage() {
           }
           break;
         case "Escape":
-          setShowSettings(false);
+          if (isZoomed) {
+            resetZoom();
+          } else {
+            setShowSettings(false);
+          }
           break;
         case "f":
-          setShowControls((value) => !value);
+          setShowControls((v) => !v);
           break;
         default:
           break;
@@ -337,56 +381,70 @@ export default function ReaderPage() {
     };
 
     window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [totalPages, scrollToPage]);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [totalPages, scrollToPage, isZoomed, resetZoom]);
 
+  // ─── Navigation handlers ───────────────────────────────────────
   const goToPage = useCallback(
-    (page: number) => {
-      scrollToPage(page, "smooth");
-    },
+    (page: number) => scrollToPage(page, "smooth"),
     [scrollToPage],
   );
 
   const goToNextPage = () => {
-    if (currentPage < totalPages) {
-      goToPage(currentPage + 1);
-    }
+    if (currentPage < totalPages) goToPage(currentPage + 1);
   };
 
   const goToPrevPage = () => {
-    if (currentPage > 1) {
-      goToPage(currentPage - 1);
-    }
+    if (currentPage > 1) goToPage(currentPage - 1);
   };
 
   const handleTap = (event: MouseEvent<HTMLDivElement>) => {
+    if (isZoomed) return; // Don't navigate while zoomed
+
     const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) {
-      return;
-    }
+    if (!rect) return;
 
     const x = event.clientX - rect.left;
     const width = rect.width;
 
     if (x < width * 0.25) {
-      if (currentPage > 1) {
-        goToPrevPage();
-      }
+      if (currentPage > 1) goToPrevPage();
       return;
     }
-
     if (x > width * 0.75) {
-      if (currentPage < totalPages) {
-        goToNextPage();
-      }
+      if (currentPage < totalPages) goToNextPage();
       return;
     }
 
-    setShowControls((value) => !value);
+    setShowControls((v) => !v);
   };
 
+  // ─── Container CSS classes ─────────────────────────────────────
+  const containerClasses = isHorizontal
+    ? "flex h-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide"
+    : isWebtoon
+      ? "h-full overflow-y-auto scrollbar-hide"
+      : "h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide";
+
+  const getPageClasses = () => {
+    if (isHorizontal) {
+      return "relative flex h-full w-full shrink-0 snap-start items-center justify-center bg-black";
+    }
+    if (isWebtoon) {
+      return "relative flex w-full items-center justify-center bg-black";
+    }
+    return "relative flex h-screen w-full snap-start items-center justify-center bg-black";
+  };
+
+  const getImageClasses = () => {
+    if (isWebtoon) {
+      // Webtoon: images fill width, natural height, capped for readability
+      return "w-full max-w-[900px] h-auto object-contain";
+    }
+    return "max-h-full max-w-full object-contain";
+  };
+
+  // ─── Loading state ─────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-black">
@@ -395,6 +453,7 @@ export default function ReaderPage() {
     );
   }
 
+  // ─── Error state ───────────────────────────────────────────────
   if (error || !chapterData) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-black px-4">
@@ -432,18 +491,24 @@ export default function ReaderPage() {
     );
   }
 
+  // ─── Render ────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 select-none bg-black">
+    <div
+      className="fixed inset-0 select-none bg-black"
+      style={{ touchAction: "manipulation" }}
+    >
+      {/* ── Top bar ──────────────────────────────────────────────── */}
       <AnimatePresence>
         {showControls && (
           <motion.div
-            initial={{ y: -100, opacity: 0 }}
+            initial={{ y: -80, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -100, opacity: 0 }}
+            exit={{ y: -80, opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed left-0 right-0 top-0 z-50 bg-linear-to-b from-black/95 via-black/70 to-transparent backdrop-blur-md"
+            className="fixed left-0 right-0 top-0 z-50 bg-gradient-to-b from-black/95 via-black/70 to-transparent pb-6 backdrop-blur-md"
+            style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
           >
-            <div className="flex items-center justify-between p-4">
+            <div className="flex items-center justify-between px-4 pt-4">
               <motion.button
                 whileTap={{ scale: 0.95 }}
                 onClick={() => router.push(`/serie/${seriesId}`)}
@@ -451,167 +516,123 @@ export default function ReaderPage() {
                 className="group flex items-center gap-2 rounded-xl px-3 py-2 transition-all hover:bg-white/10 active:bg-white/20"
               >
                 <ArrowLeft className="h-5 w-5 text-white transition-transform duration-200 group-hover:-translate-x-0.5" />
-                <span className="text-sm font-semibold text-white">Voltar</span>
+                <span className="text-sm font-semibold text-white">
+                  Voltar
+                </span>
               </motion.button>
 
-              <div className="mx-4 min-w-0 flex-1">
+              <div className="mx-4 min-w-0 flex-1 text-center">
                 <h1 className="truncate text-sm font-semibold text-white">
                   {chapterTitle}
                 </h1>
-                <p className="truncate text-xs text-white/60">
-                  Página {currentPage} de {totalPages}
-                </p>
+                {seriesData?.title && (
+                  <p className="truncate text-xs text-white/40">
+                    {seriesData.title}
+                  </p>
+                )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 {isFetching && (
                   <Loader2 className="h-4 w-4 animate-spin text-white/60" />
                 )}
                 <motion.button
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => setShowSettings((value) => !value)}
+                  onClick={() => setShowSettings((v) => !v)}
                   aria-label="Abrir configurações"
                   className="rounded-full p-2.5 transition-colors hover:bg-white/10"
                 >
-                  <Settings className="h-6 w-6 text-white" />
+                  <Settings className="h-5 w-5 text-white" />
                 </motion.button>
               </div>
-            </div>
-
-            <div className="px-4 pb-4">
-              <div className="relative">
-                <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                  <motion.div
-                    className="h-full rounded-full bg-primary"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(currentPage / totalPages) * 100}%` }}
-                    transition={{ duration: 0.3 }}
-                  />
-                </div>
-                <div className="mt-2 flex justify-between">
-                  <span className="text-xs text-white/40">1</span>
-                  <span className="text-xs font-medium text-white/60">
-                    {currentPage}
-                  </span>
-                  <span className="text-xs text-white/40">{totalPages}</span>
-                </div>
-              </div>
-
-              {(prevChapter || nextChapter) && (
-                <div className="mt-4 flex gap-2">
-                  {prevChapter && (
-                    <motion.button
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() =>
-                        router.push(`/reader/${seriesId}/${prevChapter.id}`)
-                      }
-                      className="group flex flex-1 items-center justify-center gap-2 rounded-lg bg-white/10 px-4 py-2.5 backdrop-blur-sm transition-colors hover:bg-white/20"
-                    >
-                      <ChevronLeft className="h-4 w-4 text-white transition-transform group-hover:-translate-x-0.5" />
-                      <span className="truncate text-xs font-medium text-white">
-                        {prevChapter.title}
-                      </span>
-                    </motion.button>
-                  )}
-                  {nextChapter && (
-                    <motion.button
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() =>
-                        router.push(`/reader/${seriesId}/${nextChapter.id}`)
-                      }
-                      className="group flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary/80 px-4 py-2.5 backdrop-blur-sm transition-colors hover:bg-primary"
-                    >
-                      <span className="truncate text-xs font-medium text-white">
-                        {nextChapter.title}
-                      </span>
-                      <ChevronRight className="h-4 w-4 text-white transition-transform group-hover:translate-x-0.5" />
-                    </motion.button>
-                  )}
-                </div>
-              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* ── Desktop side arrows ───────────────────────────────────── */}
       <AnimatePresence>
-        {showControls && (
+        {showControls && !isZoomed && (
           <>
             {currentPage > 1 && (
               <motion.button
-                initial={{ x: -100, opacity: 0 }}
+                initial={{ x: -60, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
-                exit={{ x: -100, opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                exit={{ x: -60, opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 onClick={goToPrevPage}
-                className="fixed left-4 top-1/2 z-40 hidden -translate-y-1/2 rounded-full bg-black/60 p-3 backdrop-blur-md transition-colors hover:bg-black/80 md:block"
+                className="fixed left-3 top-1/2 z-40 hidden -translate-y-1/2 rounded-full bg-black/50 p-2.5 backdrop-blur-md transition-colors hover:bg-black/80 md:block"
               >
-                <ChevronLeft className="h-6 w-6 text-white" />
+                <ChevronLeft className="h-5 w-5 text-white" />
               </motion.button>
             )}
 
             {currentPage < totalPages && (
               <motion.button
-                initial={{ x: 100, opacity: 0 }}
+                initial={{ x: 60, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
-                exit={{ x: 100, opacity: 0 }}
-                transition={{ duration: 0.2 }}
+                exit={{ x: 60, opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 onClick={goToNextPage}
-                className="fixed right-4 top-1/2 z-40 hidden -translate-y-1/2 rounded-full bg-black/60 p-3 backdrop-blur-md transition-colors hover:bg-black/80 md:block"
+                className="fixed right-3 top-1/2 z-40 hidden -translate-y-1/2 rounded-full bg-black/50 p-2.5 backdrop-blur-md transition-colors hover:bg-black/80 md:block"
               >
-                <ChevronRight className="h-6 w-6 text-white" />
+                <ChevronRight className="h-5 w-5 text-white" />
               </motion.button>
             )}
           </>
         )}
       </AnimatePresence>
 
+      {/* ── Content container ─────────────────────────────────────── */}
       <div
         ref={containerRef}
-        className={
-          isHorizontal
-            ? "flex h-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide"
-            : "h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide"
-        }
+        className={containerClasses}
         onClick={handleTap}
       >
-        {Array.from({ length: totalPages }, (_, index) => index + 1).map(
-          (pageNumber) => (
-            <div
-              key={pageNumber}
-              id={`page-${pageNumber}`}
-              data-reader-page
-              data-page-number={pageNumber}
-              className={
-                isHorizontal
-                  ? "relative flex h-full w-full shrink-0 snap-start items-center justify-center bg-black"
-                  : "relative flex h-screen w-full snap-start items-center justify-center bg-black"
-              }
-            >
-              <AuthImage
-                chapterId={chapterId}
-                pageNumber={pageNumber}
-                alt={`Página ${pageNumber}`}
-                className="max-h-full max-w-full object-contain"
-                loading={pageNumber <= 3 ? "eager" : "lazy"}
-              />
+        {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+          (pageNumber) => {
+            const isCurrentPage = pageNumber === currentPage;
 
-              {!showControls && (
-                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm">
-                  <span className="text-xs font-medium text-white/60">
-                    {pageNumber} / {totalPages}
-                  </span>
+            return (
+              <div
+                key={pageNumber}
+                id={`page-${pageNumber}`}
+                data-reader-page
+                data-page-number={pageNumber}
+                className={getPageClasses()}
+              >
+                {/* Zoom wrapper — only active on current page */}
+                <div
+                  ref={isCurrentPage ? setZoomRef : undefined}
+                  className="flex h-full w-full items-center justify-center overflow-hidden"
+                  style={
+                    isCurrentPage && isZoomed
+                      ? { ...zoomStyle, touchAction: "none" }
+                      : undefined
+                  }
+                >
+                  <AuthImage
+                    chapterId={chapterId}
+                    pageNumber={pageNumber}
+                    alt={`Página ${pageNumber}`}
+                    className={getImageClasses()}
+                    loading={pageNumber <= 3 ? "eager" : "lazy"}
+                    preloadMargin="800px"
+                  />
                 </div>
-              )}
-            </div>
-          ),
+              </div>
+            );
+          },
         )}
 
+        {/* ── End screen ───────────────────────────────────────── */}
         <div
           className={
             isHorizontal
-              ? "flex h-full w-full shrink-0 snap-start flex-col items-center justify-center gap-6 bg-linear-to-b from-black via-black/95 to-background px-8"
-              : "flex h-screen snap-start flex-col items-center justify-center gap-6 bg-linear-to-b from-black via-black/95 to-background px-8"
+              ? "flex h-full w-full shrink-0 snap-start flex-col items-center justify-center gap-6 bg-gradient-to-b from-black via-black/95 to-background px-8"
+              : isWebtoon
+                ? "flex min-h-screen flex-col items-center justify-center gap-6 bg-gradient-to-b from-black via-black/95 to-background px-8"
+                : "flex h-screen snap-start flex-col items-center justify-center gap-6 bg-gradient-to-b from-black via-black/95 to-background px-8"
           }
         >
           <div className="mb-4 text-center">
@@ -682,11 +703,14 @@ export default function ReaderPage() {
           </div>
         </div>
 
+        {/* ── Comments ─────────────────────────────────────────── */}
         <section
           className={
             isHorizontal
               ? "h-full w-full shrink-0 snap-start overflow-y-auto bg-background px-4 py-10"
-              : "min-h-screen snap-start bg-background px-4 py-10"
+              : isWebtoon
+                ? "min-h-screen bg-background px-4 py-10"
+                : "min-h-screen snap-start bg-background px-4 py-10"
           }
         >
           <div className="mx-auto max-w-2xl">
@@ -698,6 +722,79 @@ export default function ReaderPage() {
         </section>
       </div>
 
+      {/* ── Bottom bar ────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showControls && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-black/95 via-black/70 to-transparent pt-8 backdrop-blur-md"
+            style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+          >
+            <div className="px-4 pb-4">
+              {/* Progress slider */}
+              <ProgressSlider
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={goToPage}
+              />
+
+              {/* Page counter + chapter nav */}
+              <div className="mt-1 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {prevChapter && (
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() =>
+                        router.push(`/reader/${seriesId}/${prevChapter.id}`)
+                      }
+                      className="rounded-lg p-1.5 transition-colors hover:bg-white/10"
+                      aria-label="Capítulo anterior"
+                    >
+                      <ChevronLeft className="h-4 w-4 text-white/60" />
+                    </motion.button>
+                  )}
+                </div>
+
+                <span className="text-xs font-medium text-white/60">
+                  {currentPage} / {totalPages}
+                </span>
+
+                <div className="flex items-center gap-2">
+                  {nextChapter && (
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      onClick={() =>
+                        router.push(`/reader/${seriesId}/${nextChapter.id}`)
+                      }
+                      className="rounded-lg p-1.5 transition-colors hover:bg-white/10"
+                      aria-label="Próximo capítulo"
+                    >
+                      <ChevronRight className="h-4 w-4 text-white/60" />
+                    </motion.button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Mini page indicator (controls hidden) ─────────────────── */}
+      {!showControls && !isZoomed && (
+        <div
+          className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm"
+          style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+        >
+          <span className="text-xs font-medium text-white/60">
+            {currentPage} / {totalPages}
+          </span>
+        </div>
+      )}
+
+      {/* ── Settings panel ────────────────────────────────────────── */}
       <AnimatePresence>
         {showSettings && (
           <>
@@ -716,6 +813,7 @@ export default function ReaderPage() {
               exit={{ y: "100%", opacity: 0 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
               className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-w-lg rounded-t-3xl bg-surface p-6 shadow-2xl"
+              style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}
             >
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-textMain">
@@ -731,39 +829,89 @@ export default function ReaderPage() {
                 </motion.button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-5">
+                {/* Reading mode selector */}
                 <div>
                   <label className="mb-3 block text-sm font-medium text-textMain">
                     Modo de Leitura
                   </label>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setReadingMode("vertical")}
-                      className={`flex-1 rounded-xl px-4 py-3 font-medium transition-all ${
-                        readingMode === "vertical"
-                          ? "bg-primary text-white shadow-lg shadow-primary/20"
-                          : "bg-background text-textDim hover:bg-background/80 hover:text-textMain"
-                      }`}
-                    >
-                      Vertical
-                    </button>
-                    <button
-                      onClick={() => setReadingMode("horizontal")}
-                      className={`flex-1 rounded-xl px-4 py-3 font-medium transition-all ${
-                        readingMode === "horizontal"
-                          ? "bg-primary text-white shadow-lg shadow-primary/20"
-                          : "bg-background text-textDim hover:bg-background/80 hover:text-textMain"
-                      }`}
-                    >
-                      Horizontal
-                    </button>
+                  <div className="flex gap-2">
+                    {READING_MODES.map((mode) => {
+                      const Icon = mode.icon;
+                      const isActive = readingMode === mode.value;
+                      return (
+                        <button
+                          key={mode.value}
+                          onClick={() => setReadingMode(mode.value)}
+                          className={`flex flex-1 flex-col items-center gap-1.5 rounded-xl px-3 py-3 font-medium transition-all ${
+                            isActive
+                              ? "bg-primary text-white shadow-lg shadow-primary/20"
+                              : "bg-background text-textDim hover:bg-background/80 hover:text-textMain"
+                          }`}
+                        >
+                          <Icon className="h-5 w-5" />
+                          <span className="text-xs">{mode.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                   <p className="mt-2 text-xs text-textDim">
-                    Vertical usa rolagem contínua. Horizontal transforma cada
-                    página em um painel com snap lateral.
+                    {readingMode === "vertical" &&
+                      "Rolagem vertical com páginas fixas."}
+                    {readingMode === "webtoon" &&
+                      "Rolagem contínua ideal para manhwa e webcomics longos."}
+                    {readingMode === "horizontal" &&
+                      "Navegação lateral com snap por página."}
                   </p>
                 </div>
 
+                {/* Go to page */}
+                <div>
+                  <label
+                    htmlFor="goto-page"
+                    className="mb-2 block text-sm font-medium text-textMain"
+                  >
+                    Ir para página
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="goto-page"
+                      type="number"
+                      min={1}
+                      max={totalPages}
+                      defaultValue={currentPage}
+                      className="w-full rounded-xl border border-white/10 bg-background px-4 py-3 text-sm text-textMain outline-none focus:border-primary"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          const val = Number(
+                            (e.target as HTMLInputElement).value,
+                          );
+                          if (val >= 1 && val <= totalPages) {
+                            goToPage(val);
+                            setShowSettings(false);
+                          }
+                        }
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        const input = document.getElementById(
+                          "goto-page",
+                        ) as HTMLInputElement;
+                        const val = Number(input?.value);
+                        if (val >= 1 && val <= totalPages) {
+                          goToPage(val);
+                          setShowSettings(false);
+                        }
+                      }}
+                      className="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary/90"
+                    >
+                      Ir
+                    </button>
+                  </div>
+                </div>
+
+                {/* Favorite toggle */}
                 <motion.button
                   whileTap={{ scale: 0.97 }}
                   onClick={() => toggleFavorite(seriesId)}
@@ -775,6 +923,11 @@ export default function ReaderPage() {
                     ? "Remover dos Favoritos"
                     : "Adicionar aos Favoritos"}
                 </motion.button>
+
+                {/* Zoom hint */}
+                <p className="text-center text-xs text-textDim">
+                  Toque duas vezes para zoom. Ctrl+Scroll no desktop.
+                </p>
               </div>
             </motion.div>
           </>

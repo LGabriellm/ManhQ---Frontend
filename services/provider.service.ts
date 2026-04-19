@@ -28,6 +28,11 @@ import type {
   RetryFailedResponse,
   RetryChapterResponse,
   ChapterStatusResponse,
+  CleanupStaleResponse,
+  UpdateChapterRequest,
+  UpdateChapterResponse,
+  ReimportFromRequest,
+  ReimportFromResponse,
 } from "@/types/api";
 
 export const providerService = {
@@ -178,6 +183,37 @@ export const providerService = {
     const res = await api.get<ChapterStatusResponse>(
       `/admin/providers/chapters/${chapterId}/status`,
       { signal },
+    );
+    return res.data;
+  },
+
+  async updateChapter(
+    chapterId: string,
+    data: UpdateChapterRequest,
+  ): Promise<UpdateChapterResponse> {
+    const res = await api.patch<UpdateChapterResponse>(
+      `/admin/providers/chapters/${chapterId}`,
+      data,
+    );
+    return res.data;
+  },
+
+  async cleanupStale(minutes?: number): Promise<CleanupStaleResponse> {
+    const res = await api.post<CleanupStaleResponse>(
+      "/admin/providers/cleanup-stale",
+      undefined,
+      { params: minutes ? { minutes } : undefined },
+    );
+    return res.data;
+  },
+
+  async reimportFrom(
+    chapterId: string,
+    data: ReimportFromRequest,
+  ): Promise<ReimportFromResponse> {
+    const res = await api.post<ReimportFromResponse>(
+      `/admin/providers/chapters/${chapterId}/reimport-from`,
+      data,
     );
     return res.data;
   },

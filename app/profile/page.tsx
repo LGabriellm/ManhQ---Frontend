@@ -702,8 +702,8 @@ export default function ProfilePage() {
 
           {/* App info */}
           <div className="flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/10">
-              <span className="text-lg font-bold text-primary">M</span>
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/10 overflow-hidden">
+              <img src="/logo-192.png" alt="ManHQ" width={24} height={24} className="rounded-md object-contain" draggable={false} />
             </div>
             <div className="flex-1">
               <p className="font-medium text-textMain text-sm">ManhQ Reader</p>

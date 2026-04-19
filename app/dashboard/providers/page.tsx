@@ -7,6 +7,7 @@ import {
   useProviderStats,
   useDeleteTrackedTitle,
   useSyncChapters,
+  useCleanupStale,
 } from "@/hooks/useProvider";
 import { ImportStatusBadge } from "@/components/provider/ImportStatusBadge";
 import { ChapterStatsBar } from "@/components/provider/ChapterStatsBar";
@@ -29,6 +30,7 @@ import {
   ExternalLink,
   Server,
   Image,
+  Zap,
 } from "lucide-react";
 
 const IMPORT_STATUSES: { value: TitleImportStatus | ""; label: string }[] = [
@@ -54,6 +56,7 @@ export default function ProvidersPage() {
   const { data, isLoading } = useTrackedTitles(params);
   const deleteTitle = useDeleteTrackedTitle();
   const syncChapters = useSyncChapters();
+  const cleanupStale = useCleanupStale();
 
   useEffect(() => {
     clearTimeout(searchTimer.current);
@@ -237,6 +240,50 @@ export default function ProvidersPage() {
           ))}
         </select>
       </div>
+
+      {/* Stale chapters alert */}
+      {stats && stats.staleReset !== undefined && stats.staleReset > 0 && (
+        <div className="rounded-lg border border-orange-500/20 bg-orange-500/10 p-3 text-sm text-orange-300">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 font-medium">
+              <AlertTriangle className="h-4 w-4" />
+              {stats.staleReset} capítulo(s) preso(s) foram resetados
+              automaticamente
+            </div>
+          </div>
+        </div>
+      )}
+
+      {stats && stats.chapters.downloading > 0 && (
+        <div className="flex items-center justify-between rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3">
+          <div className="flex items-center gap-2 text-sm text-yellow-300">
+            <Download className="h-4 w-4 animate-pulse" />
+            <span>{stats.chapters.downloading} capítulo(s) sendo baixados</span>
+          </div>
+          <button
+            onClick={() =>
+              cleanupStale.mutate(15, {
+                onSuccess: (res) =>
+                  res.reset > 0
+                    ? toast.success(
+                        `${res.reset} capítulo(s) preso(s) resetados`,
+                      )
+                    : toast.success("Nenhum capítulo preso encontrado"),
+                onError: () => toast.error("Erro ao limpar capítulos presos"),
+              })
+            }
+            disabled={cleanupStale.isPending}
+            className="flex items-center gap-1.5 rounded-lg bg-yellow-500/20 px-3 py-1 text-xs font-medium text-yellow-300 hover:bg-yellow-500/30 transition-colors disabled:opacity-50"
+          >
+            {cleanupStale.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Zap className="h-3 w-3" />
+            )}
+            Limpar presos
+          </button>
+        </div>
+      )}
 
       {/* Table */}
       <div className="surface-panel overflow-hidden rounded-xl border border-white/5">

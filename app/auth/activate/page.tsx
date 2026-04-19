@@ -25,6 +25,7 @@ import {
   getDefaultAuthenticatedPath,
 } from "@/lib/subscription";
 import { SubscriptionStateBadge } from "@/components/subscription/SubscriptionStateBadge";
+import { Logo } from "@/components/Logo";
 import type { ApiError, User, ValidateTokenResponse } from "@/types/api";
 
 type PageState = "loading" | "ready" | "invalid" | "success";
@@ -369,6 +370,9 @@ export default function ActivatePage() {
 
   return (
     <main className="min-h-screen bg-background px-4 py-8 sm:px-6 lg:py-12">
+      <div className="mb-6 flex justify-center lg:justify-start lg:max-w-6xl lg:mx-auto">
+        <Logo size="md" href="/" />
+      </div>
       <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <section className="surface-panel rounded-[32px] p-6 sm:p-8">
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">

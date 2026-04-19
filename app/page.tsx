@@ -23,6 +23,7 @@ import {
 } from "@/lib/subscription";
 import { useAuth } from "@/contexts/AuthContext";
 import { trackFacebookPixel } from "@/lib/facebookPixel";
+import { Logo } from "@/components/Logo";
 
 const LandingCarousel = dynamic(
   () =>
@@ -235,9 +236,7 @@ export default function LandingPage() {
         {/* ── Header ──────────────────────────────────────────────────── */}
         <header className="px-5 py-5 sm:px-8 lg:px-12">
           <div className="mx-auto flex max-w-6xl items-center justify-between">
-            <p className="font-display text-2xl font-bold tracking-tight text-primary sm:text-3xl">
-              ManHQ
-            </p>
+            <Logo size="md" href="/home" />
             <a
               href={primaryCtaHref}
               target={primaryCtaTarget}

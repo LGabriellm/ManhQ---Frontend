@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Search, Flame, Play, ChevronRight, WifiOff } from "lucide-react";
 import { motion } from "framer-motion";
+import { Logo } from "@/components/Logo";
 import { MangaCard } from "@/components/MangaCard";
 import { ContinueReadingCard } from "@/components/ContinueReadingCard";
 import { HorizontalScroll } from "@/components/HorizontalScroll";
@@ -33,7 +34,7 @@ const EMPTY_DISCOVER: DiscoverResponse = {
 
 function CardSkeleton() {
   return (
-    <div className="w-28 shrink-0 snap-start">
+    <div className="w-32 shrink-0 snap-start">
       <div className="aspect-2/3 animate-pulse rounded-2xl bg-surface/50" />
       <div className="mt-2 h-3 w-3/4 animate-pulse rounded-full bg-surface/50" />
     </div>
@@ -61,10 +62,10 @@ interface RowTitleProps {
 
 function RowTitle({ label, href, accentColor = "#e50914" }: RowTitleProps) {
   return (
-    <div className="mb-3.5 flex items-center justify-between px-4">
+    <div className="mb-3.5 flex items-center justify-between px-5">
       <div className="flex items-center gap-2.5">
         <span
-          className="h-5 w-0.5 shrink-0 rounded-full"
+          className="h-5 w-1 shrink-0 rounded-full"
           style={{ background: accentColor }}
         />
         <h2 className="text-[15px] font-bold tracking-tight text-textMain">
@@ -112,7 +113,7 @@ function SectionRow({
   ) : (
     <HorizontalScroll>
       {items.map((item) => (
-        <div key={item.id} className="w-28 shrink-0 snap-start">
+        <div key={item.id} className="w-32 shrink-0 snap-start">
           {renderCard(item)}
         </div>
       ))}
@@ -236,24 +237,15 @@ export default function HomePage() {
       <main className="min-h-screen bg-background pb-28">
         <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl">
           <div className="flex h-14 items-center justify-between px-5">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shadow-lg shadow-primary/25">
-                <span className="select-none text-sm font-black leading-none text-white">
-                  M
-                </span>
-              </div>
-              <span className="text-[15px] font-bold tracking-tight text-textMain">
-                ManHQ
-              </span>
-            </div>
+            <Logo size="sm" href="/home" />
           </div>
         </div>
-        <div className="space-y-8 pt-5">
+        <div className="space-y-7 pt-5">
           <div className="px-5">
             <div className="h-4 w-24 animate-pulse rounded-full bg-surface/50" />
-            <div className="mt-2 h-7 w-40 animate-pulse rounded-full bg-surface/50" />
+            <div className="mt-2 h-7 w-48 animate-pulse rounded-full bg-surface/50" />
           </div>
-          <div className="mx-4 h-52 animate-pulse rounded-3xl bg-surface/60" />
+          <div className="mx-4 h-56 animate-pulse rounded-3xl bg-surface/60" />
           <div className="space-y-2.5">
             <ContinueSkeleton />
             <ContinueSkeleton />
@@ -275,16 +267,7 @@ export default function HomePage() {
       <main className="min-h-screen bg-background pb-28">
         <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl">
           <div className="flex h-14 items-center justify-between px-5">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shadow-lg shadow-primary/25">
-                <span className="select-none text-sm font-black leading-none text-white">
-                  M
-                </span>
-              </div>
-              <span className="text-[15px] font-bold tracking-tight text-textMain">
-                ManHQ
-              </span>
-            </div>
+            <Logo size="sm" href="/home" />
             <Link
               href="/search"
               className="rounded-xl p-2 transition-colors hover:bg-white/5 active:bg-white/8"
@@ -296,24 +279,25 @@ export default function HomePage() {
         </div>
 
         <div className="px-4 pt-8">
-          <div className="rounded-3xl border border-white/8 bg-surface/70 p-5 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
-            <p className="text-sm font-semibold text-textMain">
+          <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-surface/70 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
+            <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-primary/8 blur-[60px]" />
+            <p className="text-base font-semibold text-textMain">
               Entre para ver sua home personalizada
             </p>
             <p className="mt-2 text-sm leading-6 text-textDim">
               Descobertas, progresso de leitura e atualizações aparecem aqui em
               um painel pensado para continuar de onde você parou.
             </p>
-            <div className="mt-4 flex flex-wrap gap-2.5">
+            <div className="mt-5 flex flex-wrap gap-2.5">
               <Link
                 href="/auth/login"
-                className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white"
+                className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90"
               >
                 Fazer login
               </Link>
               <Link
                 href="/search"
-                className="rounded-xl border border-white/8 bg-white/4 px-4 py-2.5 text-sm font-semibold text-textMain"
+                className="rounded-xl border border-white/8 bg-white/4 px-5 py-2.5 text-sm font-semibold text-textMain transition-colors hover:bg-white/8"
               >
                 Explorar catálogo
               </Link>
@@ -328,16 +312,7 @@ export default function HomePage() {
     <main className="min-h-screen bg-background pb-28">
       <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl">
         <div className="flex h-14 items-center justify-between px-5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary shadow-lg shadow-primary/25">
-              <span className="select-none text-sm font-black leading-none text-white">
-                M
-              </span>
-            </div>
-            <span className="text-[15px] font-bold tracking-tight text-textMain">
-              ManHQ
-            </span>
-          </div>
+          <Logo size="sm" href="/home" />
           <Link
             href="/search"
             className="rounded-xl p-2 transition-colors hover:bg-white/5 active:bg-white/8"
@@ -348,7 +323,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div className="space-y-8 pt-5">
+      <div className="space-y-7 pt-5">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -361,10 +336,8 @@ export default function HomePage() {
               {firstName}
             </span>
           </p>
-          <h1 className="mt-0.5 text-2xl font-black leading-tight text-textMain">
-            O que vamos
-            <br />
-            ler hoje?
+          <h1 className="mt-1 text-[26px] font-black leading-tight tracking-tight text-textMain">
+            O que vamos ler hoje?
           </h1>
         </motion.div>
 
@@ -413,7 +386,7 @@ export default function HomePage() {
         ) : null}
 
         {discoverLoading ? (
-          <div className="mx-4 h-52 animate-pulse rounded-3xl bg-surface/60" />
+          <div className="mx-4 h-56 animate-pulse rounded-3xl bg-surface/60" />
         ) : featured ? (
           <motion.div
             initial={{ opacity: 0, y: 16 }}
@@ -424,7 +397,7 @@ export default function HomePage() {
             <Link href={`/serie/${featured.id}`}>
               <motion.div
                 whileTap={{ scale: 0.97 }}
-                className="group relative h-52 overflow-hidden rounded-3xl shadow-lg shadow-black/20 hover:shadow-xl hover:shadow-black/30 transition-shadow duration-300"
+                className="group relative h-56 overflow-hidden rounded-3xl shadow-xl shadow-black/30 ring-1 ring-white/5 hover:shadow-2xl hover:shadow-black/40 transition-all duration-300"
               >
                 <div className="absolute inset-0 transition-transform duration-700 group-hover:scale-105">
                   <AuthCover
@@ -435,33 +408,39 @@ export default function HomePage() {
                   />
                 </div>
 
-                <div className="absolute inset-0 bg-linear-to-r from-black/90 via-black/50 to-transparent" />
-                <div className="absolute inset-0 bg-linear-to-t from-black/50 to-transparent" />
+                <div className="absolute inset-0 bg-linear-to-r from-black/90 via-black/55 to-transparent" />
+                <div className="absolute inset-0 bg-linear-to-t from-black/60 via-black/10 to-transparent" />
 
                 <div className="absolute inset-0 flex flex-col justify-end p-5">
-                  <div className="mb-2 inline-flex self-start rounded-md bg-primary px-2 py-0.5 shadow-lg shadow-primary/30 backdrop-blur-sm">
-                    <div className="flex items-center gap-1">
-                      <Flame className="h-3 w-3 text-white" />
-                      <span className="text-[9px] font-black uppercase tracking-widest text-white">
+                  <div className="mb-2.5 inline-flex self-start rounded-lg bg-primary/90 backdrop-blur-sm px-2.5 py-1 shadow-lg shadow-primary/30">
+                    <div className="flex items-center gap-1.5">
+                      <Flame className="h-3.5 w-3.5 text-white" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-white">
                         Em alta
                       </span>
                     </div>
                   </div>
 
-                  <h2 className="line-clamp-2 text-lg font-black leading-tight text-white drop-shadow-lg">
+                  <h2 className="line-clamp-2 text-xl font-black leading-tight text-white drop-shadow-lg">
                     {featured.title}
                   </h2>
 
+                  {featured.description && (
+                    <p className="mt-1.5 line-clamp-1 text-xs text-white/50 leading-relaxed">
+                      {featured.description}
+                    </p>
+                  )}
+
                   <div className="mt-3 flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 rounded-xl bg-white px-3.5 py-1.5 shadow-md">
-                      <Play className="h-3 w-3 fill-black text-black" />
+                    <div className="flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 shadow-md transition-transform duration-200 group-hover:scale-105">
+                      <Play className="h-3.5 w-3.5 fill-black text-black" />
                       <span className="text-[12px] font-bold text-black">
                         Ler agora
                       </span>
                     </div>
                     {featured.rating != null && featured.rating > 0 ? (
-                      <span className="text-[12px] font-medium text-white/50">
-                        ★ {featured.rating}
+                      <span className="text-[12px] font-semibold text-white/60 flex items-center gap-1">
+                        <span className="text-yellow-400">★</span> {featured.rating}
                       </span>
                     ) : null}
                   </div>
@@ -546,11 +525,11 @@ export default function HomePage() {
             whileInView={{ opacity: 1 }}
             viewport={{ once: true, amount: 0.5 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
-            className="mx-4 flex items-center justify-center pt-2 pb-4"
+            className="mx-5 flex items-center justify-center pt-2 pb-4"
           >
             <Link
               href="/search"
-              className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/4 px-5 py-3 text-sm font-semibold text-textDim transition-colors hover:border-white/12 hover:bg-white/6 hover:text-textMain"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/8 bg-white/4 px-5 py-3.5 text-sm font-semibold text-textDim transition-colors hover:border-white/12 hover:bg-white/6 hover:text-textMain"
             >
               <Search className="h-4 w-4" />
               Explorar todo o catálogo

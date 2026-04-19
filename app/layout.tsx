@@ -78,7 +78,11 @@ export const metadata: Metadata = {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
       { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
-      { url: "/android-chrome-192x192.png", sizes: "192x192", type: "image/png" },
+      {
+        url: "/android-chrome-192x192.png",
+        sizes: "192x192",
+        type: "image/png",
+      },
     ],
     apple: [
       { url: "/apple-touch-icon.png", sizes: "180x180" },
@@ -92,47 +96,90 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "ManHQ",
     startupImage: [
+      // iPhone 16 Pro Max (6.9")
       {
         url: "/android-chrome-512x512.png",
-        media: "(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)",
+        media:
+          "(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3)",
       },
+      // iPhone 16 Pro (6.3") / iPhone 15 Pro
       {
         url: "/android-chrome-512x512.png",
-        media: "(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)",
+        media:
+          "(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3)",
       },
+      // iPhone 15 Plus / 15 Pro Max / 14 Plus (6.7")
       {
         url: "/android-chrome-512x512.png",
-        media: "(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)",
+        media:
+          "(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)",
       },
+      // iPhone 15 / 14 Pro (6.1")
       {
         url: "/android-chrome-512x512.png",
-        media: "(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)",
+        media:
+          "(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)",
       },
+      // iPhone 14 / 13 / 13 Pro (6.1")
       {
         url: "/android-chrome-512x512.png",
-        media: "(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)",
+        media:
+          "(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)",
       },
+      // iPhone 13 Mini / 12 Mini (5.4")
       {
         url: "/android-chrome-512x512.png",
-        media: "(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)",
+        media:
+          "(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)",
       },
+      // iPhone 11 Pro Max / XS Max (6.5")
       {
         url: "/android-chrome-512x512.png",
-        media: "(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)",
+        media:
+          "(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)",
       },
+      // iPhone 11 / XR (6.1")
       {
         url: "/android-chrome-512x512.png",
-        media: "(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)",
+        media:
+          "(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)",
       },
+      // iPhone 14 Pro Max (6.7")
       {
         url: "/android-chrome-512x512.png",
-        media: "(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)",
+        media:
+          "(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)",
+      },
+      // iPad 10th gen / iPad Air
+      {
+        url: "/android-chrome-512x512.png",
+        media:
+          "(device-width: 820px) and (device-height: 1180px) and (-webkit-device-pixel-ratio: 2)",
+      },
+      // iPad Pro 11"
+      {
+        url: "/android-chrome-512x512.png",
+        media:
+          "(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)",
+      },
+      // iPad Pro 12.9"
+      {
+        url: "/android-chrome-512x512.png",
+        media:
+          "(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)",
+      },
+      // iPad Mini 6th gen
+      {
+        url: "/android-chrome-512x512.png",
+        media:
+          "(device-width: 744px) and (device-height: 1133px) and (-webkit-device-pixel-ratio: 2)",
       },
     ],
   },
   other: {
     "facebook-domain-verification": "5kgekx1ihoq2osx68idi5eunp0hzj8",
     "mobile-web-app-capable": "yes",
+    "format-detection": "telephone=no",
   },
 };
 

@@ -163,7 +163,7 @@ export default function MangaDetailsPage() {
 
   return (
     <main className="min-h-screen bg-background pb-20">
-      <div className="sticky top-0 z-40 border-b border-surface bg-background/95 backdrop-blur-md shadow-sm">
+      <div className="sticky top-0 z-40 border-b border-surface bg-background/95 backdrop-blur-md shadow-sm safe-header">
         <div className="flex items-center justify-between p-4">
           <motion.button
             whileTap={{ scale: 0.95 }}

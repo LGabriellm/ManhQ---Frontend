@@ -235,7 +235,7 @@ export default function HomePage() {
   if (authLoading) {
     return (
       <main className="min-h-screen bg-background pb-28">
-        <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl">
+        <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl safe-header">
           <div className="flex h-14 items-center justify-between px-5">
             <Logo size="sm" href="/home" />
           </div>
@@ -265,7 +265,7 @@ export default function HomePage() {
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-background pb-28">
-        <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl">
+        <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl safe-header">
           <div className="flex h-14 items-center justify-between px-5">
             <Logo size="sm" href="/home" />
             <Link
@@ -310,7 +310,7 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-background pb-28">
-      <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl">
+      <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl safe-header">
         <div className="flex h-14 items-center justify-between px-5">
           <Logo size="sm" href="/home" />
           <Link
@@ -440,7 +440,8 @@ export default function HomePage() {
                     </div>
                     {featured.rating != null && featured.rating > 0 ? (
                       <span className="text-[12px] font-semibold text-white/60 flex items-center gap-1">
-                        <span className="text-yellow-400">★</span> {featured.rating}
+                        <span className="text-yellow-400">★</span>{" "}
+                        {featured.rating}
                       </span>
                     ) : null}
                   </div>

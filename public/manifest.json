@@ -4,13 +4,18 @@
   "short_name": "ManHQ",
   "description": "Leia seus mangás e HQ comics favoritos online. Mobile-first, rápido e gratuito.",
   "lang": "pt-BR",
+  "dir": "ltr",
   "start_url": "/home",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "display_override": ["standalone"],
   "background_color": "#0f0f0f",
   "theme_color": "#0f0f0f",
   "orientation": "portrait",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "handle_links": "preferred",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",
@@ -37,6 +42,15 @@
       "purpose": "maskable"
     }
   ],
+  "screenshots": [
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Tela inicial do ManHQ"
+    }
+  ],
   "shortcuts": [
     {
       "name": "Buscar",
@@ -58,5 +72,12 @@
     }
   ],
   "categories": ["entertainment", "books"],
-  "prefer_related_applications": false
+  "prefer_related_applications": false,
+  "share_target": {
+    "action": "/search",
+    "method": "GET",
+    "params": {
+      "text": "q"
+    }
+  }
 }

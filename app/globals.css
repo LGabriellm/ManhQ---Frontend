@@ -155,7 +155,11 @@ button {
 .surface-panel {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.02)),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.035),
+      rgba(255, 255, 255, 0.02)
+    ),
     rgba(0, 0, 0, 0.16);
   box-shadow: 0 24px 90px -46px rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(18px);
@@ -168,7 +172,11 @@ button {
 
 .surface-panel-elevated {
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(0, 0, 0, 0.12));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.045),
+    rgba(0, 0, 0, 0.12)
+  );
   box-shadow: 0 28px 90px -50px rgba(0, 0, 0, 0.82);
 }
 
@@ -267,7 +275,8 @@ button {
 .list-panel {
   border-radius: 1.75rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(
+  background:
+    linear-gradient(
       180deg,
       rgba(255, 255, 255, 0.03),
       rgba(255, 255, 255, 0.015)
@@ -393,6 +402,16 @@ input[type="checkbox"]:focus-visible {
   .standalone-bottom {
     padding-bottom: calc(0.5rem + var(--safe-bottom));
   }
+}
+
+/* ─── Safe area para headers fixos/sticky em dispositivos com notch/Dynamic Island ─── */
+
+.safe-header {
+  padding-top: var(--safe-top);
+}
+
+.safe-sticky-header {
+  top: var(--safe-top);
 }
 
 /* ─── iOS-specific: previne pull-to-refresh e gestos indesejados ─── */

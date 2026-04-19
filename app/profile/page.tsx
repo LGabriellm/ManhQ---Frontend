@@ -56,7 +56,7 @@ function ProfileSkeleton() {
   return (
     <>
       {/* Avatar */}
-      <div className="flex flex-col items-center pt-14 pb-6">
+      <div className="flex flex-col items-center pt-14 pb-6 safe-header">
         <div className="w-24 h-24 rounded-full bg-surface/50 animate-pulse mb-4" />
         <div className="h-6 w-32 rounded-lg bg-surface/50 animate-pulse mb-2" />
         <div className="h-4 w-48 rounded bg-surface/50 animate-pulse" />
@@ -190,7 +190,7 @@ export default function ProfilePage() {
         <div className="absolute inset-0 bg-linear-to-b from-primary/12 via-primary/4 to-transparent" />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-125 h-75 bg-primary/6 rounded-full blur-[120px]" />
 
-        <div className="relative px-5 pt-14 pb-6">
+        <div className="relative px-5 pt-14 pb-6 safe-header">
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -289,8 +289,8 @@ export default function ProfilePage() {
                   Conta e segurança
                 </p>
                 <p className="mt-1 text-sm text-textDim">
-                  Você ainda pode atualizar perfil, senha, sessões e acompanhar o
-                  status da assinatura normalmente.
+                  Você ainda pode atualizar perfil, senha, sessões e acompanhar
+                  o status da assinatura normalmente.
                 </p>
               </div>
             </div>
@@ -703,7 +703,14 @@ export default function ProfilePage() {
           {/* App info */}
           <div className="flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/10 overflow-hidden">
-              <img src="/logo-192.png" alt="ManHQ" width={24} height={24} className="rounded-md object-contain" draggable={false} />
+              <img
+                src="/logo-192.png"
+                alt="ManHQ"
+                width={24}
+                height={24}
+                className="rounded-md object-contain"
+                draggable={false}
+              />
             </div>
             <div className="flex-1">
               <p className="font-medium text-textMain text-sm">ManhQ Reader</p>

@@ -60,7 +60,11 @@ function getStoredMode(): ReadingMode {
   return "vertical";
 }
 
-const READING_MODES: { value: ReadingMode; label: string; icon: typeof Columns }[] = [
+const READING_MODES: {
+  value: ReadingMode;
+  label: string;
+  icon: typeof Columns;
+}[] = [
   { value: "vertical", label: "Vertical", icon: AlignVerticalSpaceAround },
   { value: "webtoon", label: "Contínuo", icon: ScrollText },
   { value: "horizontal", label: "Horizontal", icon: Columns },
@@ -300,9 +304,7 @@ export default function ReaderPage() {
     if (observedPages.length === 0) return;
 
     // For webtoon mode, use lower thresholds since pages can be taller
-    const thresholds = isWebtoon
-      ? [0.1, 0.3, 0.5]
-      : [0.55, 0.7, 0.85];
+    const thresholds = isWebtoon ? [0.1, 0.3, 0.5] : [0.55, 0.7, 0.85];
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -516,9 +518,7 @@ export default function ReaderPage() {
                 className="group flex items-center gap-2 rounded-xl px-3 py-2 transition-all hover:bg-white/10 active:bg-white/20"
               >
                 <ArrowLeft className="h-5 w-5 text-white transition-transform duration-200 group-hover:-translate-x-0.5" />
-                <span className="text-sm font-semibold text-white">
-                  Voltar
-                </span>
+                <span className="text-sm font-semibold text-white">Voltar</span>
               </motion.button>
 
               <div className="mx-4 min-w-0 flex-1 text-center">
@@ -584,11 +584,7 @@ export default function ReaderPage() {
       </AnimatePresence>
 
       {/* ── Content container ─────────────────────────────────────── */}
-      <div
-        ref={containerRef}
-        className={containerClasses}
-        onClick={handleTap}
-      >
+      <div ref={containerRef} className={containerClasses} onClick={handleTap}>
         {Array.from({ length: totalPages }, (_, i) => i + 1).map(
           (pageNumber) => {
             const isCurrentPage = pageNumber === currentPage;
@@ -606,8 +602,15 @@ export default function ReaderPage() {
                   ref={isCurrentPage ? setZoomRef : undefined}
                   className="flex h-full w-full items-center justify-center overflow-hidden"
                   style={
-                    isCurrentPage && isZoomed
-                      ? { ...zoomStyle, touchAction: "none" }
+                    isCurrentPage
+                      ? {
+                          ...zoomStyle,
+                          touchAction: isZoomed
+                            ? "none"
+                            : isHorizontal
+                              ? "pan-x"
+                              : "pan-y",
+                        }
                       : undefined
                   }
                 >
@@ -813,7 +816,10 @@ export default function ReaderPage() {
               exit={{ y: "100%", opacity: 0 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
               className="fixed bottom-0 left-0 right-0 z-50 mx-auto max-w-lg rounded-t-3xl bg-surface p-6 shadow-2xl"
-              style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}
+              style={{
+                paddingBottom:
+                  "calc(1.5rem + env(safe-area-inset-bottom, 0px))",
+              }}
             >
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-textMain">

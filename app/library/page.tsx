@@ -177,7 +177,11 @@ function HistoryItemCard({ item }: { item: ProgressHistoryItem }) {
     return cardContent;
   }
 
-  return <Link href={readLink} className="block">{cardContent}</Link>;
+  return (
+    <Link href={readLink} className="block">
+      {cardContent}
+    </Link>
+  );
 }
 
 // ─── Favorite List Item (alternativa ao grid) ───────────────────────────────
@@ -375,16 +379,15 @@ export default function LibraryPage() {
 
   const hasError =
     (activeTab === "favorites" && errorFavorites) ||
-    (activeTab === "reading" &&
-      (errorReadingSeries || errorContinueReading)) ||
+    (activeTab === "reading" && (errorReadingSeries || errorContinueReading)) ||
     (activeTab === "history" && errorHistory);
 
   const activeTabCount =
     activeTab === "favorites"
-      ? favorites?.length ?? 0
+      ? (favorites?.length ?? 0)
       : activeTab === "reading"
-        ? readingSeries?.length ?? 0
-        : historyData?.total ?? 0;
+        ? (readingSeries?.length ?? 0)
+        : (historyData?.total ?? 0);
   const activeTabLabel =
     activeTab === "history"
       ? activeTabCount === 1
@@ -401,7 +404,7 @@ export default function LibraryPage() {
   ];
 
   return (
-    <main className="min-h-screen pt-4 pb-24">
+    <main className="min-h-screen pt-4 pb-24 safe-header">
       {/* Header */}
       <div className="px-4 mb-4">
         <div className="flex items-center justify-between">
@@ -630,7 +633,10 @@ export default function LibraryPage() {
                           <MangaCard
                             id={series.id}
                             title={series.title}
-                            coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
+                            coverUrl={getPublicCoverUrl(
+                              series.id,
+                              series.coverUrl,
+                            )}
                             rating={series.rating}
                           />
                         </motion.div>
@@ -702,9 +708,13 @@ export default function LibraryPage() {
                               seriesId={item.seriesId}
                               mediaId={item.mediaId}
                               title={item.seriesTitle || "Sem título"}
-                              coverUrl={getPublicCoverUrl(item.seriesId, item.coverUrl)}
+                              coverUrl={getPublicCoverUrl(
+                                item.seriesId,
+                                item.coverUrl,
+                              )}
                               chapterTitle={
-                                item.mediaTitle || `Capítulo ${item.mediaNumber}`
+                                item.mediaTitle ||
+                                `Capítulo ${item.mediaNumber}`
                               }
                               currentPage={item.page}
                               totalPages={item.pageCount}
@@ -734,7 +744,9 @@ export default function LibraryPage() {
                           >
                             <LibrarySeriesListItem
                               series={series}
-                              icon={<BookOpen className="w-4 h-4 text-primary" />}
+                              icon={
+                                <BookOpen className="w-4 h-4 text-primary" />
+                              }
                             />
                           </motion.div>
                         ))}

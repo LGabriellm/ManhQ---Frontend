@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -89,7 +89,7 @@ function PasswordStrength({ password }: { password: string }) {
   );
 }
 
-export default function ActivatePage() {
+function ActivatePageContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token") || "";
   const { refreshUser } = useAuth();
@@ -170,7 +170,9 @@ export default function ActivatePage() {
     isSubmitting ||
     !displayName.trim() ||
     !password ||
-    !confirmPassword;
+    !confirmPassword ||
+    usernameStatus === "checking" ||
+    usernameStatus === "unavailable";
   const expiresAtLabel = validation?.expiresAt
     ? formatSubscriptionDateTime(validation.expiresAt)
     : null;
@@ -670,5 +672,26 @@ export default function ActivatePage() {
         </section>
       </div>
     </main>
+  );
+}
+
+export default function ActivatePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center px-4">
+          <div className="text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/12 text-primary">
+              <Loader2 className="h-7 w-7 animate-spin" />
+            </div>
+            <p className="mt-5 text-sm text-textDim">
+              Carregando página de ativação...
+            </p>
+          </div>
+        </main>
+      }
+    >
+      <ActivatePageContent />
+    </Suspense>
   );
 }

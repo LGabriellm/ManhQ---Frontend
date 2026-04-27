@@ -16,18 +16,20 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getPublicCoverUrl } from "@/lib/coverUrl";
 import type { DiscoverResponse } from "@/services/discover.service";
 
-type DiscoverSectionKey = "mostViewed" | "recentlyAdded" | "recentlyUpdated";
+type DiscoverSectionKey = "mostViewed" | "recentlyAdded" | "recentlyUpdated" | "trending";
 
 const DISCOVER_SECTION_LABELS: Record<DiscoverSectionKey, string> = {
   mostViewed: "Mais populares",
   recentlyAdded: "Novidades",
   recentlyUpdated: "Atualizados",
+  trending: "Em alta esta semana",
 };
 
 const EMPTY_DISCOVER: DiscoverResponse = {
   recentlyAdded: [],
   recentlyUpdated: [],
   mostViewed: [],
+  trending: [],
   partial: false,
   unavailableSections: [],
 };
@@ -144,19 +146,31 @@ export default function HomePage() {
   const discoverData = discover ?? EMPTY_DISCOVER;
   const featuredSourceOrder: DiscoverSectionKey[] = [
     "mostViewed",
+    "trending",
     "recentlyAdded",
     "recentlyUpdated",
   ];
   const featuredSource =
-    featuredSourceOrder.find((section) => discoverData[section].length > 0) ??
+    featuredSourceOrder.find((section) => (discoverData[section]?.length ?? 0) > 0) ??
     null;
-  const featured = featuredSource ? discoverData[featuredSource][0] : null;
+  const featured = featuredSource ? (discoverData[featuredSource] ?? [])[0] ?? null : null;
   const unavailableSections = (discover?.unavailableSections ?? [])
     .map(
       (section) =>
         DISCOVER_SECTION_LABELS[section as DiscoverSectionKey] ?? section,
     )
     .filter(Boolean);
+
+  // WorkType-based filtering from the mostViewed list (already returned by backend)
+  const mangaSeries = discoverData.mostViewed
+    .filter((s) => s.workType?.toLowerCase() === "manga")
+    .slice(0, 12);
+  const manhwaSeries = discoverData.mostViewed
+    .filter((s) => s.workType?.toLowerCase() === "manhwa")
+    .slice(0, 12);
+  const hqSeries = discoverData.mostViewed
+    .filter((s) => ["comic", "hq"].includes(s.workType?.toLowerCase() ?? ""))
+    .slice(0, 12);
 
   const sectionConfigs = [
     {
@@ -168,6 +182,29 @@ export default function HomePage() {
         featuredSource === "mostViewed"
           ? discoverData.mostViewed.slice(1, 13)
           : discoverData.mostViewed.slice(0, 12),
+      renderCard: (series: {
+        id: string;
+        title: string;
+        coverUrl?: string | null;
+        rating?: number | null;
+      }) => (
+        <MangaCard
+          id={series.id}
+          title={series.title}
+          coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
+          rating={series.rating ?? undefined}
+        />
+      ),
+    },
+    {
+      key: "trending" as const,
+      label: "Em alta esta semana",
+      href: "/category/trending",
+      accentColor: "#f97316",
+      items:
+        featuredSource === "trending"
+          ? (discoverData.trending ?? []).slice(1, 13)
+          : (discoverData.trending ?? []).slice(0, 12),
       renderCard: (series: {
         id: string;
         title: string;
@@ -228,6 +265,28 @@ export default function HomePage() {
       ),
     },
   ];
+
+  // WorkType rows (only shown when there are items)
+  const workTypeSections = [
+    {
+      key: "manga-popular",
+      label: "Mangás Populares",
+      items: mangaSeries,
+      accentColor: "#818cf8",
+    },
+    {
+      key: "manhwa-popular",
+      label: "Manhwas",
+      items: manhwaSeries,
+      accentColor: "#34d399",
+    },
+    {
+      key: "hq-popular",
+      label: "HQs & Comics",
+      items: hqSeries,
+      accentColor: "#fb923c",
+    },
+  ].filter((section) => section.items.length > 0);
 
   const hasAnyDiscoverContent =
     !!featured || sectionConfigs.some((section) => section.items.length > 0);
@@ -507,6 +566,32 @@ export default function HomePage() {
             </motion.section>
           ) : null,
         )}
+
+        {!discoverLoading && workTypeSections.map((section) => (
+          <motion.section
+            key={section.key}
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.2 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+          >
+            <RowTitle
+              label={section.label}
+              accentColor={section.accentColor}
+            />
+            <SectionRow
+              items={section.items}
+              loading={false}
+              renderCard={(series) => (
+                <MangaCard
+                  id={series.id}
+                  title={series.title}
+                  coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
+                />
+              )}
+            />
+          </motion.section>
+        ))}
 
         {!discoverLoading && !hasAnyDiscoverContent && !discoverError ? (
           <div className="mx-4 rounded-2xl border border-white/8 bg-surface/70 p-4">

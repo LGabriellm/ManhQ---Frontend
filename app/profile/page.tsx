@@ -24,6 +24,8 @@ import {
   Heart,
   CreditCard,
 } from "lucide-react";
+import { BadgeList, UserBadge, getPrimaryBadge } from "@/components/community/UserBadge";
+import { useMyBadges } from "@/hooks/useApi";
 import { motion, type Easing } from "framer-motion";
 import {
   formatSubscriptionDate,
@@ -89,6 +91,7 @@ export default function ProfilePage() {
     error,
     refetch: refetchUserStats,
   } = useUserStats();
+  const { data: badges } = useMyBadges();
   const router = useRouter();
   const [showAllMilestones, setShowAllMilestones] = useState(false);
   const subscriptionMeta = getSubscriptionStateMeta(subscription);
@@ -239,6 +242,30 @@ export default function ProfilePage() {
                 </span>
               )}
             </div>
+
+            {/* Badges */}
+            {badges && badges.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.15 }}
+                className="mt-3 flex flex-col items-center gap-2"
+              >
+                {/* Founder badge gets prominent display */}
+                {badges.find((b) => b.type === "FOUNDER") && (
+                  <UserBadge
+                    badge={badges.find((b) => b.type === "FOUNDER")!}
+                    size="lg"
+                  />
+                )}
+                {/* Other badges in a row */}
+                <BadgeList
+                  badges={badges.filter((b) => b.type !== "FOUNDER")}
+                  size="sm"
+                  className="justify-center"
+                />
+              </motion.div>
+            )}
           </motion.div>
         </div>
       </div>

@@ -6,6 +6,7 @@ export interface DiscoverResponse {
   recentlyAdded: Series[];
   recentlyUpdated: Series[];
   mostViewed: Series[];
+  trending?: Series[];
   partial?: boolean;
   unavailableSections?: string[];
 }
@@ -56,6 +57,7 @@ function normalizeDiscoverPayload(
       recentlyAdded: [],
       recentlyUpdated: [],
       mostViewed: [],
+      trending: [],
       partial: false,
       unavailableSections: [],
     };
@@ -65,10 +67,12 @@ function normalizeDiscoverPayload(
     recentlyAdded?: Series[];
     recentlyUpdated?: Series[];
     mostViewed?: Series[];
+    trending?: Series[];
     sections?: {
       recentlyAdded?: Series[];
       recentlyUpdated?: Series[];
       mostViewed?: Series[];
+      trending?: Series[];
     };
     partial?: boolean;
     unavailableSections?: unknown;
@@ -80,6 +84,7 @@ function normalizeDiscoverPayload(
     recentlyAdded: normalizeSeriesList(source.recentlyAdded, limit),
     recentlyUpdated: normalizeSeriesList(source.recentlyUpdated, limit),
     mostViewed: normalizeSeriesList(source.mostViewed, limit),
+    trending: normalizeSeriesList(source.trending, limit),
     partial: rawPayload.partial === true,
     unavailableSections: Array.isArray(rawPayload.unavailableSections)
       ? rawPayload.unavailableSections.filter(
@@ -124,6 +129,16 @@ export const discoverService = {
   async getPopular(limit?: number, signal?: AbortSignal): Promise<Series[]> {
     const normalizedLimit = normalizeLimit(limit);
     const response = await api.get<unknown>("/discover/popular", {
+      params: { limit: normalizedLimit },
+      signal,
+    });
+    return normalizeSeriesList(extractSeriesPayload(response.data), normalizedLimit);
+  },
+
+  /** Séries em tendência recente */
+  async getTrending(limit?: number, signal?: AbortSignal): Promise<Series[]> {
+    const normalizedLimit = normalizeLimit(limit);
+    const response = await api.get<unknown>("/discover/trending", {
       params: { limit: normalizedLimit },
       signal,
     });

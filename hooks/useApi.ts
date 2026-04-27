@@ -7,6 +7,7 @@ import { userListsService } from "@/services/userLists.service";
 import { progressService } from "@/services/progress.service";
 import { authService } from "@/services/auth.service";
 import { searchService } from "@/services/search.service";
+import { badgeService } from "@/services/badge.service";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ContinueReadingParams, ProgressHistoryParams } from "@/types/api";
 
@@ -305,6 +306,29 @@ export function useMarkAllAsRead() {
       queryClient.invalidateQueries({ queryKey: ["series"] });
       queryClient.invalidateQueries({ queryKey: ["user-stats"] });
     },
+  });
+}
+
+// ===== BADGES =====
+
+export function useMyBadges() {
+  const { isAuthenticated } = useAuth();
+  return useQuery({
+    queryKey: ["badges", "me"],
+    queryFn: () => badgeService.getMyBadges(),
+    enabled: isAuthenticated,
+    staleTime: 1000 * 60 * 10, // 10 minutes — badges rarely change
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useUserBadges(userId: string | undefined) {
+  return useQuery({
+    queryKey: ["badges", "user", userId],
+    queryFn: () => badgeService.getPublicBadges(userId!),
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: false,
   });
 }
 

@@ -24,6 +24,8 @@ import {
 } from "@/hooks/useCommunity";
 import { SpoilerBlock } from "@/components/community/SpoilerBlock";
 import { UserAvatar } from "@/components/community/UserAvatar";
+import { UserBadge, getPrimaryBadge } from "@/components/community/UserBadge";
+import { useMyBadges } from "@/hooks/useApi";
 import type { CommentItem, CommentType } from "@/types/api";
 
 const COMMENT_TYPES: Array<{ value: CommentType; label: string }> = [
@@ -54,12 +56,16 @@ function timeAgo(dateString: string) {
 function CommentCard({
   item,
   canManage,
+  currentUserId,
+  currentUserBadges,
   onDelete,
   onEdit,
   onVote,
 }: {
   item: CommentItem;
   canManage: boolean;
+  currentUserId?: string;
+  currentUserBadges?: ReturnType<typeof getPrimaryBadge>;
   onDelete: (commentId: string) => Promise<void>;
   onEdit: (
     commentId: string,
@@ -71,6 +77,10 @@ function CommentCard({
   const [draftTitle, setDraftTitle] = useState(item.title || "");
   const [draftContent, setDraftContent] = useState(item.content);
   const [draftSpoilers, setDraftSpoilers] = useState(item.hasSpoilers);
+
+  // Show badge only for the current user's own comments (avoids N+1)
+  const authorIsCurrentUser = currentUserId && (item.user?.id || item.userId) === currentUserId;
+  const primaryBadge = authorIsCurrentUser ? currentUserBadges : null;
 
   const submitEdit = async () => {
     if (draftContent.trim().length < 3) {
@@ -94,9 +104,14 @@ function CommentCard({
             name={item.user?.name}
           />
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-textMain">
-              {item.user?.name || "Leitor"}
-            </p>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <p className="truncate text-sm font-semibold text-textMain">
+                {item.user?.name || "Leitor"}
+              </p>
+              {primaryBadge && (
+                <UserBadge badge={primaryBadge} size="sm" />
+              )}
+            </div>
             <div className="flex items-center gap-2 text-[11px] text-textDim">
               <span>
                 {COMMENT_TYPES.find((entry) => entry.value === item.type)
@@ -214,6 +229,8 @@ export function CommentSection({
   title: string;
 }) {
   const { user } = useAuth();
+  const { data: myBadges } = useMyBadges();
+  const primaryBadge = myBadges ? getPrimaryBadge(myBadges) : null;
   const [content, setContent] = useState("");
   const [commentTitle, setCommentTitle] = useState("");
   const [commentType, setCommentType] = useState<CommentType>("DISCUSSION");
@@ -428,6 +445,8 @@ export function CommentSection({
             key={item.id}
             item={item}
             canManage={item.userId === user?.id}
+            currentUserId={user?.id}
+            currentUserBadges={primaryBadge}
             onDelete={handleDelete}
             onEdit={handleEdit}
             onVote={handleVote}

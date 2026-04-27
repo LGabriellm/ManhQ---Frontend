@@ -65,6 +65,8 @@ const ALLOWED_PREFIXES = [
   "integrations/google-drive/",
   "v1/comments/",
   "v1/account/",
+  "users/me/badges",
+  "users/",
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;

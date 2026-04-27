@@ -160,6 +160,36 @@ export interface ResetPasswordResponse {
   message: string;
 }
 
+// ===== Badges =====
+export type BadgeType =
+  | "FOUNDER"
+  | "EARLY_SUPPORTER"
+  | "PREMIUM_MEMBER"
+  | "TOP_READER"
+  | "STREAK_MASTER"
+  | "COMMUNITY_CONTRIBUTOR"
+  | "VERIFIED_CREATOR"
+  | "ADMIN_STAFF"
+  | "CREATOR"
+  | "MODERATOR"
+  | "COLLECTOR"
+  | "LEGENDARY_READER";
+
+export interface UserBadgeResponse {
+  id: string;
+  type: BadgeType;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  founderNumber: number | null;
+  assignedAt: string;
+}
+
+export interface BadgesResponse {
+  badges: UserBadgeResponse[];
+}
+
 // ===== Séries e Mídias =====
 export interface Media {
   id: string;
@@ -173,6 +203,15 @@ export interface Media {
   updatedAt: string;
 }
 
+export type SeriesWorkType =
+  | "comic"
+  | "manga"
+  | "manhwa"
+  | "webtoon"
+  | "novel"
+  | "light_novel"
+  | "other";
+
 export interface Series {
   id: string;
   title: string;
@@ -185,6 +224,7 @@ export interface Series {
   coverPath?: string | null;
   genres?: string[];
   tags?: string[] | null;
+  workType?: SeriesWorkType | null;
   year?: number;
   rating?: number;
   createdAt?: string;

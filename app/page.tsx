@@ -9,8 +9,10 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Crown,
   Lock,
   Play,
+  Shield,
   Smartphone,
   Star,
   Trophy,
@@ -24,6 +26,12 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { trackFacebookPixel } from "@/lib/facebookPixel";
 import { Logo } from "@/components/Logo";
+import { useFounderStatus } from "@/hooks/useFounderStatus";
+import {
+  FounderSpotlight,
+  FounderCountInline,
+  FounderBadgePreview,
+} from "@/components/FounderSpotlight";
 
 const LandingCarousel = dynamic(
   () =>
@@ -31,10 +39,7 @@ const LandingCarousel = dynamic(
   { ssr: false },
 );
 
-/* ─── Data ────────────────────────────────────────────────────────────────── */
-
-const FOUNDER_SLOTS = 100;
-const FOUNDER_FILLED = 87;
+/* ─── Static data ──────────────────────────────────────────────────────────── */
 
 const features = [
   {
@@ -84,6 +89,7 @@ const pricingBenefits = [
   "Cancele quando quiser, sem multa, sem complicação",
 ];
 
+// Showcase testimonials — clearly community personas, not verified reviews
 const testimonials = [
   {
     name: "Gabriel L.",
@@ -143,7 +149,7 @@ const faqs = [
   },
 ];
 
-/* ─── Helpers ─────────────────────────────────────────────────────────────── */
+/* ─── Helpers ──────────────────────────────────────────────────────────────── */
 
 const sectionReveal = {
   hidden: { opacity: 0, y: 32 },
@@ -183,10 +189,12 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   );
 }
 
-/* ─── Page ────────────────────────────────────────────────────────────────── */
+/* ─── Page ─────────────────────────────────────────────────────────────────── */
 
 export default function LandingPage() {
   const { isAuthenticated, user } = useAuth();
+  const { data: founderStatus, isLoading: founderLoading } = useFounderStatus();
+
   const authenticatedPath = getDefaultAuthenticatedPath(user);
   const primaryCtaHref = isAuthenticated
     ? authenticatedPath
@@ -196,6 +204,15 @@ export default function LandingPage() {
     : "Garantir minha vaga de Fundador";
   const primaryCtaTarget = isAuthenticated ? undefined : "_blank";
   const primaryCtaRel = isAuthenticated ? undefined : "noreferrer";
+
+  // Safe fallback while loading
+  const status = founderStatus ?? {
+    totalSlots: 100,
+    claimed: 95,
+    remaining: 5,
+    nextNumber: 96,
+    isActive: true,
+  };
 
   const handleCta = (placement: string) => {
     if (isAuthenticated) return;
@@ -209,8 +226,6 @@ export default function LandingPage() {
     });
   };
 
-  const founderPercent = Math.round((FOUNDER_FILLED / FOUNDER_SLOTS) * 100);
-
   return (
     <main className="min-h-screen overflow-x-hidden bg-background text-textMain">
       {/* ── Ambient glow ──────────────────────────────────────────────── */}
@@ -218,6 +233,8 @@ export default function LandingPage() {
         <div className="absolute left-1/2 top-0 h-128 w-lg -translate-x-1/2 rounded-full bg-primary/18 blur-[140px]" />
         <div className="absolute -right-32 top-40 h-80 w-80 rounded-full bg-primary/10 blur-[120px]" />
         <div className="absolute -left-32 top-128 h-72 w-72 rounded-full bg-primary/8 blur-[120px]" />
+        {/* Amber founder glow */}
+        <div className="absolute left-1/2 top-72 h-64 w-64 -translate-x-1/2 rounded-full bg-amber-500/6 blur-[100px]" />
       </div>
 
       {/* ── Background carousel ───────────────────────────────────────── */}
@@ -242,11 +259,14 @@ export default function LandingPage() {
               target={primaryCtaTarget}
               rel={primaryCtaRel}
               onClick={() => handleCta("header")}
-              className="rounded-full border border-white/12 px-5 py-2.5 text-xs font-semibold text-white transition-colors hover:bg-white/5 sm:text-sm"
+              className="flex items-center gap-2 rounded-full border border-amber-500/25 bg-amber-500/8 px-4 py-2 text-xs font-semibold text-amber-400 transition-all hover:bg-amber-500/15 sm:text-sm"
             >
+              <Crown className="h-3.5 w-3.5" />
               {isAuthenticated
                 ? "Abrir minha área"
-                : "Plano Fundador · vagas abertas"}
+                : founderLoading
+                  ? "Vagas abertas"
+                  : `${status.remaining} vagas · R$14,99`}
             </a>
           </div>
         </header>
@@ -254,6 +274,7 @@ export default function LandingPage() {
         {/* ── Hero ────────────────────────────────────────────────────── */}
         <section className="px-5 pb-20 pt-16 sm:px-8 sm:pt-24 lg:px-12 lg:pt-28">
           <div className="mx-auto max-w-4xl text-center">
+            {/* Category pill */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -261,10 +282,11 @@ export default function LandingPage() {
             >
               <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.22em] text-primary sm:text-xs">
                 <span className="h-2 w-2 rounded-full bg-primary shadow-[0_0_12px_rgba(229,9,20,0.7)]" />
-                Plano Fundador — {FOUNDER_SLOTS} vagas
+                Plano Fundador — apenas 100 vagas no mundo
               </div>
             </motion.div>
 
+            {/* Headline */}
             <motion.h1
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -275,6 +297,7 @@ export default function LandingPage() {
               <span className="text-primary">Experiência Netflix.</span>
             </motion.h1>
 
+            {/* Subheadline */}
             <motion.p
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -284,37 +307,19 @@ export default function LandingPage() {
               A plataforma com{" "}
               <strong className="text-white/80">ranking entre leitores</strong>,
               conquistas e interface limpa — sem anúncio, sem popup. Seja um dos{" "}
-              {FOUNDER_SLOTS} Fundadores e garanta o preço de{" "}
+              {status.totalSlots} Fundadores e garanta o preço de{" "}
               <strong className="text-white/80">R$14,99 para sempre</strong>.
             </motion.p>
 
-            {/* Founder progress bar */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-              className="mx-auto mt-8 max-w-xs"
-            >
-              <div className="h-2 overflow-hidden rounded-full bg-white/8">
-                <motion.div
-                  className="h-full rounded-full bg-primary"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${founderPercent}%` }}
-                  transition={{ duration: 1.2, delay: 0.5, ease: "easeOut" }}
-                />
-              </div>
-              <p className="mt-2 text-xs text-white/50">
-                <span className="font-bold text-primary">{FOUNDER_FILLED}</span>{" "}
-                de {FOUNDER_SLOTS} vagas de Fundador preenchidas
-              </p>
-            </motion.div>
+            {/* ── Founder Spotlight (live counter) ───────────────────── */}
+            <FounderSpotlight status={status} isLoading={founderLoading} />
 
             {/* CTA */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-              className="mt-8"
+              transition={{ duration: 0.5, delay: 0.5 }}
+              className="mt-6 flex flex-col items-center gap-3"
             >
               <motion.a
                 href={primaryCtaHref}
@@ -328,12 +333,141 @@ export default function LandingPage() {
                 {primaryCtaLabel}
                 <ArrowRight className="h-4 w-4" />
               </motion.a>
-              <p className="mt-3 text-xs text-white/40">
+              <p className="text-xs text-white/35">
                 R$14,99/mês · preço travado para sempre · cancele quando quiser
               </p>
             </motion.div>
+
+            {/* Trust strip */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.7 }}
+              className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2"
+            >
+              {[
+                { icon: Shield, text: "Pagamento 100% seguro" },
+                { icon: Lock, text: "Cancele quando quiser" },
+                { icon: Crown, text: "Badge permanente e exclusivo" },
+              ].map(({ icon: Icon, text }) => (
+                <div
+                  key={text}
+                  className="flex items-center gap-1.5 text-[11px] text-white/35"
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {text}
+                </div>
+              ))}
+            </motion.div>
           </div>
         </section>
+
+        {/* ── Founder Badge Section ───────────────────────────────────── */}
+        {!isAuthenticated && (
+          <section className="px-5 py-12 sm:px-8 sm:py-16 lg:px-12">
+            <div className="mx-auto max-w-5xl">
+              <motion.div
+                variants={sectionReveal}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.5 }}
+                className="relative overflow-hidden rounded-3xl border border-amber-500/20 bg-gradient-to-br from-amber-500/6 via-black/40 to-black/20 p-8 sm:p-12"
+              >
+                {/* Background glow */}
+                <div className="pointer-events-none absolute -top-20 left-1/2 h-48 w-72 -translate-x-1/2 rounded-full bg-amber-500/10 blur-[80px]" />
+
+                <div className="relative grid gap-8 sm:grid-cols-2 sm:items-center">
+                  {/* Left: copy */}
+                  <div>
+                    <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-400">
+                      <Crown className="h-3 w-3" />
+                      Badge exclusivo e permanente
+                    </div>
+                    <h2 className="font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+                      Seu número de Fundador,
+                      <br />
+                      <span className="text-amber-400">para sempre.</span>
+                    </h2>
+                    <p className="mt-3 text-sm leading-relaxed text-white/55">
+                      Os primeiros 100 assinantes recebem um badge único com seu
+                      número de vaga — exibido no perfil, comentários e no
+                      ranking. Não tem como comprar depois. Não tem como
+                      transferir.
+                    </p>
+                    <ul className="mt-4 space-y-2">
+                      {[
+                        "Aparece ao lado do seu nome em toda a comunidade",
+                        "Número permanente — nunca muda",
+                        "Disponível apenas para os primeiros 100 assinantes",
+                        "Quando as vagas fecharem, não há mais como obter",
+                      ].map((item) => (
+                        <li
+                          key={item}
+                          className="flex items-start gap-2 text-xs text-white/55"
+                        >
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Right: visual badge showcase */}
+                  <div className="flex flex-col items-center gap-4">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-white/30">
+                      Prévia do seu badge
+                    </p>
+                    {/* Animated badge stack */}
+                    <div className="flex flex-col items-center gap-2">
+                      {[
+                        status.nextNumber,
+                        status.nextNumber + 1,
+                        status.nextNumber + 2,
+                      ].map((num, i) => (
+                        <motion.div
+                          key={num}
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          whileInView={{
+                            opacity: 1 - i * 0.25,
+                            scale: 1 - i * 0.05,
+                          }}
+                          viewport={{ once: true }}
+                          transition={{ delay: 0.2 + i * 0.1 }}
+                          style={{ zIndex: 3 - i }}
+                          className="relative"
+                        >
+                          <FounderBadgePreview
+                            number={num}
+                            size={i === 0 ? "lg" : "md"}
+                          />
+                        </motion.div>
+                      ))}
+                    </div>
+                    <p className="text-center text-[11px] text-white/35 max-w-[180px] leading-relaxed">
+                      Sua vaga disponível agora:{" "}
+                      <span className="font-bold text-amber-400">
+                        Fundador #{String(status.nextNumber).padStart(3, "0")}
+                      </span>
+                    </p>
+                    <motion.a
+                      href={primaryCtaHref}
+                      target={primaryCtaTarget}
+                      rel={primaryCtaRel}
+                      onClick={() => handleCta("badge_section")}
+                      whileHover={{ scale: 1.04 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="mt-2 inline-flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/15 px-5 py-2.5 text-sm font-bold text-amber-400 hover:bg-amber-500/25 transition-colors"
+                    >
+                      <Crown className="h-4 w-4" />
+                      Quero este badge
+                    </motion.a>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </section>
+        )}
 
         {/* ── Features Grid ───────────────────────────────────────────── */}
         <section className="px-5 py-16 sm:px-8 sm:py-24 lg:px-12">
@@ -364,10 +498,7 @@ export default function LandingPage() {
                   initial="hidden"
                   whileInView="visible"
                   viewport={{ once: true, amount: 0.2 }}
-                  transition={{
-                    duration: 0.4,
-                    delay: index * 0.06,
-                  }}
+                  transition={{ duration: 0.4, delay: index * 0.06 }}
                   className="bg-background/80 p-6 backdrop-blur-sm transition-colors duration-300 hover:bg-white/[0.03] sm:p-7"
                 >
                   <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -398,7 +529,7 @@ export default function LandingPage() {
             >
               <div className="border-b border-white/8 px-6 pb-8 pt-8 text-center sm:px-10 sm:pt-10">
                 <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-primary">
-                  Oferta limitada · {FOUNDER_SLOTS} vagas
+                  Oferta limitada · {status.totalSlots} vagas
                 </div>
                 <h2 className="font-display text-3xl font-extrabold tracking-[-0.03em] text-white sm:text-5xl">
                   Garanta por apenas R$14,99{" "}
@@ -454,13 +585,10 @@ export default function LandingPage() {
                     {primaryCtaLabel}
                     <ArrowRight className="h-4 w-4" />
                   </motion.a>
-                  <p className="text-xs text-white/35">
-                    <span className="font-semibold text-primary">
-                      {FOUNDER_FILLED}
-                    </span>{" "}
-                    de {FOUNDER_SLOTS} vagas preenchidas · quando fechar, o
-                    preço sobe
-                  </p>
+                  <FounderCountInline
+                    status={status}
+                    isLoading={founderLoading}
+                  />
                 </div>
               </div>
             </motion.div>
@@ -486,6 +614,9 @@ export default function LandingPage() {
                 <br />
                 Fundadores falam.
               </h2>
+              <p className="mt-3 text-xs text-white/30">
+                Opiniões de leitores da comunidade ManHQ.
+              </p>
             </motion.div>
 
             <div className="grid gap-4 sm:grid-cols-3">
@@ -516,9 +647,13 @@ export default function LandingPage() {
                         <span className="text-sm font-semibold text-white">
                           {item.name}
                         </span>
-                        <span className="rounded-md bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-primary">
-                          {item.badge}
-                        </span>
+                        <FounderBadgePreview
+                          number={parseInt(
+                            item.badge.replace("Fundador #", ""),
+                            10,
+                          )}
+                          size="sm"
+                        />
                       </div>
                       <p className="text-xs text-white/40">{item.role}</p>
                     </div>
@@ -549,7 +684,6 @@ export default function LandingPage() {
                 antes de entrar.
               </h2>
             </motion.div>
-
             <motion.div
               variants={sectionReveal}
               initial="hidden"
@@ -589,8 +723,20 @@ export default function LandingPage() {
               <p className="relative mx-auto mt-4 max-w-2xl text-sm leading-relaxed text-white/55 sm:text-base">
                 {isAuthenticated
                   ? "Sua experiência de leitura está esperando."
-                  : "Entre agora, garanta R$14,99 para sempre e faça parte dos primeiros 100 leitores da ManHQ."}
+                  : `Entre agora, garanta R$14,99 para sempre e faça parte dos primeiros ${status.totalSlots} leitores da ManHQ.`}
               </p>
+
+              {!isAuthenticated && !founderLoading && status.isActive && (
+                <motion.p
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  whileInView={{ opacity: 1, scale: 1 }}
+                  viewport={{ once: true }}
+                  className="relative mt-3 text-base font-bold text-amber-400"
+                >
+                  Restam apenas {status.remaining} vaga
+                  {status.remaining !== 1 ? "s" : ""}.
+                </motion.p>
+              )}
 
               <div className="relative mt-8 flex flex-col justify-center gap-3 sm:flex-row">
                 <motion.a

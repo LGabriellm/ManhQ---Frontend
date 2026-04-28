@@ -1141,6 +1141,25 @@ export const adminService = {
     return response.data;
   },
 
+  // ── Storage / disk usage ──
+
+  async getStorageStatus(): Promise<import("@/types/api").StorageStatusResponse> {
+    const response = await api.get<import("@/types/api").StorageStatusResponse>(
+      "/admin/storage/status",
+    );
+    return response.data;
+  },
+
+  async runStorageCleanup(
+    dryRun: boolean,
+  ): Promise<import("@/types/api").StorageCleanupResponse> {
+    const response = await api.post<import("@/types/api").StorageCleanupResponse>(
+      "/admin/storage/cleanup",
+      { dryRun },
+    );
+    return response.data;
+  },
+
   async checkExpiredSubscriptions(): Promise<CheckExpiredResponse> {
     const response = await api.post<CheckExpiredResponse>(
       "/admin/subscriptions/check-expired",

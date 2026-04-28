@@ -3064,3 +3064,41 @@ export interface MyRankResponse {
   metric: RankMetric;
   position: UserRankPosition | null;
 }
+
+// ===== Storage / Disk Usage =====
+export interface StorageDirStats {
+  path: string;
+  sizeBytes: number;
+  fileCount: number;
+}
+
+export interface StorageStatusResponse {
+  tempDir: StorageDirStats;
+  imageCache: StorageDirStats;
+  libraryDir: StorageDirStats;
+  activeUploadTempFiles: number;
+  config: {
+    cleanupEnabled: boolean;
+    dryRun: boolean;
+    tempFileMaxAgeHours: number;
+    intervalMinutes: number;
+    imageCacheMaxSizeMb: number;
+    imageCacheMaxAgeHours: number;
+    storageMode: "s3" | "local";
+  };
+}
+
+export interface CleanupPassResult {
+  scanned: number;
+  deleted: number;
+  skippedActive: number;
+  skippedTooNew: number;
+  errors: number;
+  freedBytes: number;
+  dryRun: boolean;
+}
+
+export interface StorageCleanupResponse {
+  orphans: CleanupPassResult;
+  cache: CleanupPassResult;
+}

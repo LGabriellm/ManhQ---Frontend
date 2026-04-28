@@ -68,6 +68,8 @@ const ALLOWED_PREFIXES = [
   "users/me/badges",
   "users/",
   "admin/badges/",
+  "admin/storage/",
+  "public/founder-status",
   "ranking",
 ];
 

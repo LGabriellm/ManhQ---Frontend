@@ -20,6 +20,7 @@ import {
   History,
   Workflow,
   Globe,
+  HardDrive,
 } from "lucide-react";
 
 type DashboardRole = "ADMIN" | "EDITOR";
@@ -88,6 +89,12 @@ const navItems: Array<{
     href: "/dashboard/security",
     label: "Segurança",
     icon: Shield,
+    roles: ["ADMIN"],
+  },
+  {
+    href: "/dashboard/storage",
+    label: "Armazenamento",
+    icon: HardDrive,
     roles: ["ADMIN"],
   },
 ];

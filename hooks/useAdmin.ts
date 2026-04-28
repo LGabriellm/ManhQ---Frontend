@@ -1038,6 +1038,27 @@ export function useCheckExpiredSubscriptions() {
   });
 }
 
+// ===== Storage / Disk Usage (admin) =====
+
+export function useStorageStatus() {
+  return useQuery({
+    queryKey: [...adminKeys.all, "storage", "status"] as const,
+    queryFn: () => adminService.getStorageStatus(),
+    staleTime: 1000 * 30,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useRunStorageCleanup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dryRun: boolean) => adminService.runStorageCleanup(dryRun),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [...adminKeys.all, "storage"] });
+    },
+  });
+}
+
 // ===== Badge Management (admin) =====
 
 export function useAdminUserBadges(userId: string | null, enabled = true) {

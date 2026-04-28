@@ -8,12 +8,20 @@ import {
   useUpdateUser,
   useDeleteUser,
   useRevokeSessions,
+  useAdminUserBadges,
+  useAdminAssignBadge,
+  useAdminRevokeBadge,
+  useAdminBackfillFounders,
+  useAdminFounderCount,
 } from "@/hooks/useAdmin";
+import { UserBadge } from "@/components/community/UserBadge";
 import type {
   AdminUserItem,
   AdminUsersParams,
   CreateUserRequest,
   UpdateUserRequest,
+  UserBadgeResponse,
+  BadgeType,
 } from "@/types/api";
 import toast from "react-hot-toast";
 import {
@@ -31,42 +39,39 @@ import {
   Crown,
   PenTool,
   User as UserIcon,
+  Award,
+  Plus,
+  Trash,
 } from "lucide-react";
 
 const ROLES = ["ADMIN", "EDITOR", "SUBSCRIBER", "FREE"] as const;
 const SUB_STATUSES = ["ACTIVE", "INACTIVE", "PAST_DUE", "CANCELED"] as const;
 
+const ALL_BADGE_TYPES: { type: BadgeType; label: string }[] = [
+  { type: "FOUNDER", label: "Fundador" },
+  { type: "EARLY_SUPPORTER", label: "Apoiador Inicial" },
+  { type: "PREMIUM_MEMBER", label: "Membro Premium" },
+  { type: "TOP_READER", label: "Leitor Ativo" },
+  { type: "STREAK_MASTER", label: "Mestre da Sequência" },
+  { type: "COMMUNITY_CONTRIBUTOR", label: "Contribuidor" },
+  { type: "VERIFIED_CREATOR", label: "Criador Verificado" },
+  { type: "ADMIN_STAFF", label: "Equipe Admin" },
+  { type: "CREATOR", label: "Criador" },
+  { type: "MODERATOR", label: "Moderador" },
+  { type: "COLLECTOR", label: "Colecionador" },
+  { type: "LEGENDARY_READER", label: "Leitor Lendário" },
+];
+
 function roleBadge(role: string) {
-  const map: Record<
-    string,
-    { bg: string; text: string; icon: React.ReactNode }
-  > = {
-    ADMIN: {
-      bg: "bg-red-500/15",
-      text: "text-red-400",
-      icon: <Crown className="h-3 w-3" />,
-    },
-    EDITOR: {
-      bg: "bg-blue-500/15",
-      text: "text-blue-400",
-      icon: <PenTool className="h-3 w-3" />,
-    },
-    SUBSCRIBER: {
-      bg: "bg-green-500/15",
-      text: "text-green-400",
-      icon: <ShieldCheck className="h-3 w-3" />,
-    },
-    FREE: {
-      bg: "bg-zinc-500/15",
-      text: "text-zinc-400",
-      icon: <UserIcon className="h-3 w-3" />,
-    },
+  const map: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
+    ADMIN: { bg: "bg-red-500/15", text: "text-red-400", icon: <Crown className="h-3 w-3" /> },
+    EDITOR: { bg: "bg-blue-500/15", text: "text-blue-400", icon: <PenTool className="h-3 w-3" /> },
+    SUBSCRIBER: { bg: "bg-green-500/15", text: "text-green-400", icon: <ShieldCheck className="h-3 w-3" /> },
+    FREE: { bg: "bg-zinc-500/15", text: "text-zinc-400", icon: <UserIcon className="h-3 w-3" /> },
   };
   const s = map[role] || map.FREE;
   return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${s.bg} ${s.text}`}
-    >
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>
       {s.icon} {role}
     </span>
   );
@@ -80,22 +85,168 @@ function statusBadge(status: string) {
     CANCELED: "bg-red-500/15 text-red-400",
   };
   return (
-    <span
-      className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || map.INACTIVE}`}
-    >
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${map[status] || map.INACTIVE}`}>
       {status}
     </span>
   );
 }
 
-// ===== Create/Edit User Modal =====
-function UserModal({
+// ===== Badge Manager Modal =====
+function BadgeManagerModal({
   user,
   onClose,
 }: {
-  user: AdminUserItem | null;
+  user: AdminUserItem;
   onClose: () => void;
 }) {
+  const { data: badges, isLoading } = useAdminUserBadges(user.id);
+  const assignBadge = useAdminAssignBadge();
+  const revokeBadge = useAdminRevokeBadge();
+  const [selectedType, setSelectedType] = useState<BadgeType>("PREMIUM_MEMBER");
+
+  const assignedTypes = new Set(badges?.map((b) => b.type) ?? []);
+  const availableToAdd = ALL_BADGE_TYPES.filter((bt) => !assignedTypes.has(bt.type));
+
+  const handleAdd = async () => {
+    if (!selectedType) return;
+    try {
+      await assignBadge.mutateAsync({ userId: user.id, badgeType: selectedType });
+      toast.success(`Badge "${ALL_BADGE_TYPES.find((b) => b.type === selectedType)?.label}" adicionado`);
+    } catch {
+      toast.error("Erro ao adicionar badge");
+    }
+  };
+
+  const handleRevoke = async (badge: UserBadgeResponse) => {
+    if (badge.type === "FOUNDER" && badge.founderNumber === 0) {
+      toast.error("O badge Fundador #000 não pode ser removido");
+      return;
+    }
+    if (!confirm(`Remover o badge "${badge.name}" de ${user.name}?`)) return;
+    try {
+      await revokeBadge.mutateAsync({ userId: user.id, badgeType: badge.type });
+      toast.success(`Badge "${badge.name}" removido`);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || "Erro ao remover badge";
+      toast.error(msg);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--color-textMain)]">
+              Badges — {user.name}
+            </h2>
+            <p className="text-xs text-[var(--color-textDim)] mt-0.5">{user.email}</p>
+          </div>
+          <button onClick={onClose} className="text-[var(--color-textDim)] hover:text-[var(--color-textMain)]">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Current badges */}
+        <div className="mb-5">
+          <p className="text-xs font-semibold text-[var(--color-textDim)] uppercase tracking-wider mb-3">
+            Badges atuais
+          </p>
+          {isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-[var(--color-textDim)] py-4">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carregando...
+            </div>
+          ) : !badges || badges.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-[var(--color-textDim)]">
+              Nenhum badge atribuído
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {badges.map((badge) => {
+                const isFounderZero = badge.type === "FOUNDER" && badge.founderNumber === 0;
+                const isIrrevocable = isFounderZero || badge.founderNumber != null;
+                return (
+                  <div
+                    key={badge.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-[var(--color-background)]/50 px-3 py-2.5"
+                  >
+                    <UserBadge badge={badge} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs text-[var(--color-textDim)] truncate">
+                        {badge.type}
+                        {badge.founderNumber != null && (
+                          <span className="ml-1 font-bold text-amber-400">
+                            #{String(badge.founderNumber).padStart(3, "0")}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => void handleRevoke(badge)}
+                      disabled={revokeBadge.isPending || isIrrevocable}
+                      title={isIrrevocable ? "Este badge não pode ser removido" : "Remover badge"}
+                      className="shrink-0 p-1.5 rounded-lg text-[var(--color-textDim)] hover:text-red-400 hover:bg-red-500/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {revokeBadge.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Add badge */}
+        {availableToAdd.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-[var(--color-textDim)] uppercase tracking-wider mb-3">
+              Adicionar badge
+            </p>
+            <div className="flex gap-2">
+              <select
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value as BadgeType)}
+                className="flex-1 px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-sm text-[var(--color-textMain)] focus:outline-none focus:border-[var(--color-primary)]"
+              >
+                {availableToAdd.map((bt) => (
+                  <option key={bt.type} value={bt.type}>
+                    {bt.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => void handleAdd()}
+                disabled={assignBadge.isPending}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:brightness-110 disabled:opacity-50"
+              >
+                {assignBadge.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                Adicionar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {availableToAdd.length === 0 && badges && badges.length > 0 && (
+          <p className="text-xs text-[var(--color-textDim)] text-center py-2">
+            Todos os badges disponíveis já foram atribuídos.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===== Create/Edit User Modal =====
+function UserModal({ user, onClose }: { user: AdminUserItem | null; onClose: () => void }) {
   const isEdit = !!user;
   const createMutation = useCreateUser();
   const updateMutation = useUpdateUser();
@@ -118,21 +269,13 @@ function UserModal({
         await updateMutation.mutateAsync({ id: user.id, data });
         toast.success("Usuário atualizado");
       } else {
-        const data: CreateUserRequest = {
-          name,
-          email,
-          password,
-          role,
-          subStatus,
-        };
+        const data: CreateUserRequest = { name, email, password, role, subStatus };
         await createMutation.mutateAsync(data);
         toast.success("Usuário criado");
       }
       onClose();
     } catch {
-      toast.error(
-        isEdit ? "Erro ao atualizar usuário" : "Erro ao criar usuário",
-      );
+      toast.error(isEdit ? "Erro ao atualizar usuário" : "Erro ao criar usuário");
     }
   };
 
@@ -144,40 +287,26 @@ function UserModal({
           <h2 className="text-lg font-semibold text-[var(--color-textMain)]">
             {isEdit ? "Editar Usuário" : "Novo Usuário"}
           </h2>
-          <button
-            onClick={onClose}
-            className="text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
-          >
+          <button onClick={onClose} className="text-[var(--color-textDim)] hover:text-[var(--color-textMain)]">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-[var(--color-textDim)] mb-1">
-              Nome
-            </label>
+            <label className="block text-sm text-[var(--color-textDim)] mb-1">Nome</label>
             <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              minLength={2}
-              maxLength={100}
+              type="text" value={name} onChange={(e) => setName(e.target.value)}
+              required minLength={2} maxLength={100}
               className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
           </div>
 
           {!isEdit && (
             <div>
-              <label className="block text-sm text-[var(--color-textDim)] mb-1">
-                Email
-              </label>
+              <label className="block text-sm text-[var(--color-textDim)] mb-1">Email</label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
+                type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
                 className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
               />
             </div>
@@ -188,79 +317,47 @@ function UserModal({
               {isEdit ? "Nova Senha (deixe vazio para manter)" : "Senha"}
             </label>
             <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required={!isEdit}
-              minLength={8}
+              type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              required={!isEdit} minLength={8}
               className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-[var(--color-textDim)] mb-1">
-                Role
-              </label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
+              <label className="block text-sm text-[var(--color-textDim)] mb-1">Role</label>
+              <select value={role} onChange={(e) => setRole(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]">
+                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-sm text-[var(--color-textDim)] mb-1">
-                Status
-              </label>
-              <select
-                value={subStatus}
-                onChange={(e) => setSubStatus(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
-              >
-                {SUB_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
+              <label className="block text-sm text-[var(--color-textDim)] mb-1">Status</label>
+              <select value={subStatus} onChange={(e) => setSubStatus(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]">
+                {SUB_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
           </div>
 
           {isEdit && (
             <div>
-              <label className="block text-sm text-[var(--color-textDim)] mb-1">
-                Máx. Dispositivos
-              </label>
+              <label className="block text-sm text-[var(--color-textDim)] mb-1">Máx. Dispositivos</label>
               <input
-                type="number"
-                value={maxDevices}
-                onChange={(e) => setMaxDevices(Number(e.target.value))}
-                min={1}
-                max={10}
+                type="number" value={maxDevices} onChange={(e) => setMaxDevices(Number(e.target.value))}
+                min={1} max={10}
                 className="w-full px-3 py-2 rounded-lg bg-[var(--color-background)] border border-white/10 text-[var(--color-textMain)] text-sm focus:outline-none focus:border-[var(--color-primary)]"
               />
             </div>
           )}
 
           <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2.5 rounded-lg border border-white/10 text-[var(--color-textDim)] text-sm font-medium hover:bg-white/5"
-            >
+            <button type="button" onClick={onClose}
+              className="flex-1 px-4 py-2.5 rounded-lg border border-white/10 text-[var(--color-textDim)] text-sm font-medium hover:bg-white/5">
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="flex-1 px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
+            <button type="submit" disabled={isPending}
+              className="flex-1 px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2">
               {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               {isEdit ? "Salvar" : "Criar"}
             </button>
@@ -272,13 +369,7 @@ function UserModal({
 }
 
 // ===== Delete Confirm =====
-function DeleteConfirm({
-  user,
-  onClose,
-}: {
-  user: AdminUserItem;
-  onClose: () => void;
-}) {
+function DeleteConfirm({ user, onClose }: { user: AdminUserItem; onClose: () => void }) {
   const deleteMutation = useDeleteUser();
 
   const handleDelete = async () => {
@@ -295,29 +386,20 @@ function DeleteConfirm({
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div className="relative bg-[var(--color-surface)] rounded-2xl border border-white/10 w-full max-w-md p-6">
-        <h2 className="text-lg font-semibold text-[var(--color-textMain)] mb-3">
-          Excluir Usuário
-        </h2>
+        <h2 className="text-lg font-semibold text-[var(--color-textMain)] mb-3">Excluir Usuário</h2>
         <p className="text-sm text-[var(--color-textDim)] mb-6">
           Tem certeza que deseja excluir{" "}
           <strong className="text-[var(--color-textMain)]">{user.name}</strong>?
           Todos os dados associados serão removidos permanentemente.
         </p>
         <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2.5 rounded-lg border border-white/10 text-[var(--color-textDim)] text-sm font-medium hover:bg-white/5"
-          >
+          <button onClick={onClose}
+            className="flex-1 px-4 py-2.5 rounded-lg border border-white/10 text-[var(--color-textDim)] text-sm font-medium hover:bg-white/5">
             Cancelar
           </button>
-          <button
-            onClick={handleDelete}
-            disabled={deleteMutation.isPending}
-            className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {deleteMutation.isPending && (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            )}
+          <button onClick={handleDelete} disabled={deleteMutation.isPending}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2">
+            {deleteMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Excluir
           </button>
         </div>
@@ -329,10 +411,7 @@ function DeleteConfirm({
 // ===== Page =====
 export default function UsersPage() {
   const [params, setParams] = useState<AdminUsersParams>({
-    page: 1,
-    limit: 20,
-    sortBy: "createdAt",
-    sortOrder: "desc",
+    page: 1, limit: 20, sortBy: "createdAt", sortOrder: "desc",
   });
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("");
@@ -341,6 +420,7 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<AdminUserItem | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [deletingUser, setDeletingUser] = useState<AdminUserItem | null>(null);
+  const [badgeUser, setBadgeUser] = useState<AdminUserItem | null>(null);
 
   const queryParams: AdminUsersParams = {
     ...params,
@@ -351,7 +431,9 @@ export default function UsersPage() {
 
   const { data, isLoading } = useAdminUsers(queryParams);
   const { data: stats } = useUsersStats();
+  const { data: founderCount } = useAdminFounderCount();
   const revokeMutation = useRevokeSessions();
+  const backfillMutation = useAdminBackfillFounders();
 
   const users = data?.users || [];
   const pagination = data?.pagination;
@@ -359,33 +441,53 @@ export default function UsersPage() {
   const handleRevoke = async (userId: string, userName: string) => {
     try {
       const result = await revokeMutation.mutateAsync(userId);
-      toast.success(
-        `${result.sessionsRevoked} sessão(ões) de ${userName} revogada(s)`,
-      );
+      toast.success(`${result.sessionsRevoked} sessão(ões) de ${userName} revogada(s)`);
     } catch {
       toast.error("Erro ao revogar sessões");
+    }
+  };
+
+  const handleBackfill = async () => {
+    if (!confirm("Atribuir badges Fundador retroativamente a todos os assinantes existentes (por ordem de ativação)? Esta operação é segura e idempotente.")) return;
+    try {
+      const result = await backfillMutation.mutateAsync();
+      toast.success(`Backfill concluído: ${result.assigned} atribuído(s), ${result.alreadyHad} já tinham.`);
+    } catch {
+      toast.error("Erro ao executar backfill");
     }
   };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--color-textMain)]">
-            Usuários
-          </h1>
-          <p className="text-sm text-[var(--color-textDim)]">
-            Gerenciamento de contas e permissões
-          </p>
+          <h1 className="text-2xl font-bold text-[var(--color-textMain)]">Usuários</h1>
+          <p className="text-sm text-[var(--color-textDim)]">Gerenciamento de contas, permissões e badges</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:brightness-110"
-        >
-          <UserPlus className="h-4 w-4" />
-          Novo Usuário
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {founderCount && (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-400">
+              <Crown className="h-3 w-3" />
+              Fundadores: {founderCount.assigned}/{founderCount.cap}
+            </span>
+          )}
+          <button
+            onClick={() => void handleBackfill()}
+            disabled={backfillMutation.isPending}
+            title="Atribuir badges Fundador a assinantes existentes (por ordem de ativação)"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-500/20 bg-amber-500/10 text-amber-400 text-xs font-medium hover:bg-amber-500/20 disabled:opacity-50"
+          >
+            {backfillMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Award className="h-3.5 w-3.5" />}
+            Backfill Founders
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-primary)] text-white text-sm font-medium hover:brightness-110"
+          >
+            <UserPlus className="h-4 w-4" /> Novo Usuário
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -396,42 +498,28 @@ export default function UsersPage() {
               <Users className="h-4 w-4 text-[var(--color-primary)]" />
               <span className="text-xs text-[var(--color-textDim)]">Total</span>
             </div>
-            <p className="text-xl font-bold text-[var(--color-textMain)]">
-              {stats.totalUsers}
-            </p>
+            <p className="text-xl font-bold text-[var(--color-textMain)]">{stats.totalUsers}</p>
           </div>
           <div className="bg-[var(--color-surface)] rounded-xl border border-white/5 p-4">
             <div className="flex items-center gap-2 mb-1">
               <Crown className="h-4 w-4 text-red-400" />
-              <span className="text-xs text-[var(--color-textDim)]">
-                Admins
-              </span>
+              <span className="text-xs text-[var(--color-textDim)]">Admins</span>
             </div>
-            <p className="text-xl font-bold text-[var(--color-textMain)]">
-              {stats.byRole?.ADMIN || 0}
-            </p>
+            <p className="text-xl font-bold text-[var(--color-textMain)]">{stats.byRole?.ADMIN || 0}</p>
           </div>
           <div className="bg-[var(--color-surface)] rounded-xl border border-white/5 p-4">
             <div className="flex items-center gap-2 mb-1">
               <PenTool className="h-4 w-4 text-blue-400" />
-              <span className="text-xs text-[var(--color-textDim)]">
-                Editores
-              </span>
+              <span className="text-xs text-[var(--color-textDim)]">Editores</span>
             </div>
-            <p className="text-xl font-bold text-[var(--color-textMain)]">
-              {stats.activeEditors}
-            </p>
+            <p className="text-xl font-bold text-[var(--color-textMain)]">{stats.activeEditors}</p>
           </div>
           <div className="bg-[var(--color-surface)] rounded-xl border border-white/5 p-4">
             <div className="flex items-center gap-2 mb-1">
               <ShieldCheck className="h-4 w-4 text-green-400" />
-              <span className="text-xs text-[var(--color-textDim)]">
-                Ativos
-              </span>
+              <span className="text-xs text-[var(--color-textDim)]">Ativos</span>
             </div>
-            <p className="text-xl font-bold text-[var(--color-textMain)]">
-              {stats.byStatus?.ACTIVE || 0}
-            </p>
+            <p className="text-xl font-bold text-[var(--color-textMain)]">{stats.byStatus?.ACTIVE || 0}</p>
           </div>
         </div>
       )}
@@ -441,45 +529,20 @@ export default function UsersPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[var(--color-textDim)]" />
           <input
-            type="text"
-            placeholder="Buscar por nome ou email..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setParams((p) => ({ ...p, page: 1 }));
-            }}
+            type="text" placeholder="Buscar por nome ou email..." value={search}
+            onChange={(e) => { setSearch(e.target.value); setParams((p) => ({ ...p, page: 1 })); }}
             className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-[var(--color-surface)] border border-white/10 text-sm text-[var(--color-textMain)] placeholder:text-[var(--color-textDim)] focus:outline-none focus:border-[var(--color-primary)]"
           />
         </div>
-        <select
-          value={filterRole}
-          onChange={(e) => {
-            setFilterRole(e.target.value);
-            setParams((p) => ({ ...p, page: 1 }));
-          }}
-          className="px-3 py-2.5 rounded-lg bg-[var(--color-surface)] border border-white/10 text-sm text-[var(--color-textMain)] focus:outline-none focus:border-[var(--color-primary)]"
-        >
+        <select value={filterRole} onChange={(e) => { setFilterRole(e.target.value); setParams((p) => ({ ...p, page: 1 })); }}
+          className="px-3 py-2.5 rounded-lg bg-[var(--color-surface)] border border-white/10 text-sm text-[var(--color-textMain)] focus:outline-none focus:border-[var(--color-primary)]">
           <option value="">Todas as roles</option>
-          {ROLES.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
+          {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
-        <select
-          value={filterStatus}
-          onChange={(e) => {
-            setFilterStatus(e.target.value);
-            setParams((p) => ({ ...p, page: 1 }));
-          }}
-          className="px-3 py-2.5 rounded-lg bg-[var(--color-surface)] border border-white/10 text-sm text-[var(--color-textMain)] focus:outline-none focus:border-[var(--color-primary)]"
-        >
+        <select value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setParams((p) => ({ ...p, page: 1 })); }}
+          className="px-3 py-2.5 rounded-lg bg-[var(--color-surface)] border border-white/10 text-sm text-[var(--color-textMain)] focus:outline-none focus:border-[var(--color-primary)]">
           <option value="">Todos os status</option>
-          {SUB_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
+          {SUB_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
       </div>
 
@@ -492,59 +555,34 @@ export default function UsersPage() {
         ) : users.length === 0 ? (
           <div className="text-center py-16">
             <Users className="h-10 w-10 text-[var(--color-textDim)] mx-auto mb-3" />
-            <p className="text-sm text-[var(--color-textDim)]">
-              Nenhum usuário encontrado
-            </p>
+            <p className="text-sm text-[var(--color-textDim)]">Nenhum usuário encontrado</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-white/5">
-                  <th className="text-left text-xs font-medium text-[var(--color-textDim)] px-4 py-3">
-                    Usuário
-                  </th>
-                  <th className="text-left text-xs font-medium text-[var(--color-textDim)] px-4 py-3">
-                    Role
-                  </th>
-                  <th className="text-left text-xs font-medium text-[var(--color-textDim)] px-4 py-3 hidden sm:table-cell">
-                    Status
-                  </th>
-                  <th className="text-left text-xs font-medium text-[var(--color-textDim)] px-4 py-3 hidden md:table-cell">
-                    Sessões
-                  </th>
-                  <th className="text-left text-xs font-medium text-[var(--color-textDim)] px-4 py-3 hidden lg:table-cell">
-                    Criado
-                  </th>
-                  <th className="text-right text-xs font-medium text-[var(--color-textDim)] px-4 py-3">
-                    Ações
-                  </th>
+                  <th className="text-left text-xs font-medium text-[var(--color-textDim)] px-4 py-3">Usuário</th>
+                  <th className="text-left text-xs font-medium text-[var(--color-textDim)] px-4 py-3">Role</th>
+                  <th className="text-left text-xs font-medium text-[var(--color-textDim)] px-4 py-3 hidden sm:table-cell">Status</th>
+                  <th className="text-left text-xs font-medium text-[var(--color-textDim)] px-4 py-3 hidden md:table-cell">Sessões</th>
+                  <th className="text-left text-xs font-medium text-[var(--color-textDim)] px-4 py-3 hidden lg:table-cell">Criado</th>
+                  <th className="text-right text-xs font-medium text-[var(--color-textDim)] px-4 py-3">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {users.map((u) => (
-                  <tr
-                    key={u.id}
-                    className="hover:bg-white/[0.02] transition-colors"
-                  >
+                  <tr key={u.id} className="hover:bg-white/[0.02] transition-colors">
                     <td className="px-4 py-3">
                       <div>
-                        <p className="text-sm font-medium text-[var(--color-textMain)]">
-                          {u.name}
-                        </p>
-                        <p className="text-xs text-[var(--color-textDim)]">
-                          {u.email}
-                        </p>
+                        <p className="text-sm font-medium text-[var(--color-textMain)]">{u.name}</p>
+                        <p className="text-xs text-[var(--color-textDim)]">{u.email}</p>
                       </div>
                     </td>
                     <td className="px-4 py-3">{roleBadge(u.role)}</td>
-                    <td className="px-4 py-3 hidden sm:table-cell">
-                      {statusBadge(u.subStatus)}
-                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell">{statusBadge(u.subStatus)}</td>
                     <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="text-sm text-[var(--color-textDim)]">
-                        {u._count.sessions}
-                      </span>
+                      <span className="text-sm text-[var(--color-textDim)]">{u._count.sessions}</span>
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">
                       <span className="text-sm text-[var(--color-textDim)]">
@@ -553,6 +591,13 @@ export default function UsersPage() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setBadgeUser(u)}
+                          title="Gerenciar badges"
+                          className="p-1.5 rounded-lg text-[var(--color-textDim)] hover:text-amber-400 hover:bg-amber-500/10"
+                        >
+                          <Award className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => setEditingUser(u)}
                           title="Editar"
@@ -587,23 +632,18 @@ export default function UsersPage() {
         {pagination && pagination.totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-white/5">
             <p className="text-xs text-[var(--color-textDim)]">
-              {pagination.total} usuário(s) · Página {pagination.page} de{" "}
-              {pagination.totalPages}
+              {pagination.total} usuário(s) · Página {pagination.page} de {pagination.totalPages}
             </p>
             <div className="flex gap-1">
               <button
-                onClick={() =>
-                  setParams((p) => ({ ...p, page: (p.page || 1) - 1 }))
-                }
+                onClick={() => setParams((p) => ({ ...p, page: (p.page || 1) - 1 }))}
                 disabled={pagination.page <= 1}
                 className="p-1.5 rounded-lg text-[var(--color-textDim)] hover:bg-white/5 disabled:opacity-30"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <button
-                onClick={() =>
-                  setParams((p) => ({ ...p, page: (p.page || 1) + 1 }))
-                }
+                onClick={() => setParams((p) => ({ ...p, page: (p.page || 1) + 1 }))}
                 disabled={pagination.page >= pagination.totalPages}
                 className="p-1.5 rounded-lg text-[var(--color-textDim)] hover:bg-white/5 disabled:opacity-30"
               >
@@ -618,17 +658,14 @@ export default function UsersPage() {
       {(showCreate || editingUser) && (
         <UserModal
           user={editingUser}
-          onClose={() => {
-            setShowCreate(false);
-            setEditingUser(null);
-          }}
+          onClose={() => { setShowCreate(false); setEditingUser(null); }}
         />
       )}
       {deletingUser && (
-        <DeleteConfirm
-          user={deletingUser}
-          onClose={() => setDeletingUser(null)}
-        />
+        <DeleteConfirm user={deletingUser} onClose={() => setDeletingUser(null)} />
+      )}
+      {badgeUser && (
+        <BadgeManagerModal user={badgeUser} onClose={() => setBadgeUser(null)} />
       )}
     </div>
   );

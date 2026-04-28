@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  Award,
   Check,
   CreditCard,
   Eye,
@@ -26,7 +27,9 @@ import toast from "react-hot-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useLogoutAllSessions,
+  useMyBadges,
   useRevokeSession,
+  useSetFeaturedBadge,
   useSessions,
 } from "@/hooks/useApi";
 import {
@@ -37,6 +40,7 @@ import {
   useUploadAvatar,
 } from "@/hooks/useAccount";
 import { UserAvatar } from "@/components/community/UserAvatar";
+import { UserBadge } from "@/components/community/UserBadge";
 import { SubscriptionStateBadge } from "@/components/subscription/SubscriptionStateBadge";
 import { accountService } from "@/services/account.service";
 import {
@@ -101,6 +105,19 @@ export default function EditProfilePage() {
   const sessions = useSessions();
   const revokeSession = useRevokeSession();
   const logoutAllSessions = useLogoutAllSessions();
+
+  const { data: myBadges, isLoading: badgesLoading } = useMyBadges();
+  const setFeaturedBadge = useSetFeaturedBadge();
+  const currentFeaturedId = myBadges?.find((b) => b.isFeatured)?.id ?? null;
+  const [pendingFeaturedId, setPendingFeaturedId] = useState<string | null | undefined>(undefined);
+  const featuredId = pendingFeaturedId !== undefined ? pendingFeaturedId : currentFeaturedId;
+  const hasFeaturedChanged = pendingFeaturedId !== undefined && pendingFeaturedId !== currentFeaturedId;
+
+  const saveFeaturedBadge = async () => {
+    await setFeaturedBadge.mutateAsync(featuredId);
+    setPendingFeaturedId(undefined);
+    toast.success(featuredId ? "Badge em destaque atualizado." : "Badge em destaque removido.");
+  };
 
   const profile = account.data?.account;
 
@@ -551,6 +568,121 @@ export default function EditProfilePage() {
               )}
               Salvar username
             </button>
+          </div>
+        </section>
+
+        {/* ── Badges section ── */}
+        <section className="rounded-4xl border border-white/6 bg-surface/25 p-5">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-primary/10 p-2 text-primary">
+              <Award className="h-4 w-4" />
+            </div>
+            <div className="w-full">
+              <h2 className="text-lg font-semibold text-textMain">Meus Badges</h2>
+              <p className="mt-1 text-sm text-textDim">
+                Escolha qual badge aparece ao lado do seu nome em comentários e no seu perfil.
+              </p>
+
+              <div className="mt-4">
+                {badgesLoading ? (
+                  <div className="flex items-center gap-2 rounded-2xl border border-white/6 bg-background/40 px-4 py-5 text-sm text-textDim">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Carregando badges...
+                  </div>
+                ) : !myBadges || myBadges.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/8 bg-background/30 px-4 py-8 text-center">
+                    <Award className="mx-auto mb-3 h-8 w-8 text-textDim/30" />
+                    <p className="text-sm font-medium text-textDim">
+                      Você ainda não tem badges.
+                    </p>
+                    <p className="mt-1 text-xs text-textDim/60">
+                      Badges são concedidos automaticamente conforme você usa a plataforma.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {/* None option */}
+                    <button
+                      type="button"
+                      onClick={() => setPendingFeaturedId(null)}
+                      className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all ${
+                        featuredId === null
+                          ? "border-primary/40 bg-primary/5"
+                          : "border-white/6 bg-background/40 hover:border-white/12"
+                      }`}
+                    >
+                      <div
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                          featuredId === null
+                            ? "border-primary bg-primary"
+                            : "border-white/20 bg-transparent"
+                        }`}
+                      >
+                        {featuredId === null && (
+                          <div className="h-2 w-2 rounded-full bg-white" />
+                        )}
+                      </div>
+                      <span className="text-sm text-textDim">
+                        Nenhum badge em destaque
+                      </span>
+                    </button>
+
+                    {/* Badge options */}
+                    {myBadges.map((badge) => (
+                      <button
+                        key={badge.id}
+                        type="button"
+                        onClick={() => setPendingFeaturedId(badge.id)}
+                        className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-all ${
+                          featuredId === badge.id
+                            ? "border-primary/40 bg-primary/5"
+                            : "border-white/6 bg-background/40 hover:border-white/12"
+                        }`}
+                      >
+                        <div
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
+                            featuredId === badge.id
+                              ? "border-primary bg-primary"
+                              : "border-white/20 bg-transparent"
+                          }`}
+                        >
+                          {featuredId === badge.id && (
+                            <div className="h-2 w-2 rounded-full bg-white" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <UserBadge badge={badge} size="sm" />
+                          <p className="mt-1 line-clamp-1 text-xs text-textDim/70">
+                            {badge.description}
+                          </p>
+                        </div>
+                        {badge.type === "FOUNDER" && badge.founderNumber && (
+                          <span className="shrink-0 text-[10px] font-bold text-amber-400/80">
+                            #{String(badge.founderNumber).padStart(3, "0")}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+
+                    {hasFeaturedChanged && (
+                      <button
+                        type="button"
+                        onClick={() => void saveFeaturedBadge()}
+                        disabled={setFeaturedBadge.isPending}
+                        className="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-3xl bg-primary py-3 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                      >
+                        {setFeaturedBadge.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        Salvar badge em destaque
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </section>
 

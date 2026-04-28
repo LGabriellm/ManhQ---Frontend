@@ -332,6 +332,17 @@ export function useUserBadges(userId: string | undefined) {
   });
 }
 
+export function useSetFeaturedBadge() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userBadgeId: string | null) =>
+      badgeService.setFeaturedBadge(userBadgeId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["badges", "me"] });
+    },
+  });
+}
+
 export function useRemoveSeriesProgress() {
   const queryClient = useQueryClient();
 

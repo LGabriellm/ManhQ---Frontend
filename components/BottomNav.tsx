@@ -2,17 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Library, User } from "lucide-react";
+import { Home, Search, Library, Trophy, User } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { UserAvatar } from "@/components/community/UserAvatar";
 
 const navItems = [
-  { href: "/home", icon: Home, label: "Início" },
-  { href: "/search", icon: Search, label: "Buscar" },
+  { href: "/home",    icon: Home,    label: "Início" },
+  { href: "/search",  icon: Search,  label: "Buscar" },
+  { href: "/ranking", icon: Trophy,  label: "Ranking" },
   { href: "/library", icon: Library, label: "Biblioteca" },
-  { href: "/profile", icon: User, label: "Perfil" },
+  { href: "/profile", icon: User,    label: "Perfil" },
 ];
 
 export function BottomNav() {

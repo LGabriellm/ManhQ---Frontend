@@ -1038,6 +1038,59 @@ export function useCheckExpiredSubscriptions() {
   });
 }
 
+// ===== Badge Management (admin) =====
+
+export function useAdminUserBadges(userId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: [...adminKeys.all, "badges", "user", userId] as const,
+    queryFn: () => adminService.getUserBadgesAdmin(userId!),
+    enabled: enabled && !!userId,
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useAdminAssignBadge() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, badgeType }: { userId: string; badgeType: string }) =>
+      adminService.assignBadge(userId, badgeType),
+    onSuccess: (_r, variables) => {
+      void qc.invalidateQueries({ queryKey: [...adminKeys.all, "badges", "user", variables.userId] });
+    },
+  });
+}
+
+export function useAdminRevokeBadge() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, badgeType }: { userId: string; badgeType: string }) =>
+      adminService.revokeBadge(userId, badgeType),
+    onSuccess: (_r, variables) => {
+      void qc.invalidateQueries({ queryKey: [...adminKeys.all, "badges", "user", variables.userId] });
+    },
+  });
+}
+
+export function useAdminAssignFounderZero() {
+  return useMutation({
+    mutationFn: (email: string) => adminService.assignFounderZero(email),
+  });
+}
+
+export function useAdminBackfillFounders() {
+  return useMutation({
+    mutationFn: () => adminService.backfillFounders(),
+  });
+}
+
+export function useAdminFounderCount() {
+  return useQuery({
+    queryKey: [...adminKeys.all, "badges", "founder-count"] as const,
+    queryFn: () => adminService.getFounderCount(),
+    staleTime: 1000 * 60,
+  });
+}
+
 // ===== Editor Submissions =====
 export function useMySubmissions(params?: {
   status?: string;

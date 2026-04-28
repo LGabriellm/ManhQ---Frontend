@@ -67,6 +67,8 @@ const ALLOWED_PREFIXES = [
   "v1/account/",
   "users/me/badges",
   "users/",
+  "admin/badges/",
+  "ranking",
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;

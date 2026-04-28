@@ -184,6 +184,7 @@ export interface UserBadgeResponse {
   color: string;
   founderNumber: number | null;
   assignedAt: string;
+  isFeatured?: boolean;
 }
 
 export interface BadgesResponse {
@@ -3027,4 +3028,39 @@ export interface SuwayomiReloadResponse {
   reloaded: boolean;
   sourcesRegistered: number;
   providers: ProviderInfo[];
+}
+
+
+// ===== Ranking =====
+export type RankMetric = "chapters" | "pages" | "time" | "activity";
+
+export interface RankedUser {
+  rank: number;
+  userId: string;
+  name: string | null;
+  username: string | null;
+  value: number;
+  founderNumber: number | null;
+  /** True when this slot is a showcase persona — never a real user */
+  isShowcase?: boolean;
+  /** Hex color for the showcase letter-chip avatar */
+  showcaseColor?: string;
+}
+
+export interface RankingResponse {
+  metric: RankMetric;
+  limit: number;
+  offset: number;
+  users: RankedUser[];
+}
+
+export interface UserRankPosition {
+  rank: number;
+  value: number;
+  totalUsers: number;
+}
+
+export interface MyRankResponse {
+  metric: RankMetric;
+  position: UserRankPosition | null;
 }

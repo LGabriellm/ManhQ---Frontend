@@ -1147,4 +1147,43 @@ export const adminService = {
     );
     return response.data;
   },
+
+  // ── Badge management ──
+
+  async getUserBadgesAdmin(userId: string): Promise<import("@/types/api").UserBadgeResponse[]> {
+    const response = await api.get<{ badges: import("@/types/api").UserBadgeResponse[] }>(
+      `/users/${userId}/badges`,
+    );
+    return response.data.badges ?? [];
+  },
+
+  async assignBadge(targetUserId: string, badgeType: string): Promise<void> {
+    await api.post("/admin/badges/assign", { targetUserId, badgeType });
+  },
+
+  async revokeBadge(targetUserId: string, badgeType: string): Promise<void> {
+    await api.post("/admin/badges/revoke", { targetUserId, badgeType });
+  },
+
+  async assignFounderZero(email: string): Promise<{ userId: string; founderNumber: number }> {
+    const response = await api.post<{ userId: string; founderNumber: number }>(
+      "/admin/badges/assign-founder-zero",
+      { email },
+    );
+    return response.data;
+  },
+
+  async backfillFounders(): Promise<{ assigned: number; skipped: number; alreadyHad: number }> {
+    const response = await api.post<{ assigned: number; skipped: number; alreadyHad: number }>(
+      "/admin/badges/backfill-founders",
+    );
+    return response.data;
+  },
+
+  async getFounderCount(): Promise<{ assigned: number; remaining: number; cap: number }> {
+    const response = await api.get<{ assigned: number; remaining: number; cap: number }>(
+      "/admin/badges/founder-count",
+    );
+    return response.data;
+  },
 };

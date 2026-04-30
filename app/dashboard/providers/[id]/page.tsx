@@ -15,9 +15,17 @@ import {
   useRetryChapter,
   useUpdateChapter,
   useCleanupStale,
+  useChapterHealth,
+  useValidateChapters,
+  useFindDuplicates,
+  useSeriesSources,
+  useSetPrimarySource,
+  useRemoveProviderSource,
+  useLinkProviderToSeries,
 } from "@/hooks/useProvider";
 import { ImportStatusBadge } from "@/components/provider/ImportStatusBadge";
 import { ReimportFromModal } from "@/components/provider/ReimportFromModal";
+import { ChapterHealthBadge } from "@/components/provider/ChapterHealthBadge";
 import type {
   ChapterImportStatus,
   ApiError,
@@ -49,6 +57,11 @@ import {
   Clock,
   Zap,
   Repeat,
+  ShieldCheck,
+  Star,
+  X,
+  ExternalLink,
+  Plus,
 } from "lucide-react";
 
 function getErrorMessage(err: unknown, fallback: string): string {
@@ -119,8 +132,21 @@ export default function TrackedTitleDetailPage() {
   );
   const [reimportChapter, setReimportChapter] =
     useState<ProviderChapter | null>(null);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkSeriesId, setLinkSeriesId] = useState("");
+  const [linkPriority, setLinkPriority] = useState<number>(10);
+  const [linkNotes, setLinkNotes] = useState("");
 
   const title = data?.providerTitle;
+
+  const chapterHealth = useChapterHealth(id);
+  const validateChapters = useValidateChapters();
+  const findDuplicates = useFindDuplicates(id);
+  const seriesId = title?.series?.id ?? null;
+  const seriesSources = useSeriesSources(seriesId);
+  const setPrimary = useSetPrimarySource();
+  const removeSource = useRemoveProviderSource();
+  const linkProvider = useLinkProviderToSeries();
 
   const filteredChapters = useMemo(
     () =>
@@ -508,6 +534,401 @@ export default function TrackedTitleDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Chapter Health Card */}
+      {chapterHealth.data && (
+        <div className="surface-panel rounded-xl border border-white/5 p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-emerald-400" />
+              <h3 className="text-sm font-semibold text-[var(--color-textMain)]">
+                Saúde dos Capítulos
+              </h3>
+            </div>
+            <button
+              onClick={() =>
+                validateChapters.mutate(id, {
+                  onSuccess: () =>
+                    toast.success("Validação de capítulos enfileirada"),
+                  onError: (err) =>
+                    toast.error(
+                      getErrorMessage(err, "Erro ao validar capítulos"),
+                    ),
+                })
+              }
+              disabled={validateChapters.isPending}
+              className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-[var(--color-textDim)] hover:bg-white/10 transition-colors disabled:opacity-50"
+            >
+              {validateChapters.isPending ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <ShieldCheck className="h-3 w-3" />
+              )}
+              Validar Capítulos
+            </button>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {[
+              {
+                label: "Saudável",
+                value: chapterHealth.data.healthy,
+                cls: "bg-emerald-500/10 border-emerald-500/20 text-emerald-400",
+              },
+              {
+                label: "Incompleto",
+                value: chapterHealth.data.incomplete,
+                cls: "bg-yellow-500/10 border-yellow-500/20 text-yellow-400",
+              },
+              {
+                label: "Quebrado",
+                value: chapterHealth.data.broken,
+                cls: "bg-red-500/10 border-red-500/20 text-red-400",
+              },
+              {
+                label: "Validando",
+                value: chapterHealth.data.pendingValidation,
+                cls: "bg-zinc-500/10 border-zinc-500/20 text-zinc-400",
+              },
+              {
+                label: "Indisponível",
+                value: chapterHealth.data.unavailable,
+                cls: "bg-slate-500/10 border-slate-500/20 text-slate-400",
+              },
+            ].map((chip) => (
+              <span
+                key={chip.label}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${chip.cls}`}
+              >
+                {chip.label}: {chip.value}
+              </span>
+            ))}
+          </div>
+
+          {chapterHealth.data.total > 0 && (
+            <div className="space-y-1">
+              <div className="flex justify-between text-[10px] text-[var(--color-textDim)]">
+                <span>
+                  {chapterHealth.data.healthy} / {chapterHealth.data.total}{" "}
+                  capítulos saudáveis
+                </span>
+                <span>
+                  {Math.round(
+                    (chapterHealth.data.healthy / chapterHealth.data.total) *
+                      100,
+                  )}
+                  %
+                </span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all"
+                  style={{
+                    width: `${Math.round((chapterHealth.data.healthy / chapterHealth.data.total) * 100)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Duplicate Detection Banner */}
+      {findDuplicates.data &&
+        findDuplicates.data.candidates.filter((c) => c.confidence >= 0.7)
+          .length > 0 && (
+          <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-4 space-y-2">
+            <div className="flex items-center gap-2 font-medium text-yellow-300">
+              <AlertTriangle className="h-4 w-4" />
+              Possíveis Duplicatas Detectadas
+            </div>
+            <p className="text-xs text-yellow-300/70">
+              {
+                findDuplicates.data.candidates.filter(
+                  (c) => c.confidence >= 0.7,
+                ).length
+              }{" "}
+              série(s) que podem já existir na sua biblioteca:
+            </p>
+            <div className="space-y-1.5">
+              {findDuplicates.data.candidates
+                .filter((c) => c.confidence >= 0.7)
+                .map((candidate) => (
+                  <div
+                    key={candidate.seriesId}
+                    className="flex items-center justify-between gap-3 rounded-lg bg-yellow-500/10 px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-medium text-yellow-200">
+                        {candidate.seriesTitle}
+                      </span>
+                      <span className="ml-2 text-[10px] text-yellow-300/60">
+                        confiança: {Math.round(candidate.confidence * 100)}% ·{" "}
+                        {candidate.matchReason}
+                      </span>
+                    </div>
+                    <a
+                      href={`/dashboard/series/${candidate.seriesId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex shrink-0 items-center gap-1 rounded-lg bg-yellow-500/20 px-2.5 py-1 text-[10px] font-medium text-yellow-200 hover:bg-yellow-500/30 transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Ver Série
+                    </a>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+
+      {/* Provider Sources Panel */}
+      {seriesId && (
+        <div className="surface-panel rounded-xl border border-white/5 p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <LinkIcon className="h-4 w-4 text-blue-400" />
+              <h3 className="text-sm font-semibold text-[var(--color-textMain)]">
+                Fontes da Série
+              </h3>
+              {seriesSources.data && (
+                <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-[var(--color-textDim)]">
+                  {seriesSources.data.sources.length}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setShowLinkModal(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-500/20 transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              Vincular Provedor
+            </button>
+          </div>
+
+          {seriesSources.isLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-4 w-4 animate-spin text-[var(--color-textDim)]" />
+            </div>
+          ) : seriesSources.data?.sources.length === 0 ? (
+            <p className="text-xs text-[var(--color-textDim)]">
+              Nenhuma fonte vinculada.
+            </p>
+          ) : (
+            <div className="divide-y divide-white/5">
+              {seriesSources.data?.sources.map((src) => (
+                <div
+                  key={src.id}
+                  className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0"
+                >
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-[var(--color-textMain)]">
+                        {src.providerTitle?.title ||
+                          src.providerTitle?.provider ||
+                          src.providerTitleId.slice(0, 8)}
+                      </span>
+                      {src.isPrimary ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+                          <Star className="h-2.5 w-2.5" />
+                          PRIMÁRIO
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-[var(--color-textDim)]">
+                          Fallback
+                        </span>
+                      )}
+                      {src.providerTitle?.importStatus && (
+                        <ImportStatusBadge
+                          status={src.providerTitle.importStatus}
+                        />
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-[10px] text-[var(--color-textDim)]">
+                      <span>
+                        {src.providerTitle?.provider || "—"} · prioridade{" "}
+                        {src.priority}
+                      </span>
+                      {src.providerTitle?.reliabilityScore != null && (
+                        <span>
+                          confiabilidade:{" "}
+                          {Math.round(src.providerTitle.reliabilityScore * 100)}%
+                        </span>
+                      )}
+                      {src.language && <span>{src.language}</span>}
+                    </div>
+                    {src.notes && (
+                      <p className="text-[10px] text-[var(--color-textDim)] italic">
+                        {src.notes}
+                      </p>
+                    )}
+                  </div>
+
+                  {!src.isPrimary && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        onClick={() =>
+                          setPrimary.mutate(
+                            { seriesId, providerTitleId: src.providerTitleId },
+                            {
+                              onSuccess: () =>
+                                toast.success("Fonte primária atualizada"),
+                              onError: (err) =>
+                                toast.error(
+                                  getErrorMessage(
+                                    err,
+                                    "Erro ao definir fonte primária",
+                                  ),
+                                ),
+                            },
+                          )
+                        }
+                        disabled={setPrimary.isPending}
+                        title="Definir como primário"
+                        className="rounded-lg p-1.5 text-[var(--color-textDim)] hover:bg-emerald-500/10 hover:text-emerald-400 transition-colors disabled:opacity-50"
+                      >
+                        <Star className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (
+                            !confirm("Remover esta fonte da série?")
+                          )
+                            return;
+                          removeSource.mutate(
+                            { seriesId, mappingId: src.id },
+                            {
+                              onSuccess: () =>
+                                toast.success("Fonte removida"),
+                              onError: (err) =>
+                                toast.error(
+                                  getErrorMessage(err, "Erro ao remover fonte"),
+                                ),
+                            },
+                          );
+                        }}
+                        disabled={removeSource.isPending}
+                        title="Remover fonte"
+                        className="rounded-lg p-1.5 text-[var(--color-textDim)] hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Link Provider Modal */}
+      {showLinkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="surface-panel w-full max-w-sm rounded-xl border border-white/10 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[var(--color-textMain)]">
+                Vincular Provedor à Série
+              </h3>
+              <button
+                onClick={() => setShowLinkModal(false)}
+                className="rounded-lg p-1 text-[var(--color-textDim)] hover:bg-white/5"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1.5 block text-xs text-[var(--color-textDim)]">
+                  ID da Série
+                </label>
+                <input
+                  type="text"
+                  value={linkSeriesId}
+                  onChange={(e) => setLinkSeriesId(e.target.value)}
+                  placeholder="ex: clxxxxx..."
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--color-textMain)] placeholder:text-[var(--color-textDim)] focus:border-[var(--color-primary)] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs text-[var(--color-textDim)]">
+                  Prioridade (menor = mais prioritário)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={linkPriority}
+                  onChange={(e) => setLinkPriority(Number(e.target.value))}
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--color-textMain)] focus:border-[var(--color-primary)] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs text-[var(--color-textDim)]">
+                  Notas (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={linkNotes}
+                  onChange={(e) => setLinkNotes(e.target.value)}
+                  placeholder="Fonte de fallback para PT-BR..."
+                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--color-textMain)] placeholder:text-[var(--color-textDim)] focus:border-[var(--color-primary)] focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowLinkModal(false)}
+                className="rounded-lg border border-white/10 px-4 py-2 text-sm text-[var(--color-textDim)] hover:bg-white/5 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (!linkSeriesId.trim()) {
+                    toast.error("Informe o ID da série");
+                    return;
+                  }
+                  linkProvider.mutate(
+                    {
+                      providerTitleId: id,
+                      seriesId: linkSeriesId.trim(),
+                      priority: linkPriority,
+                      notes: linkNotes.trim() || undefined,
+                    },
+                    {
+                      onSuccess: () => {
+                        toast.success("Provedor vinculado à série");
+                        setShowLinkModal(false);
+                        setLinkSeriesId("");
+                        setLinkPriority(10);
+                        setLinkNotes("");
+                      },
+                      onError: (err) =>
+                        toast.error(
+                          getErrorMessage(err, "Erro ao vincular provedor"),
+                        ),
+                    },
+                  );
+                }}
+                disabled={linkProvider.isPending}
+                className="flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {linkProvider.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
+                Vincular
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Actions bar */}
       <div className="flex flex-wrap items-center gap-2">
@@ -907,6 +1328,7 @@ export default function TrackedTitleDetailPage() {
                     <th className="px-4 py-3 font-medium">Grupo</th>
                     <th className="px-4 py-3 font-medium">Páginas</th>
                     <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Saúde</th>
                     <th className="px-4 py-3 font-medium">Publicado</th>
                     <th className="px-4 py-3 font-medium text-right">Ação</th>
                   </tr>
@@ -985,6 +1407,15 @@ export default function TrackedTitleDetailPage() {
                                 ⚠ {ch.importError}
                               </span>
                             )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {ch.chapterHealth ? (
+                            <ChapterHealthBadge status={ch.chapterHealth} />
+                          ) : (
+                            <span className="text-xs text-[var(--color-textDim)]">
+                              —
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-xs text-[var(--color-textDim)]">
                           {ch.publishedAt
@@ -1144,6 +1575,9 @@ export default function TrackedTitleDetailPage() {
                           <span className="text-[10px] text-yellow-400/70">
                             {formatElapsed(ch.updatedAt)}
                           </span>
+                        )}
+                        {ch.chapterHealth && (
+                          <ChapterHealthBadge status={ch.chapterHealth} />
                         )}
                       </div>
                       {ch.title && (

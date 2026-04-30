@@ -8,6 +8,7 @@ import {
   useDeleteTrackedTitle,
   useSyncChapters,
   useCleanupStale,
+  useRunGlobalValidation,
 } from "@/hooks/useProvider";
 import { ImportStatusBadge } from "@/components/provider/ImportStatusBadge";
 import { ChapterStatsBar } from "@/components/provider/ChapterStatsBar";
@@ -31,6 +32,7 @@ import {
   Server,
   Image,
   Zap,
+  ShieldCheck,
 } from "lucide-react";
 
 const IMPORT_STATUSES: { value: TitleImportStatus | ""; label: string }[] = [
@@ -57,6 +59,7 @@ export default function ProvidersPage() {
   const deleteTitle = useDeleteTrackedTitle();
   const syncChapters = useSyncChapters();
   const cleanupStale = useCleanupStale();
+  const runValidation = useRunGlobalValidation();
 
   useEffect(() => {
     clearTimeout(searchTimer.current);
@@ -121,6 +124,27 @@ export default function ProvidersPage() {
             <ExternalLink className="h-4 w-4" />
             Keiyoushi
           </Link>
+          <button
+            onClick={() =>
+              runValidation.mutate(undefined, {
+                onSuccess: (res) =>
+                  toast.success(
+                    res.message ?? "Validação global de capítulos enfileirada",
+                  ),
+                onError: () =>
+                  toast.error("Erro ao enfileirar validação global"),
+              })
+            }
+            disabled={runValidation.isPending}
+            className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+          >
+            {runValidation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ShieldCheck className="h-4 w-4" />
+            )}
+            Validar Capítulos
+          </button>
           <Link
             href="/dashboard/providers/search"
             className="flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity"

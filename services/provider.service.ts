@@ -33,6 +33,9 @@ import type {
   UpdateChapterResponse,
   ReimportFromRequest,
   ReimportFromResponse,
+  ChapterHealthSummary,
+  SeriesProviderMapping,
+  DuplicateCandidate,
 } from "@/types/api";
 
 export const providerService = {
@@ -268,6 +271,68 @@ export const providerService = {
     const res = await api.post<SuwayomiUninstallResponse>(
       "/admin/providers/suwayomi/extensions/uninstall",
       { pkgName },
+    );
+    return res.data;
+  },
+
+  // ===== Chapter Health =====
+  async getChapterHealth(providerTitleId: string): Promise<ChapterHealthSummary> {
+    const res = await api.get<ChapterHealthSummary>(
+      `/admin/provider-titles/${providerTitleId}/chapter-health`,
+    );
+    return res.data;
+  },
+
+  async validateChapters(providerTitleId: string): Promise<{ queued: boolean }> {
+    const res = await api.post<{ queued: boolean }>(
+      `/admin/provider-titles/${providerTitleId}/validate-chapters`,
+    );
+    return res.data;
+  },
+
+  async runGlobalValidation(limit?: number): Promise<{ queued: boolean; message?: string }> {
+    const res = await api.post<{ queued: boolean; message?: string }>(
+      "/admin/chapter-health/run-validation-pass",
+      { limit },
+    );
+    return res.data;
+  },
+
+  // ===== Multi-Provider Sources =====
+  async getSeriesSources(seriesId: string): Promise<{ sources: SeriesProviderMapping[] }> {
+    const res = await api.get<{ sources: SeriesProviderMapping[] }>(
+      `/admin/series/${seriesId}/provider-sources`,
+    );
+    return res.data;
+  },
+
+  async linkProviderToSeries(
+    providerTitleId: string,
+    data: { seriesId: string; priority?: number; isPrimary?: boolean; language?: string; notes?: string },
+  ): Promise<{ mapping: SeriesProviderMapping }> {
+    const res = await api.post<{ mapping: SeriesProviderMapping }>(
+      `/admin/provider-titles/${providerTitleId}/link-to-series`,
+      data,
+    );
+    return res.data;
+  },
+
+  async setPrimarySource(seriesId: string, providerTitleId: string): Promise<{ updated: boolean }> {
+    const res = await api.patch<{ updated: boolean }>(
+      `/admin/series/${seriesId}/primary-source`,
+      { providerTitleId },
+    );
+    return res.data;
+  },
+
+  async removeProviderSource(seriesId: string, mappingId: string): Promise<void> {
+    await api.delete(`/admin/series/${seriesId}/provider-sources/${mappingId}`);
+  },
+
+  // ===== Duplicate Detection =====
+  async findDuplicates(providerTitleId: string): Promise<{ candidates: DuplicateCandidate[] }> {
+    const res = await api.get<{ candidates: DuplicateCandidate[] }>(
+      `/admin/provider-titles/${providerTitleId}/duplicates`,
     );
     return res.data;
   },

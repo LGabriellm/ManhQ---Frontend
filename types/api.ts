@@ -2671,6 +2671,49 @@ export type TitleImportStatus =
   | "PAUSED"
   | "FAILED";
 
+export type ChapterHealthStatus =
+  | "PENDING_VALIDATION"
+  | "HEALTHY"
+  | "INCOMPLETE"
+  | "BROKEN"
+  | "UNAVAILABLE";
+
+export interface ChapterHealthSummary {
+  healthy: number;
+  incomplete: number;
+  broken: number;
+  pendingValidation: number;
+  unavailable: number;
+  total: number;
+}
+
+export interface SeriesProviderMapping {
+  id: string;
+  seriesId: string;
+  providerTitleId: string;
+  priority: number;
+  isPrimary: boolean;
+  isActive: boolean;
+  language: string;
+  notes?: string | null;
+  createdAt: string;
+  providerTitle?: {
+    id: string;
+    provider: string;
+    title: string;
+    titlePortuguese?: string | null;
+    importStatus: TitleImportStatus;
+    reliabilityScore?: number | null;
+  };
+}
+
+export interface DuplicateCandidate {
+  seriesId: string;
+  seriesTitle: string;
+  confidence: number;
+  matchReason: string;
+}
+
 export type ChapterImportStatus =
   | "PENDING"
   | "DOWNLOADING"
@@ -2718,6 +2761,8 @@ export interface ProviderChapter {
   publishedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  chapterHealth?: ChapterHealthStatus;
+  healthError?: string | null;
 }
 
 export interface ChapterStats {

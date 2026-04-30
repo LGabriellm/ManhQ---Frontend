@@ -19,6 +19,9 @@ import type {
   ChapterStatusResponse,
   UpdateChapterRequest,
   ReimportFromRequest,
+  ChapterHealthSummary,
+  SeriesProviderMapping,
+  DuplicateCandidate,
 } from "@/types/api";
 
 // ===== Query Keys =====
@@ -472,5 +475,103 @@ export function useKeiyoushiSources(params?: KeiyoushiParams, enabled = true) {
       providerService.getKeiyoushiSources(params, signal),
     enabled,
     staleTime: 1000 * 60 * 5,
+  });
+}
+
+// ===== Chapter Health =====
+export function useChapterHealth(providerTitleId: string) {
+  return useQuery<ChapterHealthSummary>({
+    queryKey: ["provider-chapter-health", providerTitleId],
+    queryFn: () => providerService.getChapterHealth(providerTitleId),
+    staleTime: 30_000,
+  });
+}
+
+export function useValidateChapters() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (providerTitleId: string) =>
+      providerService.validateChapters(providerTitleId),
+    onSuccess: (_result, id) => {
+      qc.invalidateQueries({ queryKey: ["provider-chapter-health", id] });
+      qc.invalidateQueries({ queryKey: providerKeys.trackedDetail(id) });
+    },
+  });
+}
+
+export function useRunGlobalValidation() {
+  return useMutation({
+    mutationFn: (limit?: number) => providerService.runGlobalValidation(limit),
+  });
+}
+
+// ===== Multi-Provider Sources =====
+export function useSeriesSources(seriesId: string | null | undefined) {
+  return useQuery<{ sources: SeriesProviderMapping[] }>({
+    queryKey: ["series-sources", seriesId],
+    queryFn: () => providerService.getSeriesSources(seriesId!),
+    enabled: !!seriesId,
+    staleTime: 30_000,
+  });
+}
+
+export function useLinkProviderToSeries() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      providerTitleId,
+      ...data
+    }: {
+      providerTitleId: string;
+      seriesId: string;
+      priority?: number;
+      isPrimary?: boolean;
+      language?: string;
+      notes?: string;
+    }) => providerService.linkProviderToSeries(providerTitleId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["series-sources"] });
+      qc.invalidateQueries({ queryKey: providerKeys.tracked() });
+    },
+  });
+}
+
+export function useSetPrimarySource() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      seriesId,
+      providerTitleId,
+    }: {
+      seriesId: string;
+      providerTitleId: string;
+    }) => providerService.setPrimarySource(seriesId, providerTitleId),
+    onSuccess: (_result, { seriesId }) =>
+      qc.invalidateQueries({ queryKey: ["series-sources", seriesId] }),
+  });
+}
+
+export function useRemoveProviderSource() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      seriesId,
+      mappingId,
+    }: {
+      seriesId: string;
+      mappingId: string;
+    }) => providerService.removeProviderSource(seriesId, mappingId),
+    onSuccess: (_result, { seriesId }) =>
+      qc.invalidateQueries({ queryKey: ["series-sources", seriesId] }),
+  });
+}
+
+// ===== Duplicate Detection =====
+export function useFindDuplicates(providerTitleId: string | null) {
+  return useQuery<{ candidates: DuplicateCandidate[] }>({
+    queryKey: ["provider-duplicates", providerTitleId],
+    queryFn: () => providerService.findDuplicates(providerTitleId!),
+    enabled: !!providerTitleId,
+    staleTime: 60_000,
   });
 }

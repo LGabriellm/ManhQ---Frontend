@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useTrackedTitle,
   useSyncChapters,
@@ -22,7 +23,9 @@ import {
   useSetPrimarySource,
   useRemoveProviderSource,
   useLinkProviderToSeries,
+  providerKeys,
 } from "@/hooks/useProvider";
+import { providerService } from "@/services/provider.service";
 import { ImportStatusBadge } from "@/components/provider/ImportStatusBadge";
 import { ReimportFromModal } from "@/components/provider/ReimportFromModal";
 import { ChapterHealthBadge } from "@/components/provider/ChapterHealthBadge";
@@ -133,10 +136,20 @@ export default function TrackedTitleDetailPage() {
   const [reimportChapter, setReimportChapter] =
     useState<ProviderChapter | null>(null);
   const [showLinkModal, setShowLinkModal] = useState(false);
-  const [linkSeriesId, setLinkSeriesId] = useState("");
   const [linkPriority, setLinkPriority] = useState<number>(10);
   const [linkNotes, setLinkNotes] = useState("");
+  const [seriesSearchQuery, setSeriesSearchQuery] = useState("");
+  const [seriesSearchResults, setSeriesSearchResults] = useState<
+    Array<{ id: string; title: string }>
+  >([]);
+  const [seriesSearchLoading, setSeriesSearchLoading] = useState(false);
+  const [selectedSeriesForLink, setSelectedSeriesForLink] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const queryClient = useQueryClient();
   const title = data?.providerTitle;
 
   const chapterHealth = useChapterHealth(id);
@@ -183,6 +196,51 @@ export default function TrackedTitleDetailPage() {
       }),
     [downloadingChapters],
   );
+
+  // Auto-clear stale selections: remove any selected chapter that's no longer
+  // in an importable state (PENDING or FAILED) after a query refresh
+  useEffect(() => {
+    if (!title?.chapters || selectedChapters.size === 0) return;
+    const importableIds = new Set(
+      title.chapters
+        .filter(
+          (ch) => ch.importStatus === "PENDING" || ch.importStatus === "FAILED",
+        )
+        .map((ch) => ch.id),
+    );
+    setSelectedChapters((prev) => {
+      const next = new Set([...prev].filter((id) => importableIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [title?.chapters]);
+
+  function handleSeriesSearch(query: string) {
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (!query.trim()) {
+      setSeriesSearchResults([]);
+      return;
+    }
+    searchTimeoutRef.current = setTimeout(async () => {
+      setSeriesSearchLoading(true);
+      try {
+        const result = await providerService.searchSeries(query);
+        setSeriesSearchResults(result.series);
+      } catch {
+        // ignore search errors silently
+      } finally {
+        setSeriesSearchLoading(false);
+      }
+    }, 300);
+  }
+
+  function closeModal() {
+    setShowLinkModal(false);
+    setSelectedSeriesForLink(null);
+    setSeriesSearchQuery("");
+    setSeriesSearchResults([]);
+    setLinkPriority(10);
+    setLinkNotes("");
+  }
 
   function handleSync() {
     syncChapters.mutate(id, {
@@ -301,8 +359,15 @@ export default function TrackedTitleDetailPage() {
     bulkImport.mutate(
       { id },
       {
-        onSuccess: (res) =>
-          toast.success(`${res.queued} capítulo(s) enfileirado(s)`),
+        onSuccess: (res) => {
+          if (res.alreadyProcessing && res.alreadyProcessing > 0) {
+            toast.success(
+              `${res.queued} enfileirado(s) · ${res.alreadyProcessing} já em processamento`,
+            );
+          } else {
+            toast.success(`${res.queued} capítulo(s) enfileirado(s)`);
+          }
+        },
         onError: (err) =>
           toast.error(getErrorMessage(err, "Erro ao importar capítulos")),
       },
@@ -311,17 +376,38 @@ export default function TrackedTitleDetailPage() {
 
   function handleImportSelected() {
     if (!selectedChapters.size) return;
+
+    // Filter to only chapters still in importable state (PENDING or FAILED)
+    const importableIds = Array.from(selectedChapters).filter((chId) => {
+      const ch = title?.chapters?.find((c) => c.id === chId);
+      return ch && (ch.importStatus === "PENDING" || ch.importStatus === "FAILED");
+    });
+
+    if (!importableIds.length) {
+      toast("Os capítulos selecionados já estão sendo processados", {
+        icon: "⏳",
+      });
+      setSelectedChapters(new Set());
+      return;
+    }
+
     if (
       !confirm(
-        `Enfileirar ${selectedChapters.size} capítulo(s) selecionado(s) para importação?`,
+        `Enfileirar ${importableIds.length} capítulo(s) selecionado(s) para importação?`,
       )
     )
       return;
     bulkImport.mutate(
-      { id, data: { chapterIds: Array.from(selectedChapters) } },
+      { id, data: { chapterIds: importableIds } },
       {
         onSuccess: (res) => {
-          toast.success(`${res.queued} capítulo(s) enfileirado(s)`);
+          if (res.alreadyProcessing && res.alreadyProcessing > 0) {
+            toast.success(
+              `${res.queued} enfileirado(s) · ${res.alreadyProcessing} já em processamento`,
+            );
+          } else {
+            toast.success(`${res.queued} capítulo(s) enfileirado(s)`);
+          }
           setSelectedChapters(new Set());
         },
         onError: (err) =>
@@ -682,31 +768,31 @@ export default function TrackedTitleDetailPage() {
           </div>
         )}
 
-      {/* Provider Sources Panel */}
-      {seriesId && (
-        <div className="surface-panel rounded-xl border border-white/5 p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <LinkIcon className="h-4 w-4 text-blue-400" />
-              <h3 className="text-sm font-semibold text-[var(--color-textMain)]">
-                Fontes da Série
-              </h3>
-              {seriesSources.data && (
-                <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-[var(--color-textDim)]">
-                  {seriesSources.data.sources.length}
-                </span>
-              )}
-            </div>
-            <button
-              onClick={() => setShowLinkModal(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-500/20 transition-colors"
-            >
-              <Plus className="h-3 w-3" />
-              Vincular Provedor
-            </button>
+      {/* Provider Sources Panel — always show Link button; sources list only when seriesId */}
+      <div className="surface-panel rounded-xl border border-white/5 p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <LinkIcon className="h-4 w-4 text-blue-400" />
+            <h3 className="text-sm font-semibold text-[var(--color-textMain)]">
+              {seriesId ? "Fontes da Série" : "Vincular a Série"}
+            </h3>
+            {seriesId && seriesSources.data && (
+              <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-[var(--color-textDim)]">
+                {seriesSources.data.sources.length}
+              </span>
+            )}
           </div>
+          <button
+            onClick={() => setShowLinkModal(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-500/20 transition-colors"
+          >
+            <Plus className="h-3 w-3" />
+            Vincular Provedor
+          </button>
+        </div>
 
-          {seriesSources.isLoading ? (
+        {seriesId ? (
+          seriesSources.isLoading ? (
             <div className="flex items-center justify-center py-6">
               <Loader2 className="h-4 w-4 animate-spin text-[var(--color-textDim)]" />
             </div>
@@ -764,7 +850,7 @@ export default function TrackedTitleDetailPage() {
                     )}
                   </div>
 
-                  {!src.isPrimary && (
+                  {!src.isPrimary && seriesId && (
                     <div className="flex shrink-0 items-center gap-1">
                       <button
                         onClick={() =>
@@ -791,15 +877,11 @@ export default function TrackedTitleDetailPage() {
                       </button>
                       <button
                         onClick={() => {
-                          if (
-                            !confirm("Remover esta fonte da série?")
-                          )
-                            return;
+                          if (!confirm("Remover esta fonte da série?")) return;
                           removeSource.mutate(
                             { seriesId, mappingId: src.id },
                             {
-                              onSuccess: () =>
-                                toast.success("Fonte removida"),
+                              onSuccess: () => toast.success("Fonte removida"),
                               onError: (err) =>
                                 toast.error(
                                   getErrorMessage(err, "Erro ao remover fonte"),
@@ -818,9 +900,14 @@ export default function TrackedTitleDetailPage() {
                 </div>
               ))}
             </div>
-          )}
-        </div>
-      )}
+          )
+        ) : (
+          <p className="text-xs text-[var(--color-textDim)]">
+            Este provedor não está vinculado a nenhuma série. Use o botão acima
+            para vincular.
+          </p>
+        )}
+      </div>
 
       {/* Link Provider Modal */}
       {showLinkModal && (
@@ -831,7 +918,7 @@ export default function TrackedTitleDetailPage() {
                 Vincular Provedor à Série
               </h3>
               <button
-                onClick={() => setShowLinkModal(false)}
+                onClick={closeModal}
                 className="rounded-lg p-1 text-[var(--color-textDim)] hover:bg-white/5"
               >
                 <X className="h-4 w-4" />
@@ -841,15 +928,58 @@ export default function TrackedTitleDetailPage() {
             <div className="space-y-3">
               <div>
                 <label className="mb-1.5 block text-xs text-[var(--color-textDim)]">
-                  ID da Série
+                  Série
                 </label>
-                <input
-                  type="text"
-                  value={linkSeriesId}
-                  onChange={(e) => setLinkSeriesId(e.target.value)}
-                  placeholder="ex: clxxxxx..."
-                  className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--color-textMain)] placeholder:text-[var(--color-textDim)] focus:border-[var(--color-primary)] focus:outline-none"
-                />
+                {selectedSeriesForLink ? (
+                  <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+                    <span className="text-sm font-medium text-emerald-400">
+                      {selectedSeriesForLink.title}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setSelectedSeriesForLink(null);
+                        setSeriesSearchQuery("");
+                      }}
+                      className="text-[var(--color-textDim)] hover:text-[var(--color-textMain)]"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={seriesSearchQuery}
+                      onChange={(e) => {
+                        setSeriesSearchQuery(e.target.value);
+                        handleSeriesSearch(e.target.value);
+                      }}
+                      placeholder="Buscar série por título..."
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-[var(--color-textMain)] placeholder:text-[var(--color-textDim)] focus:border-[var(--color-primary)] focus:outline-none"
+                    />
+                    {seriesSearchLoading && (
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                        <Loader2 className="h-4 w-4 animate-spin text-[var(--color-textDim)]" />
+                      </div>
+                    )}
+                    {seriesSearchResults.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full rounded-lg border border-white/10 bg-[#1e1e1e] shadow-xl">
+                        {seriesSearchResults.map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => {
+                              setSelectedSeriesForLink(s);
+                              setSeriesSearchResults([]);
+                            }}
+                            className="flex w-full items-center px-3 py-2 text-left text-sm text-[var(--color-textMain)] hover:bg-white/5 first:rounded-t-lg last:rounded-b-lg"
+                          >
+                            {s.title}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -882,31 +1012,32 @@ export default function TrackedTitleDetailPage() {
 
             <div className="flex items-center justify-end gap-2">
               <button
-                onClick={() => setShowLinkModal(false)}
+                onClick={closeModal}
                 className="rounded-lg border border-white/10 px-4 py-2 text-sm text-[var(--color-textDim)] hover:bg-white/5 transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={() => {
-                  if (!linkSeriesId.trim()) {
-                    toast.error("Informe o ID da série");
+                  const targetSeriesId = selectedSeriesForLink?.id;
+                  if (!targetSeriesId) {
+                    toast.error("Selecione uma série");
                     return;
                   }
                   linkProvider.mutate(
                     {
                       providerTitleId: id,
-                      seriesId: linkSeriesId.trim(),
+                      seriesId: targetSeriesId,
                       priority: linkPriority,
                       notes: linkNotes.trim() || undefined,
                     },
                     {
                       onSuccess: () => {
                         toast.success("Provedor vinculado à série");
-                        setShowLinkModal(false);
-                        setLinkSeriesId("");
-                        setLinkPriority(10);
-                        setLinkNotes("");
+                        closeModal();
+                        queryClient.invalidateQueries({
+                          queryKey: providerKeys.trackedDetail(id),
+                        });
                       },
                       onError: (err) =>
                         toast.error(

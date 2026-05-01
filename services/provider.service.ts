@@ -337,6 +337,18 @@ export const providerService = {
     return res.data;
   },
 
+  // ===== Series Search =====
+  async searchSeries(
+    q: string,
+    limit = 10,
+  ): Promise<{ series: Array<{ id: string; title: string }> }> {
+    const res = await api.get<{ series: Array<{ id: string; title: string }> }>(
+      "/admin/series/search",
+      { params: { q, limit } },
+    );
+    return res.data;
+  },
+
   // ===== Keiyoushi Source Registry =====
   async getKeiyoushiStats(
     signal?: AbortSignal,

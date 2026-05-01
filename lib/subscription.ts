@@ -7,7 +7,7 @@ import type {
 } from "@/types/api";
 
 export const SUBSCRIPTION_CHECKOUT_URL =
-  "https://pay.kirvano.com/fa717258-dae4-4eea-9368-970ee9cee695";
+  "https://pay.kirvano.com/bea3f9c5-87b6-40cd-99ac-7b1da21de293";
 export const SUBSCRIPTION_MANAGEMENT_ROUTE = "/subscription";
 export const SUBSCRIPTION_RENEW_ROUTE = "/subscription/renew";
 export const EMPTY_SUBSCRIPTION: SubscriptionView = {
@@ -31,10 +31,7 @@ const PUBLIC_PATH_PREFIXES = [
   SUBSCRIPTION_RENEW_ROUTE,
 ];
 
-const INACTIVE_ACCESS_PREFIXES = [
-  "/profile",
-  SUBSCRIPTION_MANAGEMENT_ROUTE,
-];
+const INACTIVE_ACCESS_PREFIXES = ["/profile", SUBSCRIPTION_MANAGEMENT_ROUTE];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -96,7 +93,9 @@ export function normalizeSubscriptionView(
   const reminderPayload = isRecord(payload.reminder) ? payload.reminder : null;
   const userPayload = isRecord(payload.user) ? payload.user : null;
   const state = readString(payload, "state") as SubscriptionState | undefined;
-  const status = readString(payload, "status") as SubscriptionStatus | undefined;
+  const status = readString(payload, "status") as
+    | SubscriptionStatus
+    | undefined;
 
   return {
     id: readString(payload, "id"),
@@ -255,7 +254,9 @@ export function getSubscriptionStateLabel(state?: SubscriptionState): string {
   return state ? labels[state] : "Sem assinatura";
 }
 
-export function getSubscriptionStatusLabel(status?: SubscriptionStatus): string {
+export function getSubscriptionStatusLabel(
+  status?: SubscriptionStatus,
+): string {
   const labels: Record<SubscriptionStatus, string> = {
     ACTIVE: "ACTIVE",
     SETUP_PENDING: "SETUP_PENDING",
@@ -269,7 +270,9 @@ export function getSubscriptionStatusLabel(status?: SubscriptionStatus): string 
   return status ? labels[status] : "Sem status";
 }
 
-export function getSubscriptionStateMeta(subscription?: SubscriptionView | null): {
+export function getSubscriptionStateMeta(
+  subscription?: SubscriptionView | null,
+): {
   title: string;
   description: string;
   tone: "default" | "danger" | "warning" | "info";

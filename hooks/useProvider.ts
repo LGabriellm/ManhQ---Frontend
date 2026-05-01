@@ -532,6 +532,9 @@ export function useLinkProviderToSeries() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["series-sources"] });
       qc.invalidateQueries({ queryKey: providerKeys.tracked() });
+      qc.invalidateQueries({
+        queryKey: [...providerKeys.all, "tracked", "detail"],
+      });
     },
   });
 }

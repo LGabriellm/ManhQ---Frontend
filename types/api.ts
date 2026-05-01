@@ -2893,6 +2893,7 @@ export interface BulkImportRequest {
 
 export interface BulkImportResponse {
   queued: number;
+  alreadyProcessing?: number;
 }
 
 export type ProviderCapability =

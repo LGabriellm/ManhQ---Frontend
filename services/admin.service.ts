@@ -1,6 +1,7 @@
 import api from "./api";
 import type { UploadSessionDetail } from "@/types/upload";
 import type {
+  SystemSettings,
   AdminDashboardResponse,
   AdminSeriesListResponse,
   AdminSeriesParams,
@@ -1204,5 +1205,17 @@ export const adminService = {
       "/admin/badges/founder-count",
     );
     return response.data;
+  },
+
+  // ── System Settings ──
+
+  async getSystemSettings(): Promise<SystemSettings> {
+    const res = await api.get<SystemSettings>("/admin/system-settings");
+    return res.data;
+  },
+
+  async updateSystemSettings(patch: Partial<SystemSettings>): Promise<SystemSettings> {
+    const res = await api.post<SystemSettings>("/admin/system-settings", patch);
+    return res.data;
   },
 };

@@ -1163,6 +1163,12 @@ export interface ProgressHistoryParams {
   onlyCompleted?: boolean;
 }
 
+// ===== Admin System Settings =====
+export interface SystemSettings {
+  showcaseRankingEnabled: boolean;
+  founderDisplayOverride: number | null;
+}
+
 // ===== Admin Dashboard =====
 export interface AdminOverview {
   totalSeries: number;

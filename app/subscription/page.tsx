@@ -243,8 +243,8 @@ export default function SubscriptionPage() {
           <p className="section-kicker">Assinatura</p>
           <h1 className="section-title">Central da assinatura</h1>
           <p className="section-description">
-            Acompanhe o status do acesso, renove quando necessário e gerencie
-            cancelamentos sem sair da sua conta.
+            Acompanhe o status do seu acesso vitalício e gerencie sua conta sem
+            sair daqui.
           </p>
         </div>
 
@@ -304,7 +304,11 @@ export default function SubscriptionPage() {
                 Pagamento: {getPaymentMethodLabel(subscription.paymentMethod)}
               </span>
               <span className="badge-soft text-textMain">
-                {subscription.isRecurring ? "Recorrente" : "Renovação manual"}
+                {subscription.isRecurring
+                  ? "Recorrente"
+                  : !subscription.currentPeriodEnd
+                    ? "Acesso vitalício"
+                    : "Renovação manual"}
               </span>
             </div>
           </div>
@@ -358,8 +362,8 @@ export default function SubscriptionPage() {
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <DetailItem
-              label="Próximo vencimento"
-              value={formatSubscriptionDate(subscription.currentPeriodEnd)}
+              label={subscription.currentPeriodEnd ? "Próximo vencimento" : "Tipo de acesso"}
+              value={subscription.currentPeriodEnd ? formatSubscriptionDate(subscription.currentPeriodEnd) : "Vitalício — sem expiração"}
             />
             <DetailItem
               label="Última confirmação"

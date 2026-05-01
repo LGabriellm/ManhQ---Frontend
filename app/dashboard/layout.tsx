@@ -21,6 +21,7 @@ import {
   Workflow,
   Globe,
   HardDrive,
+  Megaphone,
 } from "lucide-react";
 
 type DashboardRole = "ADMIN" | "EDITOR";
@@ -83,6 +84,12 @@ const navItems: Array<{
     href: "/dashboard/subscriptions",
     label: "Assinaturas",
     icon: CreditCard,
+    roles: ["ADMIN"],
+  },
+  {
+    href: "/dashboard/marketing",
+    label: "Marketing",
+    icon: Megaphone,
     roles: ["ADMIN"],
   },
   {

@@ -74,9 +74,9 @@ const features = [
   },
   {
     icon: Lock,
-    title: "Cancele quando quiser",
+    title: "Pagamento único, acesso vitalício",
     description:
-      "Sem fidelidade, sem multa, sem burocracia. Seu dinheiro, sua decisão. Se não curtir, é só cancelar.",
+      "Pague uma vez e tenha acesso para sempre. Sem mensalidade, sem renovação, sem surpresa no cartão.",
   },
 ];
 
@@ -85,8 +85,8 @@ const pricingBenefits = [
   "Badge exclusivo de Fundador no seu perfil com número da vaga",
   "Ranking semanal, conquistas de leitura e histórico completo",
   "Interface sem anúncio, sem popup, otimizada para celular",
-  "Preço de R$14,99 travado para sempre — mesmo quando subir",
-  "Cancele quando quiser, sem multa, sem complicação",
+  "Pagamento único de R$14,99 — sem mensalidade, sem renovação",
+  "Acesso vitalício garantido — pague uma vez, acesse para sempre",
 ];
 
 // Showcase testimonials — clearly community personas, not verified reviews
@@ -116,12 +116,12 @@ const testimonials = [
 
 const faqs = [
   {
-    q: "O preço de R$14,99 realmente fica travado para sempre?",
-    a: "Sim. Sem asterisco, sem condição escondida. Enquanto você mantiver a assinatura ativa, paga R$14,99 independente de qualquer reajuste futuro no preço da plataforma.",
+    q: "O preço de R$14,99 é definitivo?",
+    a: "Sim. Você paga exatamente R$14,99 uma única vez. Sem asterisco, sem condição escondida, sem cobrança recorrente. Depois de comprar, o acesso é seu para sempre.",
   },
   {
-    q: "Posso cancelar quando quiser?",
-    a: "Sim, a qualquer momento. Sem multa, sem burocracia, sem precisar ligar para ninguém. Basta cancelar pelo painel da conta em menos de 1 minuto.",
+    q: "Tenho garantia de reembolso?",
+    a: "Sim. Se não ficar satisfeito nos primeiros 7 dias, basta entrar em contato pelo suporte e devolvemos seu dinheiro integralmente. Sem perguntas, sem burocracia.",
   },
   {
     q: "O que tem no acervo — tem o que eu leio?",
@@ -144,8 +144,8 @@ const faqs = [
     a: "O Plano Fundador encerra e o preço sobe. Novos assinantes pagarão o preço cheio — que será maior. Quem entrou como Fundador mantém R$14,99 para sempre.",
   },
   {
-    q: "Tem cobrança automática?",
-    a: "Sim, a renovação é mensal e automática como qualquer assinatura. Você pode cancelar antes da próxima cobrança a qualquer momento pelo painel, sem precisar falar com ninguém.",
+    q: "É pagamento único? Tenho acesso para sempre?",
+    a: "Sim. Você paga uma única vez R$14,99 e tem acesso para sempre — sem mensalidade, sem renovação automática, sem cobrança futura. É uma compra única que garante acesso vitalício à plataforma.",
   },
 ];
 
@@ -334,7 +334,7 @@ export default function LandingPage() {
                 <ArrowRight className="h-4 w-4" />
               </motion.a>
               <p className="text-xs text-white/35">
-                R$14,99/mês · preço travado para sempre · cancele quando quiser
+                R$14,99 · pagamento único · acesso vitalício garantido
               </p>
             </motion.div>
 
@@ -347,7 +347,7 @@ export default function LandingPage() {
             >
               {[
                 { icon: Shield, text: "Pagamento 100% seguro" },
-                { icon: Lock, text: "Cancele quando quiser" },
+                { icon: Lock, text: "Acesso vitalício garantido" },
                 { icon: Crown, text: "Badge permanente e exclusivo" },
               ].map(({ icon: Icon, text }) => (
                 <div
@@ -550,11 +550,11 @@ export default function LandingPage() {
                   <p className="text-4xl font-extrabold text-white sm:text-5xl">
                     R$ <span className="text-6xl sm:text-7xl">14,99</span>
                     <span className="ml-1 text-base font-normal text-white/50">
-                      /mês
+                      único
                     </span>
                   </p>
                   <p className="mt-1 text-xs text-primary/70">
-                    Preço de Fundador · travado enquanto você for assinante
+                    Pagamento único · acesso vitalício garantido
                   </p>
                 </div>
 

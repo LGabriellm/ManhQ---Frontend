@@ -53,9 +53,9 @@ export function BottomNav() {
                     transition={{ type: "spring", stiffness: 400, damping: 28 }}
                   />
                 )}
-                {item.href === "/profile" && user?.id ? (
+                {item.href === "/profile" && user ? (
                   <UserAvatar
-                    userId={user.id}
+                    avatarUrl={user.avatarUrl}
                     name={user.name || undefined}
                     className={cn(
                       "relative h-5.25 w-5.25 rounded-full transition-all duration-200",

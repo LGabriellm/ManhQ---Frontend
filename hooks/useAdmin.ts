@@ -1092,6 +1092,17 @@ export function useAdminRevokeBadge() {
   });
 }
 
+export function useAdminUpdateFounderNumber() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, founderNumber }: { userId: string; founderNumber: number }) =>
+      adminService.updateFounderNumber(userId, founderNumber),
+    onSuccess: (_r, variables) => {
+      void qc.invalidateQueries({ queryKey: [...adminKeys.all, "badges", "user", variables.userId] });
+    },
+  });
+}
+
 export function useAdminAssignFounderZero() {
   return useMutation({
     mutationFn: (email: string) => adminService.assignFounderZero(email),

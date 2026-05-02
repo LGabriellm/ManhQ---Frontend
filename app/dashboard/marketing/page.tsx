@@ -2,10 +2,14 @@
 
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Save, Users, Gauge } from "lucide-react";
+import { Loader2, Save, Users, Gauge, Crown } from "lucide-react";
 import toast from "react-hot-toast";
 import { adminService } from "@/services/admin.service";
+import { useFounderStatus } from "@/hooks/useFounderStatus";
+import { FounderBadgePreview } from "@/components/FounderSpotlight";
 import type { SystemSettings } from "@/types/api";
+
+const FOUNDER_CAP = 100;
 
 export default function MarketingSettingsPage() {
   const qc = useQueryClient();
@@ -13,6 +17,7 @@ export default function MarketingSettingsPage() {
     queryKey: ["system-settings"],
     queryFn: () => adminService.getSystemSettings(),
   });
+  const { data: founderStatus } = useFounderStatus();
 
   const mutation = useMutation({
     mutationFn: (patch: Partial<SystemSettings>) =>
@@ -24,16 +29,33 @@ export default function MarketingSettingsPage() {
     onError: () => toast.error("Erro ao salvar configurações"),
   });
 
+  // overrideEnabled: whether to show a custom nextNumber
+  // nextNumberInput: the "Fundador #X" number the landing page will display
   const [overrideEnabled, setOverrideEnabled] = useState(false);
-  const [overrideValue, setOverrideValue] = useState(5);
+  const [nextNumberInput, setNextNumberInput] = useState(2);
 
   // Sync local state when data loads
   React.useEffect(() => {
     if (settings) {
-      setOverrideEnabled(settings.founderDisplayOverride !== null);
-      setOverrideValue(settings.founderDisplayOverride ?? 5);
+      const hasOverride = settings.founderDisplayOverride !== null;
+      setOverrideEnabled(hasOverride);
+      if (hasOverride && settings.founderDisplayOverride != null) {
+        // Convert remaining → nextNumber: nextNumber = CAP - remaining + 1
+        setNextNumberInput(FOUNDER_CAP - settings.founderDisplayOverride + 1);
+      } else {
+        // Default to current real nextNumber (or 2 if not loaded yet)
+        setNextNumberInput(founderStatus?.nextNumber ?? 2);
+      }
     }
-  }, [settings]);
+  }, [settings, founderStatus?.nextNumber]);
+
+  const computedRemaining = Math.max(1, Math.min(99, FOUNDER_CAP - nextNumberInput + 1));
+
+  function handleSaveFounder() {
+    mutation.mutate({
+      founderDisplayOverride: overrideEnabled ? computedRemaining : null,
+    });
+  }
 
   if (isLoading) {
     return (
@@ -66,7 +88,7 @@ export default function MarketingSettingsPage() {
             </h2>
             <p className="mt-1 text-sm text-[var(--color-textDim)]">
               Exibe personas fictícias no ranking enquanto há poucos usuários reais.
-              Estas entradas aparecem levemente transparentes e nunca têm badges de Fundador.
+              Os valores são ajustados automaticamente para não divergir dos leitores reais.
             </p>
             <div className="mt-4 flex items-center gap-3">
               <button
@@ -101,19 +123,45 @@ export default function MarketingSettingsPage() {
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
             <Gauge className="h-5 w-5 text-amber-400" />
           </div>
-          <div className="flex-1">
-            <h2 className="text-base font-semibold text-[var(--color-textMain)]">
-              Contador de vagas de Fundador
-            </h2>
-            <p className="mt-1 text-sm text-[var(--color-textDim)]">
-              Substitui o contador real de vagas restantes por um número fixo para criar urgência.
-              O número real de badges concedidos nunca é afetado.
-            </p>
+          <div className="flex-1 space-y-4">
+            <div>
+              <h2 className="text-base font-semibold text-[var(--color-textMain)]">
+                Número de Fundador exibido
+              </h2>
+              <p className="mt-1 text-sm text-[var(--color-textDim)]">
+                Define qual número de Fundador a landing page exibe como próxima vaga disponível.
+                O número real de badges concedidos nunca é afetado.
+              </p>
+            </div>
 
-            <div className="mt-4 flex items-center gap-3">
+            {/* Real state reference */}
+            {founderStatus && (
+              <div className="flex items-center gap-3 rounded-xl border border-white/6 bg-white/3 px-4 py-3">
+                <Crown className="h-4 w-4 shrink-0 text-amber-400/60" />
+                <div className="text-xs text-[var(--color-textDim)]">
+                  Estado real atual:{" "}
+                  <span className="font-semibold text-[var(--color-textMain)]">
+                    {founderStatus.claimed} concedidos
+                  </span>{" "}
+                  · próxima vaga real:{" "}
+                  <span className="font-semibold text-amber-400">
+                    Fundador #{String(founderStatus.nextNumber).padStart(3, "0")}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Toggle */}
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => setOverrideEnabled((v) => !v)}
+                onClick={() => {
+                  const next = !overrideEnabled;
+                  setOverrideEnabled(next);
+                  if (next && founderStatus) {
+                    setNextNumberInput(founderStatus.nextNumber);
+                  }
+                }}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
                   overrideEnabled ? "bg-amber-500" : "bg-white/15"
                 }`}
@@ -125,47 +173,63 @@ export default function MarketingSettingsPage() {
                 />
               </button>
               <span className="text-sm text-[var(--color-textDim)]">
-                {overrideEnabled ? "Usando número fixo" : "Mostrando contagem real"}
+                {overrideEnabled ? "Usando número personalizado" : "Mostrando contagem real"}
               </span>
             </div>
 
             {overrideEnabled && (
-              <div className="mt-4 flex items-center gap-3">
-                <label
-                  htmlFor="override-value"
-                  className="text-sm text-[var(--color-textDim)]"
-                >
-                  Vagas a exibir:
-                </label>
-                <input
-                  id="override-value"
-                  type="number"
-                  min={1}
-                  max={99}
-                  value={overrideValue}
-                  onChange={(e) => setOverrideValue(Number(e.target.value))}
-                  className="w-20 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-center text-sm text-[var(--color-textMain)] focus:border-amber-500/50 focus:outline-none"
-                />
-                <span className="text-xs text-[var(--color-textDim)]">vagas restantes</span>
+              <div className="space-y-3 rounded-xl border border-amber-500/15 bg-amber-500/5 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="flex-1 space-y-1">
+                    <label
+                      htmlFor="next-number"
+                      className="block text-xs font-medium text-[var(--color-textDim)]"
+                    >
+                      Próximo número de Fundador
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-[var(--color-textDim)]">#</span>
+                      <input
+                        id="next-number"
+                        type="number"
+                        min={2}
+                        max={100}
+                        value={nextNumberInput}
+                        onChange={(e) => {
+                          const v = Math.max(2, Math.min(100, Number(e.target.value)));
+                          setNextNumberInput(v);
+                        }}
+                        className="w-24 rounded-lg border border-amber-500/30 bg-white/5 px-3 py-1.5 text-center text-sm font-bold text-[var(--color-textMain)] focus:border-amber-500/60 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Preview */}
+                  <div className="flex flex-col items-start gap-1 sm:items-end">
+                    <span className="text-[10px] uppercase tracking-wider text-[var(--color-textDim)]">
+                      Preview na landing page
+                    </span>
+                    <FounderBadgePreview number={nextNumberInput} size="md" />
+                    <span className="text-[10px] text-[var(--color-textDim)]">
+                      {computedRemaining} vaga{computedRemaining !== 1 ? "s" : ""} restante{computedRemaining !== 1 ? "s" : ""} exibida{computedRemaining !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
 
             <button
               type="button"
-              onClick={() =>
-                mutation.mutate({
-                  founderDisplayOverride: overrideEnabled ? overrideValue : null,
-                })
-              }
+              onClick={handleSaveFounder}
               disabled={mutation.isPending}
-              className="mt-4 flex items-center gap-2 rounded-xl bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-400 transition-colors hover:bg-amber-500/25 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl bg-amber-500/15 px-4 py-2 text-sm font-semibold text-amber-400 transition-colors hover:bg-amber-500/25 disabled:opacity-50"
             >
               {mutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              Salvar contador
+              Salvar configuração
             </button>
           </div>
         </div>

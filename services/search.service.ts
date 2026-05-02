@@ -162,6 +162,13 @@ function normalizeSuggestionPayload(payload: unknown): string[] {
 }
 
 export const searchService = {
+  async getPopularTerms(signal?: AbortSignal): Promise<string[]> {
+    const res = await api.get<{ terms: string[] }>("/search/popular-terms", {
+      signal,
+    });
+    return res.data.terms ?? [];
+  },
+
   async searchSeries(
     query: string,
     page = DEFAULT_SEARCH_PAGE,

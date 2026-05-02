@@ -16,6 +16,8 @@ import {
   useSuwayomiInstallExtension,
   useSuwayomiUninstallExtension,
   useSuwayomiReload,
+  useSuwayomiCache,
+  useClearSuwayomiCache,
   providerKeys,
 } from "@/hooks/useProvider";
 import toast from "react-hot-toast";
@@ -35,6 +37,8 @@ import {
   Filter,
   Trash2,
   AlertTriangle,
+  Shield,
+  HardDrive,
 } from "lucide-react";
 
 export default function SuwayomiPage() {
@@ -52,6 +56,8 @@ export default function SuwayomiPage() {
   const { data: extData, isLoading: extLoading } = useSuwayomiExtensions(
     health?.reachable ?? false,
   );
+  const { data: cacheData, isLoading: cacheLoading, refetch: refetchCache } = useSuwayomiCache();
+  const clearCache = useClearSuwayomiCache();
 
   const fetchExtensions = useSuwayomiFetchExtensions();
   const installExtension = useSuwayomiInstallExtension();
@@ -186,6 +192,27 @@ export default function SuwayomiPage() {
     });
   }
 
+  function handleClearCache(dirs?: ("downloads" | "thumbnails" | "temp")[]) {
+    const label = dirs ? `"${dirs.join(", ")}"` : "todos os diretórios";
+    if (!confirm(`Limpar o cache de ${label}? Esta ação não pode ser desfeita.`)) return;
+    clearCache.mutate(dirs, {
+      onSuccess: (res) => {
+        const mb = (res.totalFreed / 1024 / 1024).toFixed(1);
+        toast.success(`Cache limpo! ${mb} MB liberados`);
+        void refetchCache();
+      },
+      onError: () => toast.error("Erro ao limpar cache"),
+    });
+  }
+
+  function formatBytes(bytes: number): string {
+    if (bytes === 0) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  }
+
   const allExtensions = extData?.extensions ?? [];
   const installedCount = allExtensions.filter((e) => e.isInstalled).length;
 
@@ -308,6 +335,138 @@ export default function SuwayomiPage() {
           </div>
         )}
 
+        {/* FlareSolver status — only rendered when backend has FLARESOLVERR_URL set */}
+        {health?.flareSolver && (
+          <div className="mt-4 pt-4 border-t border-white/5">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="h-4 w-4 text-[var(--color-textDim)]" />
+              <p className="text-xs font-semibold text-[var(--color-textDim)] uppercase tracking-wider">
+                FlareSolverr (Backend)
+              </p>
+            </div>
+            <div className="flex items-center gap-6">
+              <div>
+                <p className="text-xs text-[var(--color-textDim)]">Status</p>
+                <div className="mt-1 flex items-center gap-1.5">
+                  {health.flareSolver.reachable ? (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                  ) : (
+                    <XCircle className="h-4 w-4 text-red-400" />
+                  )}
+                  <span className="text-sm font-medium text-[var(--color-textMain)]">
+                    {health.flareSolver.reachable ? "Online" : "Offline"}
+                  </span>
+                </div>
+              </div>
+              {health.flareSolver.version && (
+                <div>
+                  <p className="text-xs text-[var(--color-textDim)]">Versão</p>
+                  <p className="mt-1 text-sm font-medium text-[var(--color-textMain)]">
+                    {health.flareSolver.version}
+                  </p>
+                </div>
+              )}
+              {!health.flareSolver.reachable && (
+                <p className="text-xs text-red-300">
+                  FlareSolverr está configurado mas não responde. Verifique o container.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Suwayomi → FlareSolverr connection diagnostic */}
+        {health?.reachable && health.suwayomiFlareSolver !== undefined && (
+          <div className="mt-4 pt-4 border-t border-white/5">
+            <div className="flex items-center gap-2 mb-3">
+              <Globe className="h-4 w-4 text-[var(--color-textDim)]" />
+              <p className="text-xs font-semibold text-[var(--color-textDim)] uppercase tracking-wider">
+                Suwayomi → FlareSolverr
+              </p>
+            </div>
+
+            {health.suwayomiFlareSolver.configuredUrl === null ? (
+              <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3">
+                <p className="text-xs font-medium text-yellow-300">
+                  FlareSolverr não configurado no Suwayomi
+                </p>
+                <p className="mt-1 text-xs text-yellow-300/70">
+                  Para habilitar bypass de Cloudflare, defina a URL do FlareSolverr nas configurações
+                  do Suwayomi em{" "}
+                  <code className="rounded bg-white/10 px-1">Settings → Network → FlareSolverr URL</code>.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-6">
+                  <div>
+                    <p className="text-xs text-[var(--color-textDim)]">URL Configurada</p>
+                    <p className="mt-1 text-xs font-mono text-[var(--color-textMain)] break-all">
+                      {health.suwayomiFlareSolver.configuredUrl}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-[var(--color-textDim)]">Conexão</p>
+                    <div className="mt-1 flex items-center gap-1.5">
+                      {health.suwayomiFlareSolver.reachable === true ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+                      ) : health.suwayomiFlareSolver.reachable === false ? (
+                        <XCircle className="h-4 w-4 text-red-400" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 text-yellow-400" />
+                      )}
+                      <span className="text-sm font-medium text-[var(--color-textMain)]">
+                        {health.suwayomiFlareSolver.reachable === true
+                          ? "Alcançável"
+                          : health.suwayomiFlareSolver.reachable === false
+                          ? "Inacessível"
+                          : "Desconhecido"}
+                      </span>
+                    </div>
+                  </div>
+                  {health.suwayomiFlareSolver.version && (
+                    <div>
+                      <p className="text-xs text-[var(--color-textDim)]">Versão</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--color-textMain)]">
+                        {health.suwayomiFlareSolver.version}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {health.suwayomiFlareSolver.reachable === false && (
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+                    <p className="text-xs font-medium text-red-300">
+                      Suwayomi não consegue alcançar o FlareSolverr
+                    </p>
+                    <p className="mt-1 text-xs text-red-300/70">
+                      O Suwayomi está configurado para usar{" "}
+                      <code className="rounded bg-white/10 px-1">
+                        {health.suwayomiFlareSolver.configuredUrl}
+                      </code>{" "}
+                      mas este endereço não responde. Verifique se os dois containers estão
+                      na mesma rede Docker e se o nome de host está correto.
+                    </p>
+                  </div>
+                )}
+
+                {health.suwayomiFlareSolver.reachable === true &&
+                  health.flareSolver &&
+                  !health.flareSolver.reachable && (
+                  <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3">
+                    <p className="text-xs font-medium text-yellow-300">
+                      Suwayomi alcança o FlareSolverr, mas o backend não
+                    </p>
+                    <p className="mt-1 text-xs text-yellow-300/70">
+                      Isso indica que as URLs configuradas no Suwayomi e no backend (FLARESOLVERR_URL) são diferentes.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {health && !health.configured && (
           <div className="mt-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10 p-3 text-sm text-yellow-300">
             Suwayomi não está configurado. Defina{" "}
@@ -323,6 +482,68 @@ export default function SuwayomiPage() {
           </div>
         )}
       </div>
+
+      {/* Cache Management */}
+      {cacheData?.configured && (
+        <div className="surface-panel rounded-xl border border-white/5 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <HardDrive className="h-5 w-5 text-[var(--color-primary)]" />
+              <div>
+                <h2 className="font-semibold text-[var(--color-textMain)]">
+                  Cache do Suwayomi
+                </h2>
+                <p className="text-xs text-[var(--color-textDim)] mt-0.5">
+                  {cacheLoading ? "Calculando..." : `Total: ${formatBytes(cacheData.totalBytes)}`}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {cacheLoading && (
+                <Loader2 className="h-4 w-4 animate-spin text-[var(--color-textDim)]" />
+              )}
+              <button
+                onClick={() => handleClearCache()}
+                disabled={clearCache.isPending || cacheData.totalBytes === 0}
+                className="flex items-center gap-2 rounded-lg bg-red-500/15 border border-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/25 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                {clearCache.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                Limpar Tudo
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {cacheData.dirs.map((dir) => (
+              <div
+                key={dir.name}
+                className="flex items-center justify-between rounded-lg border border-white/5 bg-[var(--color-background)]/50 px-3 py-2.5"
+              >
+                <div>
+                  <p className="text-xs font-medium text-[var(--color-textMain)] capitalize">
+                    {dir.name}
+                  </p>
+                  <p className="text-xs text-[var(--color-textDim)] mt-0.5">
+                    {dir.exists ? formatBytes(dir.bytes) : "vazio"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleClearCache([dir.name as "downloads" | "thumbnails" | "temp"])}
+                  disabled={clearCache.isPending || !dir.exists || dir.bytes === 0}
+                  title={`Limpar ${dir.name}`}
+                  className="p-1.5 rounded-lg text-[var(--color-textDim)] hover:text-red-400 hover:bg-red-500/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Actions */}
       {health?.reachable && (

@@ -35,8 +35,7 @@ export function useDrafts(page = 1, limit = 20) {
   return useQuery({
     queryKey: [...uploadKeys.drafts(), page, limit],
     queryFn: () => svc.fetchDrafts(page, limit),
-    staleTime: 10_000,
-    refetchOnMount: "always",
+    staleTime: 30_000,
   });
 }
 

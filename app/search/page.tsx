@@ -14,10 +14,10 @@ import {
 } from "lucide-react";
 import { FeedbackState } from "@/components/FeedbackState";
 import { MangaCard } from "@/components/MangaCard";
-import { useSearchSuggestions, useSeriesSearch } from "@/hooks/useApi";
+import { usePopularSearchTerms, useSearchSuggestions, useSeriesSearch } from "@/hooks/useApi";
 import { getPublicCoverUrl } from "@/lib/coverUrl";
 
-const TRENDING_SEARCHES = [
+const FALLBACK_SEARCHES = [
   "One Piece",
   "Naruto",
   "Attack on Titan",
@@ -61,6 +61,7 @@ export default function SearchPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [isInputFocused, setIsInputFocused] = useState(false);
+  const { data: popularTerms } = usePopularSearchTerms();
 
   const deferredQuery = useDeferredValue(searchQuery);
   const normalizedQuery = deferredQuery.trim();
@@ -106,7 +107,9 @@ export default function SearchPage() {
   }, [normalizedQuery, suggestionData]);
 
   const landingSuggestions =
-    dynamicSuggestions.length > 0 ? dynamicSuggestions : TRENDING_SEARCHES;
+    dynamicSuggestions.length > 0
+      ? dynamicSuggestions
+      : (popularTerms?.length ? popularTerms : FALLBACK_SEARCHES);
   const showSuggestionTray =
     shouldLoadSuggestions &&
     (isFetchingSuggestions || dynamicSuggestions.length > 0);
@@ -211,7 +214,9 @@ export default function SearchPage() {
             </div>
             <span className="badge-soft text-[var(--color-textMain)]">
               <Sparkles className="h-3.5 w-3.5 text-amber-300" />
-              A API entra em cena quando você começa a digitar
+              {popularTerms?.length
+                ? "Baseado nas séries mais lidas"
+                : "A API entra em cena quando você começa a digitar"}
             </span>
           </div>
 

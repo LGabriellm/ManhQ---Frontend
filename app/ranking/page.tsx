@@ -85,9 +85,9 @@ function readerLevel(value: number, metric: RankMetric) {
 // ─── Medal colours ────────────────────────────────────────────────────────────
 
 const MEDAL: Record<number, { emoji: string; ring: string; text: string; bg: string; border: string }> = {
-  1: { emoji: "🥇", ring: "ring-yellow-400/30",  text: "text-yellow-400",  bg: "bg-yellow-500/12",  border: "border-yellow-500/25" },
-  2: { emoji: "🥈", ring: "ring-slate-300/30",   text: "text-slate-300",   bg: "bg-slate-300/8",    border: "border-slate-300/20"  },
-  3: { emoji: "🥉", ring: "ring-orange-400/30",  text: "text-orange-400",  bg: "bg-orange-400/8",   border: "border-orange-400/20" },
+  1: { emoji: "🥇", ring: "ring-yellow-400/50",  text: "text-yellow-400",  bg: "bg-yellow-500/12",  border: "border-yellow-500/25" },
+  2: { emoji: "🥈", ring: "ring-slate-300/40",   text: "text-slate-300",   bg: "bg-slate-300/8",    border: "border-slate-300/20"  },
+  3: { emoji: "🥉", ring: "ring-orange-400/40",  text: "text-orange-400",  bg: "bg-orange-400/8",   border: "border-orange-400/20" },
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -118,9 +118,11 @@ function ShowcaseAvatar({ name, color }: { name: string | null; color?: string }
 
 // ─── Podium (top 3) ───────────────────────────────────────────────────────────
 
-const PODIUM_ORDER = [1, 0, 2]; // silver | gold | bronze visual order
-const PODIUM_HEIGHTS = ["h-14", "h-20", "h-10"]; // silver | gold | bronze block height
-const PODIUM_AVATAR = ["h-10 w-10", "h-12 w-12", "h-9 w-9"];
+// Visual order: 2nd (left) | 1st (center) | 3rd (right)
+const PODIUM_ORDER = [1, 0, 2];
+const PODIUM_HEIGHTS = ["h-14", "h-20", "h-10"];
+const PODIUM_AVATAR_SIZE = ["h-11 w-11", "h-14 w-14", "h-10 w-10"];
+const PODIUM_DELAY = [0.1, 0.2, 0.3];
 
 function Podium({
   users,
@@ -135,13 +137,13 @@ function Podium({
   if (top3.length === 0) return null;
 
   return (
-    <div className="px-4 pb-2 pt-3">
-      <div className="flex items-end justify-center gap-1.5">
+    <div className="px-4 pb-3 pt-4">
+      <div className="flex items-end justify-center gap-2">
         {PODIUM_ORDER.map((srcIdx, displayIdx) => {
           const user = top3[srcIdx];
           if (!user) return <div key={displayIdx} className="flex-1" />;
 
-          const pos = user.rank; // 1, 2, or 3
+          const pos = user.rank;
           const medal = MEDAL[pos] ?? MEDAL[3];
           const isShowcase = user.isShowcase === true;
           const isMe = user.userId === myUserId;
@@ -149,27 +151,51 @@ function Podium({
           return (
             <motion.div
               key={user.userId}
-              initial={{ opacity: 0, y: 16 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: displayIdx * 0.08, duration: 0.35 }}
-              className="flex flex-1 flex-col items-center gap-1"
+              transition={{
+                delay: PODIUM_DELAY[displayIdx],
+                duration: 0.4,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+              className="flex flex-1 flex-col items-center gap-1.5"
             >
+              {/* Crown above #1 */}
               {pos === 1 && (
-                <Crown className="mb-0.5 h-4 w-4 text-yellow-400 drop-shadow-[0_0_8px_rgba(234,179,8,0.8)]" />
+                <Crown className="mb-0.5 h-4 w-4 text-yellow-400 drop-shadow-[0_0_10px_rgba(234,179,8,0.9)]" />
               )}
+              {pos !== 1 && <div className="mb-0.5 h-4" />}
 
               {/* Avatar */}
               <div className="relative">
                 {isShowcase ? (
-                  <ShowcaseAvatar
-                    name={user.name}
-                    color={user.showcaseColor}
-                  />
+                  <div
+                    className={cn(
+                      "flex items-center justify-center rounded-full border text-sm font-bold text-white/90",
+                      PODIUM_AVATAR_SIZE[displayIdx],
+                    )}
+                    style={{
+                      backgroundColor: user.showcaseColor
+                        ? `${user.showcaseColor}22`
+                        : "#ffffff11",
+                      borderColor: user.showcaseColor
+                        ? `${user.showcaseColor}33`
+                        : "rgba(255,255,255,0.1)",
+                    }}
+                  >
+                    <span style={{ color: user.showcaseColor ?? "#a3a3a3" }}>
+                      {(user.name ?? "?")[0]?.toUpperCase() ?? "?"}
+                    </span>
+                  </div>
                 ) : (
                   <UserAvatar
                     userId={user.userId}
                     name={user.name || undefined}
-                    className={cn("rounded-full", PODIUM_AVATAR[displayIdx])}
+                    className={cn(
+                      "rounded-full ring-2",
+                      PODIUM_AVATAR_SIZE[displayIdx],
+                      medal.ring,
+                    )}
                   />
                 )}
                 {isMe && (
@@ -177,10 +203,7 @@ function Podium({
                 )}
               </div>
 
-              {/* Medal emoji */}
-              <span className="text-base leading-none">{medal.emoji}</span>
-
-              {/* Name + badge */}
+              {/* Name + value */}
               <div className="flex w-full flex-col items-center gap-0.5 px-1">
                 <p
                   className={cn(
@@ -193,20 +216,21 @@ function Podium({
                 {user.founderNumber !== null && !isShowcase && (
                   <FounderChip number={user.founderNumber} />
                 )}
-                <p className="tabular-nums text-[10px] text-textDim/60">
-                  {metric.formatValue(user.value)}{" "}
-                  <span className="text-textDim/40">{metric.unit}</span>
+                <p className="tabular-nums text-[10px] text-primary font-bold">
+                  {metric.formatValue(user.value)}
+                  <span className="text-textDim/40 font-normal ml-0.5">
+                    {metric.unit}
+                  </span>
                 </p>
               </div>
 
-              {/* Block */}
+              {/* Podium block */}
               <div
                 className={cn(
-                  "w-full rounded-t-xl border-x border-t",
+                  "w-full rounded-t-xl border-x border-t flex items-start justify-center pt-2",
                   PODIUM_HEIGHTS[displayIdx],
                   medal.bg,
                   medal.border,
-                  "flex items-start justify-center pt-1.5",
                 )}
               >
                 <span className={cn("text-xs font-black", medal.text)}>
@@ -243,16 +267,16 @@ function RankRow({
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.03, duration: 0.25 }}
       className={cn(
-        "flex items-center gap-3 rounded-2xl border px-3 py-2.5 transition-colors",
+        "flex items-center gap-3 px-4 py-3.5 border-b border-white/[0.04] transition-colors",
         isShowcase
-          ? "border-white/4 bg-surface/20 opacity-65"
+          ? "opacity-60"
           : isMe
-            ? "border-primary/30 bg-primary/5"
-            : "border-white/5 bg-surface/40 hover:border-white/8",
+            ? "bg-[var(--color-primary)]/5 border-l-2 border-l-[var(--color-primary)]"
+            : "hover:bg-white/[0.02]",
       )}
     >
       {/* Rank number */}
-      <span className="w-7 shrink-0 text-center text-sm font-bold tabular-nums text-textDim/50">
+      <span className="w-8 shrink-0 text-right text-sm font-black tabular-nums text-textDim/40">
         {user.rank}
       </span>
 
@@ -263,7 +287,7 @@ function RankRow({
         <UserAvatar
           userId={user.userId}
           name={user.name || undefined}
-          className="h-9 w-9 shrink-0 rounded-full"
+          className="h-8 w-8 shrink-0 rounded-full"
         />
       )}
 
@@ -300,7 +324,8 @@ function RankRow({
             )}
             {level && (
               <span className={cn("text-[10px] font-medium", level.color)}>
-                {user.username ? "· " : ""}{level.label}
+                {user.username ? "· " : ""}
+                {level.label}
               </span>
             )}
           </div>
@@ -312,7 +337,11 @@ function RankRow({
         <p
           className={cn(
             "text-sm font-bold tabular-nums",
-            isShowcase ? "text-textDim/45" : isMe ? "text-primary" : "text-textMain",
+            isShowcase
+              ? "text-textDim/45"
+              : isMe
+                ? "text-primary"
+                : "text-textMain",
           )}
         >
           {metric.formatValue(user.value)}
@@ -330,7 +359,7 @@ function MyRankCard({ metric }: { metric: MetricConfig }) {
 
   if (isLoading) {
     return (
-      <div className="mx-4 h-[72px] animate-pulse rounded-2xl bg-surface/40" />
+      <div className="mx-4 h-[84px] animate-pulse rounded-2xl bg-surface/40" />
     );
   }
 
@@ -346,34 +375,47 @@ function MyRankCard({ metric }: { metric: MetricConfig }) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="mx-4 flex items-center gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3"
+      className="mx-4 flex items-center gap-4 rounded-2xl border border-[var(--color-primary)]/20 bg-[var(--color-primary)]/8 px-4 py-4"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15">
-        <Medal className="h-5 w-5 text-primary" />
+      {/* Rank number */}
+      <div className="shrink-0">
+        <p className="text-4xl font-black text-[var(--color-primary)] tabular-nums leading-none">
+          <span className="text-xl font-black text-[var(--color-primary)]/60">#</span>
+          {rank.toLocaleString("pt-BR")}
+        </p>
+        <p className="text-[10px] text-textDim/50 mt-0.5 font-medium">
+          de {totalUsers.toLocaleString("pt-BR")}
+        </p>
       </div>
 
-      <div className="min-w-0 flex-1">
+      {/* Divider */}
+      <div className="w-px h-10 bg-white/8 shrink-0" />
+
+      {/* User info */}
+      <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-1.5">
           <p className="text-xs font-semibold text-textDim">Sua posição</p>
           {level && (
-            <span className={cn("text-[10px] font-medium", level.color)}>
+            <span className={cn("text-[10px] font-semibold", level.color)}>
               · {level.label}
             </span>
           )}
         </div>
-        <p className="text-sm font-bold text-textMain">
-          #{rank.toLocaleString("pt-BR")}{" "}
-          <span className="text-xs font-normal text-textDim">
-            de {totalUsers.toLocaleString("pt-BR")} leitores
+        <p className="text-sm font-bold text-textMain mt-0.5 tabular-nums">
+          {metric.formatValue(value)}{" "}
+          <span className="text-xs font-normal text-textDim/60">
+            {metric.unit}
           </span>
         </p>
       </div>
 
-      <div className="shrink-0 text-right">
-        <p className="text-base font-bold tabular-nums text-primary">
-          {metric.formatValue(value)}
-        </p>
-        <p className="text-[10px] text-textDim/55">Top {topPercent}%</p>
+      {/* Percentile pill */}
+      <div className="shrink-0">
+        <div className="flex items-center justify-center rounded-xl bg-[var(--color-primary)]/15 border border-[var(--color-primary)]/20 px-2.5 py-1.5">
+          <p className="text-xs font-black text-[var(--color-primary)] tabular-nums">
+            Top {topPercent}%
+          </p>
+        </div>
       </div>
     </motion.div>
   );
@@ -383,27 +425,45 @@ function MyRankCard({ metric }: { metric: MetricConfig }) {
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-3 px-4">
+    <div className="space-y-4">
+      {/* My rank card skeleton */}
+      <div className="mx-4 h-[84px] animate-pulse rounded-2xl bg-surface/40" />
+
+      {/* Metric bar skeleton */}
+      <div className="mx-3 h-11 animate-pulse rounded-2xl bg-surface/40" />
+
       {/* Podium skeleton */}
-      <div className="flex items-end justify-center gap-2 pb-2 pt-3">
-        {[14, 20, 10].map((h, i) => (
+      <div className="flex items-end justify-center gap-2 px-4 pb-2 pt-1">
+        {[44, 56, 40].map((size, i) => (
           <div key={i} className="flex flex-1 flex-col items-center gap-2">
-            <div className="h-9 w-9 animate-pulse rounded-full bg-surface/60" />
-            <div className="h-2 w-12 animate-pulse rounded bg-surface/60" />
+            <div
+              className="animate-pulse rounded-full bg-surface/60"
+              style={{ width: size, height: size }}
+            />
+            <div className="h-2 w-12 animate-pulse rounded bg-surface/50" />
             <div
               className="w-full animate-pulse rounded-t-xl bg-surface/40"
-              style={{ height: h * 4 }}
+              style={{ height: [56, 80, 40][i] }}
             />
           </div>
         ))}
       </div>
-      {/* List skeleton */}
-      {Array.from({ length: 8 }).map((_, i) => (
+
+      {/* List row skeletons */}
+      {Array.from({ length: 7 }).map((_, i) => (
         <div
           key={i}
-          className="h-14 animate-pulse rounded-2xl bg-surface/40"
-          style={{ opacity: 1 - i * 0.08 }}
-        />
+          className="flex items-center gap-3 px-4 py-3.5 border-b border-white/[0.04]"
+          style={{ opacity: 1 - i * 0.1 }}
+        >
+          <div className="w-8 h-4 animate-pulse rounded bg-surface/40" />
+          <div className="h-8 w-8 animate-pulse rounded-full bg-surface/50" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3 w-1/2 animate-pulse rounded bg-surface/50" />
+            <div className="h-2.5 w-1/3 animate-pulse rounded bg-surface/40" />
+          </div>
+          <div className="h-3 w-10 animate-pulse rounded bg-surface/40" />
+        </div>
       ))}
     </div>
   );
@@ -421,74 +481,64 @@ export default function RankingPage() {
   const myUserId = user?.id;
   const allUsers = data?.users ?? [];
   const podiumUsers = allUsers.slice(0, 3);
-  const listUsers = allUsers.slice(3); // rank 4 onwards
+  const listUsers = allUsers.slice(3);
   const hasShowcase = allUsers.some((u) => u.isShowcase);
   const realUserCount = allUsers.filter((u) => !u.isShowcase).length;
 
   return (
     <main className="min-h-screen pb-28">
-      {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl safe-header">
-        <div className="flex h-14 items-center justify-between px-5">
-          <div className="flex items-center gap-2.5">
-            <Trophy className="h-5 w-5 text-primary" />
-            <div>
-              <h1 className="text-[15px] font-bold leading-tight text-textMain">
-                Ranking de Leitores
-              </h1>
-              {realUserCount > 0 && (
-                <p className="text-[10px] text-textDim/50">
-                  {realUserCount} {realUserCount === 1 ? "leitor" : "leitores"}{" "}
-                  ativos
-                </p>
-              )}
-            </div>
+      {/* Sticky header with metric selector */}
+      <div className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-white/[0.04] safe-header">
+        {/* Title row */}
+        <div className="flex items-center justify-between px-4 pt-3 pb-1">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-primary" />
+            <h1 className="text-[14px] font-black text-textMain tracking-tight">
+              Ranking
+            </h1>
+            {realUserCount > 0 && (
+              <span className="text-[10px] text-textDim/40 font-medium">
+                · {realUserCount}{" "}
+                {realUserCount === 1 ? "leitor" : "leitores"}
+              </span>
+            )}
           </div>
+          <p className="text-[10px] text-textDim/35 font-medium">
+            atualizado a cada 2 min
+          </p>
+        </div>
 
-          {/* Metric selector — compact pills on right */}
-          <div className="flex items-center gap-1">
-            {METRICS.map((m) => {
-              const Icon = m.icon;
-              const isActive = m.key === activeMetric;
-              return (
-                <button
-                  key={m.key}
-                  onClick={() => setActiveMetric(m.key)}
-                  aria-label={m.label}
-                  className={cn(
-                    "rounded-xl p-2 transition-colors",
-                    isActive
-                      ? "bg-surface text-textMain shadow-sm"
-                      : "text-textDim/50 hover:text-textDim",
-                  )}
-                >
-                  <Icon
-                    className={cn(
-                      "h-4 w-4",
-                      isActive ? m.color : "text-current",
-                    )}
-                  />
-                </button>
-              );
-            })}
-          </div>
+        {/* Metric selector */}
+        <div className="flex gap-1 p-3 pt-2">
+          {METRICS.map((m) => {
+            const Icon = m.icon;
+            const isActive = m.key === activeMetric;
+            return (
+              <button
+                key={m.key}
+                onClick={() => setActiveMetric(m.key)}
+                className={cn(
+                  "flex-1 flex flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 transition-all duration-200",
+                  isActive
+                    ? "bg-[var(--color-primary)] text-white"
+                    : "text-textDim/50 hover:text-textDim",
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span className="text-[10px] font-bold leading-none">
+                  {m.label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="space-y-4 pt-2">
-        {/* ── My position card ───────────────────────────────────────────── */}
+      <div className="space-y-5 pt-4">
+        {/* My rank card */}
         {isAuthenticated && <MyRankCard metric={metric} />}
 
-        {/* ── Metric label ───────────────────────────────────────────────── */}
-        <div className="flex items-center gap-2 px-5">
-          <metric.icon className={cn("h-4 w-4", metric.color)} />
-          <span className="text-sm font-semibold text-textMain">
-            {metric.label}
-          </span>
-          <span className="text-xs text-textDim/40">· atualizado a cada 2 min</span>
-        </div>
-
-        {/* ── Content ────────────────────────────────────────────────────── */}
+        {/* Content */}
         <AnimatePresence mode="wait">
           {isLoading ? (
             <motion.div
@@ -506,16 +556,16 @@ export default function RankingPage() {
               animate={{ opacity: 1 }}
               className="mx-4 rounded-2xl border border-white/8 bg-surface/60 p-6 text-center"
             >
-              <WifiOff className="mx-auto mb-3 h-8 w-8 text-textDim/30" />
-              <p className="text-sm font-semibold text-textMain">
+              <WifiOff className="mx-auto mb-3 h-8 w-8 text-textDim/20" />
+              <p className="text-base font-bold text-textMain">
                 Erro ao carregar ranking
               </p>
-              <p className="mt-1 text-xs text-textDim/60">
+              <p className="mt-1 text-sm text-textDim/60">
                 Verifique sua conexão e tente novamente.
               </p>
               <button
                 onClick={() => void refetch()}
-                className="mt-4 rounded-xl bg-primary px-5 py-2 text-xs font-semibold text-white"
+                className="mt-4 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-white"
               >
                 Tentar novamente
               </button>
@@ -527,16 +577,16 @@ export default function RankingPage() {
               animate={{ opacity: 1 }}
               className="mx-4 rounded-2xl border border-dashed border-white/8 bg-surface/30 px-4 py-14 text-center"
             >
-              <Trophy className="mx-auto mb-3 h-10 w-10 text-textDim/20" />
-              <p className="text-sm font-semibold text-textMain">
+              <Trophy className="mx-auto mb-3 h-12 w-12 text-textDim/20" />
+              <p className="text-base font-bold text-textMain">
                 Nenhum leitor ainda
               </p>
-              <p className="mt-1 text-xs text-textDim/50">
+              <p className="mt-1 text-sm text-textDim/50">
                 Seja o primeiro a aparecer no ranking!
               </p>
               <Link
                 href="/home"
-                className="mt-5 inline-flex rounded-xl bg-primary px-5 py-2.5 text-xs font-semibold text-white"
+                className="mt-5 inline-flex rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-white"
               >
                 Explorar catálogo
               </Link>
@@ -548,7 +598,6 @@ export default function RankingPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.25 }}
-              className="space-y-3"
             >
               {/* Podium — top 3 */}
               {podiumUsers.length > 0 && (
@@ -559,9 +608,20 @@ export default function RankingPage() {
                 />
               )}
 
+              {/* Divider */}
+              {podiumUsers.length > 0 && listUsers.length > 0 && (
+                <div className="mx-4 mb-1 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-white/[0.04]" />
+                  <span className="text-[10px] text-textDim/30 font-semibold uppercase tracking-wider">
+                    Classificação
+                  </span>
+                  <div className="h-px flex-1 bg-white/[0.04]" />
+                </div>
+              )}
+
               {/* List — rank 4+ */}
               {listUsers.length > 0 && (
-                <div className="space-y-2 px-4">
+                <div>
                   {listUsers.map((u, i) => (
                     <RankRow
                       key={u.userId}
@@ -576,7 +636,7 @@ export default function RankingPage() {
 
               {/* Showcase notice */}
               {hasShowcase && (
-                <p className="px-4 pb-1 text-center text-[10px] text-textDim/30">
+                <p className="px-4 py-3 text-center text-[10px] text-textDim/25">
                   Algumas entradas são personas para preencher o ranking enquanto
                   a comunidade cresce.
                 </p>

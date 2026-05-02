@@ -71,6 +71,8 @@ const ALLOWED_PREFIXES = [
   "admin/storage/",
   "public/founder-status",
   "ranking",
+  "suwayomi/",
+  "achievements",
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;
@@ -199,14 +201,23 @@ function shouldApplyPublicCacheHeader(
   targetPath: string,
   hasForwardedCookie: boolean,
 ): boolean {
-  if (req.method !== "GET" || hasForwardedCookie) {
-    return false;
-  }
-
+  if (req.method !== "GET") return false;
+  // Avatar images are public — anyone can request them, no user-specific data.
+  // Cache even when the requester has an auth cookie.
+  if (targetPath.startsWith("account/avatar/")) return true;
+  if (hasForwardedCookie) return false;
   return (
     targetPath.startsWith("carousel/covers") ||
     targetPath.startsWith("public/series/")
   );
+}
+
+// Short private cache for endpoints that are fetched on every page mount but
+// change infrequently. Allows browser to deduplicate rapid requests without
+// keeping stale auth/subscription data for long.
+function shouldApplyShortPrivateCache(targetPath: string, method: string): boolean {
+  if (method !== "GET") return false;
+  return targetPath === "me" || targetPath === "users/me/badges" || targetPath === "notifications";
 }
 
 function isUploadSessionEventStream(targetPath: string): boolean {
@@ -339,6 +350,11 @@ async function handler(
       responseHeaders.set("x-accel-buffering", "no");
     } else if (isPublicCacheable) {
       responseHeaders.set("cache-control", PUBLIC_CACHE_CONTROL);
+      appendVaryHeader(responseHeaders, "Cookie");
+    } else if (shouldApplyShortPrivateCache(targetPath, req.method)) {
+      // Auth-gated endpoints that change infrequently: let the browser cache for
+      // a short window to absorb rapid duplicate requests (navigation, StrictMode).
+      responseHeaders.set("cache-control", "private, max-age=30, must-revalidate");
       appendVaryHeader(responseHeaders, "Cookie");
     } else if (forwardedCookieHeader || req.method !== "GET") {
       responseHeaders.set("cache-control", PRIVATE_CACHE_CONTROL);

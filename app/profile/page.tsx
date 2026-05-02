@@ -16,15 +16,13 @@ import {
   Star,
   CalendarDays,
   Target,
-  CheckCircle2,
-  Lock,
   Settings,
   WifiOff,
   Info,
   Heart,
   CreditCard,
 } from "lucide-react";
-import { BadgeList, UserBadge, getPrimaryBadge } from "@/components/community/UserBadge";
+import { BadgeList, UserBadge } from "@/components/community/UserBadge";
 import { useMyBadges } from "@/hooks/useApi";
 import { motion, type Easing } from "framer-motion";
 import {
@@ -41,48 +39,436 @@ import { AuthCover } from "@/components/AuthCover";
 import { UserAvatar } from "@/components/community/UserAvatar";
 import { SubscriptionAlertBanner } from "@/components/subscription/SubscriptionAlertBanner";
 import { SubscriptionStateBadge } from "@/components/subscription/SubscriptionStateBadge";
-import type { Milestone, TopSeriesStats } from "@/types/api";
-import { useState } from "react";
+import type { TopSeriesStats } from "@/types/api";
+import { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  visible: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: i * 0.06, duration: 0.4, ease: "easeOut" as Easing },
-  }),
-};
+// ─── CountUp animation ──────────────────────────────────────────────────────
+function CountUp({ value, duration = 1.2 }: { value: number; duration?: number }) {
+  const [display, setDisplay] = useState(0);
+  useEffect(() => {
+    let start = 0;
+    const step = value / (duration * 60);
+    const timer = setInterval(() => {
+      start += step;
+      if (start >= value) {
+        setDisplay(value);
+        clearInterval(timer);
+      } else {
+        setDisplay(Math.floor(start));
+      }
+    }, 1000 / 60);
+    return () => clearInterval(timer);
+  }, [value, duration]);
+  return <>{display.toLocaleString("pt-BR")}</>;
+}
 
-// ─── Skeleton para carregamento ─────────────────────────────────────────────
+// ─── Skeleton ───────────────────────────────────────────────────────────────
 function ProfileSkeleton() {
   return (
     <>
-      {/* Avatar */}
-      <div className="flex flex-col items-center pt-14 pb-6 safe-header">
-        <div className="w-24 h-24 rounded-full bg-surface/50 animate-pulse mb-4" />
-        <div className="h-6 w-32 rounded-lg bg-surface/50 animate-pulse mb-2" />
-        <div className="h-4 w-48 rounded bg-surface/50 animate-pulse" />
+      <div className="px-4 pt-6 pb-4 safe-header space-y-4">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-20 h-20 rounded-full bg-surface animate-pulse" />
+          <div className="h-6 w-36 rounded-xl bg-surface animate-pulse" />
+          <div className="h-4 w-52 rounded bg-surface animate-pulse" />
+          <div className="flex gap-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-8 w-16 rounded-xl bg-surface animate-pulse" />
+            ))}
+          </div>
+        </div>
       </div>
-      {/* Stats grid */}
       <div className="px-4 grid grid-cols-2 gap-3">
         {[1, 2, 3, 4, 5, 6].map((i) => (
-          <div
-            key={i}
-            className="bg-surface/50 rounded-2xl p-4 animate-pulse h-28"
-          />
+          <div key={i} className="bg-surface rounded-2xl p-4 animate-pulse h-28" />
         ))}
       </div>
-      {/* Sections */}
       <div className="px-4 mt-5 space-y-4">
-        <div className="h-48 bg-surface/50 rounded-2xl animate-pulse" />
-        <div className="h-32 bg-surface/50 rounded-2xl animate-pulse" />
+        <div className="h-40 bg-surface rounded-2xl animate-pulse" />
+        <div className="h-48 bg-surface rounded-2xl animate-pulse" />
+        <div className="h-32 bg-surface rounded-2xl animate-pulse" />
       </div>
     </>
   );
 }
 
-// ─── Componente principal ───────────────────────────────────────────────────
+// ─── Section Header ──────────────────────────────────────────────────────────
+function SectionHeader({
+  icon: Icon,
+  title,
+  badge,
+}: {
+  icon: React.ElementType;
+  title: string;
+  badge?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 mb-3 px-1">
+      <Icon className="w-4 h-4 text-textDim" />
+      <h2 className="text-sm font-semibold text-textDim uppercase tracking-wider">
+        {title}
+      </h2>
+      {badge && (
+        <span className="ml-auto text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full tabular-nums">
+          {badge}
+        </span>
+      )}
+    </div>
+  );
+}
 
+// ─── Weekly chart ────────────────────────────────────────────────────────────
+const PT_DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+function WeeklyChart({
+  data,
+  mostProductiveDay,
+}: {
+  data: { day: string; pages: number; time: number }[];
+  mostProductiveDay: string;
+}) {
+  const maxPages = Math.max(...data.map((d) => d.pages), 1);
+  const topPages = data.find((d) => d.day === mostProductiveDay)?.pages ?? 0;
+
+  return (
+    <div className="bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4 overflow-hidden">
+      <div className="px-5 pt-5 pb-4">
+        <div className="flex gap-2">
+          {data.map((d, i) => {
+            const fillPct = Math.max((d.pages / maxPages) * 100, 3);
+            const isTop = d.day === mostProductiveDay;
+            const dayLabel = PT_DAYS[i] ?? d.day.slice(0, 3);
+
+            return (
+              <div key={d.day} className="flex-1 flex flex-col items-center gap-2">
+                {/* Value label */}
+                <motion.span
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: d.pages > 0 ? 1 : 0, y: 0 }}
+                  transition={{ delay: 0.5 + i * 0.05 }}
+                  className={cn(
+                    "text-[9px] tabular-nums font-bold h-3 leading-3",
+                    isTop ? "text-[var(--color-primary)]" : "text-textDim/30",
+                  )}
+                >
+                  {d.pages > 0 ? d.pages : ""}
+                </motion.span>
+
+                {/* Bar track + fill */}
+                <div
+                  className={cn(
+                    "relative w-full rounded-xl overflow-hidden",
+                    isTop ? "bg-[var(--color-primary)]/10" : "bg-white/[0.04]",
+                  )}
+                  style={{ height: 120 }}
+                >
+                  <motion.div
+                    className={cn(
+                      "absolute bottom-0 left-0 right-0 rounded-xl",
+                      isTop ? "bg-[var(--color-primary)]" : "bg-[var(--color-primary)]/18",
+                    )}
+                    style={isTop ? { boxShadow: "0 0 24px rgba(229,9,20,0.30)" } : undefined}
+                    initial={{ height: 0 }}
+                    animate={{ height: `${fillPct}%` }}
+                    transition={{
+                      delay: 0.2 + i * 0.06,
+                      duration: 0.65,
+                      ease: [0.22, 1, 0.36, 1],
+                    }}
+                  />
+                </div>
+
+                {/* Day label */}
+                <span
+                  className={cn(
+                    "text-[10px] font-semibold",
+                    isTop ? "text-[var(--color-primary)]" : "text-textDim/40",
+                  )}
+                >
+                  {dayLabel}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between px-5 py-3 border-t border-white/[0.05]">
+        <span className="text-[11px] text-textDim/40 font-medium">Páginas por dia</span>
+        <div className="flex items-center gap-1.5">
+          <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]" />
+          <span className="text-[11px] text-[var(--color-primary)] font-semibold">
+            {mostProductiveDay} · {topPages.toLocaleString("pt-BR")} págs.
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Streak card ─────────────────────────────────────────────────────────────
+function StreakCard({
+  currentStreak,
+  longestStreak,
+  totalActiveDays,
+  isActiveToday,
+}: {
+  currentStreak: number;
+  longestStreak: number;
+  totalActiveDays: number;
+  isActiveToday: boolean;
+}) {
+  const today = new Date();
+  const dayAbbrs = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  const last7Labels = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - (6 - i));
+    return dayAbbrs[d.getDay()] ?? "?";
+  });
+
+  const isRead = (index: number) => {
+    const daysAgo = 6 - index;
+    return isActiveToday
+      ? daysAgo < currentStreak
+      : daysAgo >= 1 && daysAgo <= currentStreak;
+  };
+
+  return (
+    <div className="bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4 p-5">
+      {/* Header: flame + number */}
+      <div className="flex items-center gap-4 mb-6">
+        <motion.img
+          src="/fogo-vetor.svg"
+          alt=""
+          aria-hidden
+          className="w-14 h-14 object-contain shrink-0"
+          animate={{ scale: [1, 1.04, 0.97, 1.02, 1] }}
+          transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <div className="flex-1">
+          <p className="text-4xl font-black text-textMain tabular-nums leading-none">
+            <CountUp value={currentStreak} />
+          </p>
+          <p className="text-sm text-textDim mt-0.5">dias seguidos</p>
+        </div>
+        {isActiveToday ? (
+          <span className="inline-flex items-center gap-1.5 text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full font-semibold shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            Hoje ✓
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2.5 py-1 rounded-full font-semibold shrink-0">
+            <Zap className="w-3 h-3" />
+            Leia hoje!
+          </span>
+        )}
+      </div>
+
+      {/* 7-day circles */}
+      <div className="flex items-center gap-1.5">
+        {last7Labels.map((label, i) => {
+          const read = isRead(i);
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
+              <motion.div
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.08 + i * 0.06, duration: 0.3, ease: "easeOut" }}
+                className={cn(
+                  "w-9 h-9 rounded-full flex items-center justify-center",
+                  read
+                    ? "bg-[var(--color-primary)] shadow-[0_0_14px_rgba(229,9,20,0.35)]"
+                    : "bg-white/5 border border-white/8",
+                )}
+              >
+                {read && (
+                  <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </motion.div>
+              <span className={cn(
+                "text-[10px] font-semibold",
+                read ? "text-[var(--color-primary)]" : "text-textDim/35",
+              )}>
+                {label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Secondary stats */}
+      <div className="mt-5 grid grid-cols-2 gap-3 pt-4 border-t border-white/[0.05]">
+        <div className="text-center">
+          <p className="text-xl font-bold text-textMain tabular-nums">
+            <CountUp value={longestStreak} />
+          </p>
+          <p className="text-[10px] text-textDim mt-0.5">Recorde pessoal</p>
+        </div>
+        <div className="text-center">
+          <p className="text-xl font-bold text-textMain tabular-nums">
+            <CountUp value={totalActiveDays} />
+          </p>
+          <p className="text-[10px] text-textDim mt-0.5">Dias ativos no total</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Top series card ─────────────────────────────────────────────────────────
+const RANK_STYLES: Record<number, string> = {
+  1: "bg-gradient-to-br from-amber-400 to-yellow-500 text-black",
+  2: "bg-gradient-to-br from-slate-300 to-slate-400 text-black",
+  3: "bg-gradient-to-br from-amber-700 to-amber-600 text-white",
+};
+
+function TopSeriesCard({
+  series,
+  rank,
+}: {
+  series: TopSeriesStats;
+  rank: number;
+}) {
+  const rankClass = RANK_STYLES[rank] ?? "bg-black/60 text-white backdrop-blur-sm";
+
+  return (
+    <Link href={`/serie/${series.id}`} className="shrink-0 w-36">
+      <motion.div
+        whileTap={{ scale: 0.94 }}
+        className="bg-surface/60 backdrop-blur-sm rounded-2xl overflow-hidden border border-white/4 hover:border-white/10 transition-all duration-200"
+      >
+        <div className="relative h-48 overflow-hidden">
+          {series.coverUrl ? (
+            <AuthCover
+              coverUrl={series.coverUrl}
+              alt={series.title}
+              className="object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-surface flex items-center justify-center">
+              <BookOpen className="w-8 h-8 text-textDim/30" />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+          <div
+            className={cn(
+              "absolute top-2 left-2 text-[10px] font-bold w-6 h-6 rounded-lg flex items-center justify-center shadow-md",
+              rankClass,
+            )}
+          >
+            #{rank}
+          </div>
+          {/* Progress bar */}
+          <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/10">
+            <div
+              className="h-full bg-gradient-to-r from-[var(--color-primary)] to-orange-400"
+              style={{ width: `${series.progressPercent}%` }}
+            />
+          </div>
+        </div>
+        <div className="p-2.5">
+          <p className="text-xs font-semibold text-textMain line-clamp-1">
+            {series.title}
+          </p>
+          <p className="text-[10px] text-textDim mt-0.5 tabular-nums">
+            {series.chaptersRead}/{series.totalChapters} caps
+          </p>
+        </div>
+      </motion.div>
+    </Link>
+  );
+}
+
+// ─── Genre color — monochromatic red scale ────────────────────────────────────
+const GENRE_OPACITIES = [1, 0.75, 0.55, 0.42, 0.32, 0.24, 0.18, 0.14];
+
+function getGenreColor(_tag: string, index: number): string {
+  const alpha = GENRE_OPACITIES[index] ?? GENRE_OPACITIES[GENRE_OPACITIES.length - 1]!;
+  const r = Math.round(229 * alpha + 30 * (1 - alpha));
+  const g = Math.round(9 * alpha + 30 * (1 - alpha));
+  const b = Math.round(20 * alpha + 30 * (1 - alpha));
+  return `rgb(${r},${g},${b})`;
+}
+
+// ─── Settings link row ────────────────────────────────────────────────────────
+function SettingsRow({
+  href,
+  icon: Icon,
+  iconBg,
+  iconColor,
+  title,
+  subtitle,
+  badge,
+  onClick,
+  isRed,
+}: {
+  href?: string;
+  icon: React.ElementType;
+  iconBg: string;
+  iconColor: string;
+  title: string;
+  subtitle?: string;
+  badge?: string;
+  onClick?: () => void;
+  isRed?: boolean;
+}) {
+  const inner = (
+    <motion.div
+      whileHover={{ x: 2 }}
+      whileTap={{ scale: 0.98 }}
+      className={cn(
+        "flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm rounded-2xl border transition-all duration-200",
+        isRed
+          ? "border-white/4 hover:border-red-500/15 hover:bg-red-500/5"
+          : "border-white/4 hover:border-white/10",
+      )}
+    >
+      <div
+        className={cn(
+          "w-10 h-10 rounded-xl flex items-center justify-center ring-1 ring-white/5 shrink-0",
+          iconBg,
+        )}
+      >
+        <Icon className={cn("w-5 h-5", iconColor)} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p
+          className={cn(
+            "font-medium text-sm",
+            isRed ? "text-red-400" : "text-textMain",
+          )}
+        >
+          {title}
+        </p>
+        {subtitle && (
+          <p className="text-[11px] text-textDim mt-0.5 truncate">{subtitle}</p>
+        )}
+      </div>
+      {badge && (
+        <span className="text-[10px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full tabular-nums shrink-0">
+          {badge}
+        </span>
+      )}
+      <ChevronRight
+        className={cn("w-4 h-4 shrink-0", isRed ? "text-red-400/30" : "text-textDim/30")}
+      />
+    </motion.div>
+  );
+
+  if (href) {
+    return <Link href={href}>{inner}</Link>;
+  }
+  return (
+    <button onClick={onClick} className="w-full text-left">
+      {inner}
+    </button>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const { accessGranted, logout, subscription, user } = useAuth();
   const {
@@ -93,7 +479,7 @@ export default function ProfilePage() {
   } = useUserStats();
   const { data: badges } = useMyBadges();
   const router = useRouter();
-  const [showAllMilestones, setShowAllMilestones] = useState(false);
+  const [_showAllMilestones, _setShowAllMilestones] = useState(false);
   const subscriptionMeta = getSubscriptionStateMeta(subscription);
   const renewalHref = getRenewalHref(subscription);
   const renewalHrefIsExternal = isExternalHref(renewalHref);
@@ -110,6 +496,21 @@ export default function ProfilePage() {
   const milestones = stats?.milestones;
   const library = stats?.library;
 
+  // Reader level calculation (unchanged logic)
+  const chaptersRead = reading?.chaptersRead ?? 0;
+  const readerLevel =
+    chaptersRead >= 500
+      ? { title: "Lenda", color: "text-yellow-400", bg: "bg-yellow-400/10", glow: "shadow-yellow-400/20" }
+      : chaptersRead >= 200
+        ? { title: "Mestre", color: "text-purple-400", bg: "bg-purple-400/10", glow: "shadow-purple-400/20" }
+        : chaptersRead >= 100
+          ? { title: "Veterano", color: "text-blue-400", bg: "bg-blue-400/10", glow: "shadow-blue-400/20" }
+          : chaptersRead >= 50
+            ? { title: "Experiente", color: "text-emerald-400", bg: "bg-emerald-400/10", glow: "shadow-emerald-400/20" }
+            : chaptersRead >= 10
+              ? { title: "Iniciante", color: "text-textDim", bg: "bg-surface", glow: "" }
+              : { title: "Novato", color: "text-textDim", bg: "bg-surface", glow: "" };
+
   const statCards = [
     {
       icon: BookOpen,
@@ -117,6 +518,7 @@ export default function ProfilePage() {
       label: "Capítulos lidos",
       color: "text-primary",
       bg: "bg-primary/10",
+      border: "border-t-[var(--color-primary)]",
     },
     {
       icon: FileText,
@@ -124,6 +526,7 @@ export default function ProfilePage() {
       label: "Páginas lidas",
       color: "text-blue-400",
       bg: "bg-blue-400/10",
+      border: "border-t-blue-500",
     },
     {
       icon: Library,
@@ -131,20 +534,24 @@ export default function ProfilePage() {
       label: "Séries iniciadas",
       color: "text-purple-400",
       bg: "bg-purple-400/10",
+      border: "border-t-purple-500",
     },
     {
       icon: Trophy,
       value: reading?.seriesCompleted ?? 0,
       label: "Séries completas",
-      color: "text-yellow-400",
-      bg: "bg-yellow-400/10",
+      color: "text-amber-400",
+      bg: "bg-amber-400/10",
+      border: "border-t-amber-400",
     },
     {
       icon: Clock,
-      value: time?.totalTimeFormatted ?? "0min",
+      value: null as null,
+      rawValue: time?.totalTimeFormatted ?? "0min",
       label: "Tempo de leitura",
       color: "text-emerald-400",
       bg: "bg-emerald-400/10",
+      border: "border-t-emerald-500",
     },
     {
       icon: TrendingUp,
@@ -152,52 +559,26 @@ export default function ProfilePage() {
       label: "Páginas/dia",
       color: "text-orange-400",
       bg: "bg-orange-400/10",
+      border: "border-t-orange-400",
     },
   ];
 
-  // Calcular nível do leitor baseado nos capítulos lidos
-  const chaptersRead = reading?.chaptersRead ?? 0;
-  const readerLevel =
-    chaptersRead >= 500
-      ? { title: "Lenda", color: "text-yellow-400", bg: "bg-yellow-400/10" }
-      : chaptersRead >= 200
-        ? { title: "Mestre", color: "text-purple-400", bg: "bg-purple-400/10" }
-        : chaptersRead >= 100
-          ? {
-              title: "Veterano",
-              color: "text-blue-400",
-              bg: "bg-blue-400/10",
-            }
-          : chaptersRead >= 50
-            ? {
-                title: "Experiente",
-                color: "text-emerald-400",
-                bg: "bg-emerald-400/10",
-              }
-            : chaptersRead >= 10
-              ? {
-                  title: "Iniciante",
-                  color: "text-textDim",
-                  bg: "bg-surface",
-                }
-              : {
-                  title: "Novato",
-                  color: "text-textDim",
-                  bg: "bg-surface",
-                };
+  const founderBadge = badges?.find((b) => b.type === "FOUNDER");
+  const otherBadges = badges?.filter((b) => b.type !== "FOUNDER") ?? [];
 
   return (
     <main className="min-h-screen pb-28">
-      {/* Hero Header */}
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-linear-to-b from-primary/12 via-primary/4 to-transparent" />
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-125 h-75 bg-primary/6 rounded-full blur-[120px]" />
 
+      {/* ===== HERO HEADER ===== */}
+      <div
+        className="relative overflow-hidden"
+        style={{ background: "radial-gradient(ellipse at top, rgba(229,9,20,0.12) 0%, transparent 60%)" }}
+      >
         <div className="relative px-5 pt-14 pb-6 safe-header">
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
+            initial={{ opacity: 0, scale: 0.92 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.4 }}
+            transition={{ duration: 0.45, ease: "easeOut" }}
             className="flex flex-col items-center text-center"
           >
             {/* Avatar */}
@@ -205,32 +586,42 @@ export default function ProfilePage() {
               <UserAvatar
                 userId={user?.id}
                 name={user?.name || undefined}
-                className="h-24 w-24 rounded-full"
+                className="h-20 w-20 rounded-full"
               />
               {user?.role === "ADMIN" && (
-                <div className="absolute -bottom-1 -right-1 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                <div className="absolute -bottom-1 -right-1 bg-yellow-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-0.5 shadow-md">
                   <Shield className="w-3 h-3" />
                   ADMIN
                 </div>
               )}
-              {/* Active today indicator */}
+              {/* Active today pulse */}
               {streaks?.isActiveToday && (
-                <div className="absolute -top-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-background">
-                  <Zap className="w-3 h-3 text-white" />
-                </div>
+                <motion.div
+                  animate={{ scale: [1, 1.4, 1] }}
+                  transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute -top-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-background shadow-sm shadow-emerald-500/40"
+                >
+                  <Zap className="w-2.5 h-2.5 text-white" />
+                </motion.div>
               )}
             </div>
 
+            {/* Name */}
             <h1 className="text-2xl font-bold text-textMain mb-0.5">
               {user?.name || "Usuário"}
             </h1>
             <p className="text-sm text-textDim">{user?.email}</p>
 
-            {/* Reader Level Badge + Member Since */}
+            {/* Level + member since */}
             <div className="flex items-center gap-2 mt-2.5">
               {!isLoading && (
                 <span
-                  className={`text-[11px] px-2.5 py-0.5 ${readerLevel.bg} ${readerLevel.color} font-semibold rounded-full border border-white/5`}
+                  className={cn(
+                    "text-[11px] px-3 py-1 font-bold rounded-full border border-white/8 shadow-sm",
+                    readerLevel.bg,
+                    readerLevel.color,
+                    readerLevel.glow && `shadow-[0_0_12px_0_var(--tw-shadow-color)] ${readerLevel.glow}`,
+                  )}
                 >
                   {readerLevel.title}
                 </span>
@@ -238,7 +629,7 @@ export default function ProfilePage() {
               {time?.memberSinceDays !== undefined && (
                 <span className="text-[11px] text-textDim/60 flex items-center gap-1">
                   <CalendarDays className="w-3 h-3" />
-                  Membro há {time.memberSinceDays} dias
+                  {time.memberSinceDays} dias na plataforma
                 </span>
               )}
             </div>
@@ -248,19 +639,14 @@ export default function ProfilePage() {
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.15 }}
+                transition={{ duration: 0.3, delay: 0.25 }}
                 className="mt-3 flex flex-col items-center gap-2"
               >
-                {/* Founder badge gets prominent display */}
-                {badges.find((b) => b.type === "FOUNDER") && (
-                  <UserBadge
-                    badge={badges.find((b) => b.type === "FOUNDER")!}
-                    size="lg"
-                  />
+                {founderBadge && (
+                  <UserBadge badge={founderBadge} size="lg" />
                 )}
-                {/* Other badges in a row */}
                 <BadgeList
-                  badges={badges.filter((b) => b.type !== "FOUNDER")}
+                  badges={otherBadges}
                   size="sm"
                   className="justify-center"
                 />
@@ -270,10 +656,12 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* Subscription alert banner (unchanged) */}
       <div className="px-4">
         <SubscriptionAlertBanner subscription={subscription} />
       </div>
 
+      {/* ===== ACCESS GATE ===== */}
       {!accessGranted ? (
         <div className="px-4 space-y-4">
           <div className="surface-panel rounded-[28px] p-5">
@@ -355,9 +743,7 @@ export default function ProfilePage() {
             Verifique sua conexão e tente novamente
           </p>
           <button
-            onClick={() => {
-              void refetchUserStats();
-            }}
+            onClick={() => { void refetchUserStats(); }}
             className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm"
           >
             Tentar novamente
@@ -365,91 +751,59 @@ export default function ProfilePage() {
         </div>
       ) : (
         <>
-          {/* ===== Quick Stats Grid ===== */}
+          {/* ===== STATS GRID ===== */}
           <div className="px-4 mt-1">
             <SectionHeader icon={BarChart3} title="Estatísticas" />
             <div className="grid grid-cols-2 gap-2.5">
               {statCards.map((stat, i) => (
                 <motion.div
                   key={stat.label}
-                  custom={i}
-                  variants={fadeUp}
-                  initial="hidden"
-                  animate="visible"
-                  className="bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4 hover:border-white/8 transition-all duration-200"
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.06, duration: 0.4, ease: "easeOut" as Easing }}
+                  className={cn(
+                    "bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4 border-t-2 hover:border-t-2 transition-all duration-200",
+                    stat.border,
+                  )}
                 >
                   <div
-                    className={`w-9 h-9 rounded-xl ${stat.bg} flex items-center justify-center mb-3 ring-1 ring-white/5`}
+                    className={cn(
+                      "w-9 h-9 rounded-xl flex items-center justify-center mb-3 ring-1 ring-white/5",
+                      stat.bg,
+                    )}
                   >
-                    <stat.icon className={`w-4.5 h-4.5 ${stat.color}`} />
+                    <stat.icon className={cn("w-4 h-4", stat.color)} />
                   </div>
                   <p className="text-2xl font-bold text-textMain tabular-nums tracking-tight">
-                    {typeof stat.value === "number"
-                      ? stat.value.toLocaleString("pt-BR")
-                      : stat.value}
+                    {stat.rawValue !== undefined
+                      ? stat.rawValue
+                      : <CountUp value={stat.value ?? 0} />}
                   </p>
-                  <p className="text-[11px] text-textDim mt-0.5">
-                    {stat.label}
-                  </p>
+                  <p className="text-[11px] text-textDim mt-0.5">{stat.label}</p>
                 </motion.div>
               ))}
             </div>
           </div>
 
-          {/* ===== Streak Section ===== */}
-          {streaks &&
-            (streaks.currentStreak > 0 || streaks.longestStreak > 0) && (
-              <motion.div
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35 }}
-                className="px-4 mt-5"
-              >
-                <div className="bg-linear-to-r from-orange-500/8 via-red-500/8 to-yellow-500/8 backdrop-blur-sm rounded-2xl p-4 border border-orange-500/8">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-orange-500/15 flex items-center justify-center ring-1 ring-orange-500/15">
-                      <Flame className="w-5 h-5 text-orange-400" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-semibold text-textMain text-sm">
-                        Sequência de Leitura
-                      </p>
-                      <p className="text-[11px] text-textDim">
-                        {streaks.isActiveToday
-                          ? "Você já leu hoje! Continue assim"
-                          : "Leia hoje para manter a sequência!"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="bg-background/30 rounded-xl p-2.5 text-center">
-                      <p className="text-xl font-bold text-orange-400 tabular-nums">
-                        {streaks.currentStreak}
-                      </p>
-                      <p className="text-[10px] text-textDim mt-0.5">
-                        Dias seguidos
-                      </p>
-                    </div>
-                    <div className="bg-background/30 rounded-xl p-2.5 text-center">
-                      <p className="text-xl font-bold text-yellow-400 tabular-nums">
-                        {streaks.longestStreak}
-                      </p>
-                      <p className="text-[10px] text-textDim mt-0.5">Recorde</p>
-                    </div>
-                    <div className="bg-background/30 rounded-xl p-2.5 text-center">
-                      <p className="text-xl font-bold text-emerald-400 tabular-nums">
-                        {streaks.totalActiveDays}
-                      </p>
-                      <p className="text-[10px] text-textDim mt-0.5">
-                        Dias ativos
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            )}
+          {/* ===== STREAK SECTION ===== */}
+          {streaks && (streaks.currentStreak > 0 || streaks.longestStreak > 0) && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+              className="px-4 mt-5"
+            >
+              <SectionHeader icon={Flame} title="Sequência de Leitura" />
+              <StreakCard
+                currentStreak={streaks.currentStreak}
+                longestStreak={streaks.longestStreak}
+                totalActiveDays={streaks.totalActiveDays}
+                isActiveToday={streaks.isActiveToday}
+              />
+            </motion.div>
+          )}
 
-          {/* ===== Weekly Activity ===== */}
+          {/* ===== WEEKLY ACTIVITY ===== */}
           {time?.pagesPerDayOfWeek && time.pagesPerDayOfWeek.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -465,7 +819,7 @@ export default function ProfilePage() {
             </motion.div>
           )}
 
-          {/* ===== Top Genres ===== */}
+          {/* ===== TOP GENRES ===== */}
           {genres && genres.topGenres.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -473,55 +827,64 @@ export default function ProfilePage() {
               transition={{ delay: 0.45 }}
               className="px-4 mt-5"
             >
-              <SectionHeader icon={Star} title="Gêneros Favoritos" />
+              <SectionHeader
+                icon={Star}
+                title="Gêneros Favoritos"
+                badge={`${genres.totalGenresExplored}`}
+              />
               <div className="bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4">
                 {/* Favorite genre highlight */}
-                <div className="flex items-center gap-3 mb-4 pb-3 border-b border-white/5">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Star className="w-5 h-5 text-primary fill-primary" />
+                <div className="bg-[var(--color-primary)]/8 border border-[var(--color-primary)]/20 rounded-xl p-3 mb-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[var(--color-primary)]/15 flex items-center justify-center shrink-0">
+                    <Star className="w-4 h-4 text-[var(--color-primary)] fill-[var(--color-primary)]" />
                   </div>
-                  <div>
-                    <p className="text-xs text-textDim">Gênero favorito</p>
-                    <p className="font-bold text-textMain text-lg">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-textDim/70 uppercase tracking-wider">Gênero favorito</p>
+                    <p className="font-bold text-textMain text-base leading-tight">
                       {genres.favoriteGenre}
-                    </p>
-                  </div>
-                  <div className="ml-auto text-right">
-                    <p className="text-xs text-textDim">Explorados</p>
-                    <p className="font-bold text-textMain">
-                      {genres.totalGenresExplored}
                     </p>
                   </div>
                 </div>
 
                 {/* Genre bars */}
-                <div className="space-y-2.5">
-                  {genres.topGenres.map((genre) => (
-                    <div key={genre.tag}>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-textMain font-medium">
-                          {genre.tag}
-                        </span>
-                        <span className="text-textDim tabular-nums">
-                          {genre.count} · {genre.percent}%
-                        </span>
+                <div className="space-y-3">
+                  {genres.topGenres.map((genre, i) => {
+                    const color = getGenreColor(genre.tag, i);
+                    return (
+                      <div key={genre.tag}>
+                        <div className="flex items-center justify-between text-xs mb-1.5">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: color }}
+                            />
+                            <span className="text-textMain font-medium">{genre.tag}</span>
+                            <span className="text-textDim/60 tabular-nums text-[10px]">
+                              {genre.count} caps
+                            </span>
+                          </div>
+                          <span className="font-bold tabular-nums" style={{ color }}>
+                            {genre.percent}%
+                          </span>
+                        </div>
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: `${color}20` }}>
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${genre.percent}%` }}
+                            transition={{ delay: 0.5 + i * 0.06, duration: 0.6, ease: "easeOut" }}
+                            className="h-full rounded-full"
+                            style={{ backgroundColor: color }}
+                          />
+                        </div>
                       </div>
-                      <div className="h-2 bg-background rounded-full overflow-hidden">
-                        <motion.div
-                          initial={{ width: 0 }}
-                          animate={{ width: `${genre.percent}%` }}
-                          transition={{ delay: 0.5, duration: 0.6 }}
-                          className="h-full bg-primary/80 rounded-full"
-                        />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </motion.div>
           )}
 
-          {/* ===== Top Series ===== */}
+          {/* ===== TOP SERIES ===== */}
           {stats?.topSeries && stats.topSeries.length > 0 && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -540,7 +903,7 @@ export default function ProfilePage() {
             </motion.div>
           )}
 
-          {/* ===== Milestones / Achievements ===== */}
+          {/* ===== ACHIEVEMENTS TEASER ===== */}
           {milestones && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -548,68 +911,78 @@ export default function ProfilePage() {
               transition={{ delay: 0.55 }}
               className="px-4 mt-5"
             >
-              <SectionHeader
-                icon={Target}
-                title="Conquistas"
-                badge={`${milestones.achieved}/${milestones.total}`}
-              />
-
-              {/* Next milestone */}
-              {milestones.next && (
-                <div className="bg-linear-to-r from-primary/10 via-primary/5 to-transparent rounded-2xl p-4 border border-primary/15 mb-3">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-                      <Target className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs text-textDim">Próxima conquista</p>
-                      <p className="font-semibold text-textMain">
-                        {milestones.next.title}
-                      </p>
-                    </div>
-                    <span className="text-sm font-bold text-primary tabular-nums">
-                      {milestones.next.percent}%
-                    </span>
+              <SectionHeader icon={Target} title="Conquistas" />
+              <div className="bg-gradient-to-br from-amber-400/5 to-transparent rounded-2xl p-5 border border-amber-400/20">
+                <div className="flex flex-col items-center text-center mb-5">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-400/10 flex items-center justify-center mb-3 ring-1 ring-amber-400/20">
+                    <Trophy className="w-7 h-7 text-amber-400" />
                   </div>
-                  <div className="h-2.5 bg-background rounded-full overflow-hidden">
+                  <p className="text-3xl font-bold text-textMain tabular-nums">
+                    <CountUp value={milestones.achieved} />
+                    <span className="text-lg text-textDim font-normal">
+                      /{milestones.total}
+                    </span>
+                  </p>
+                  <p className="text-sm text-textDim mt-1">conquistas desbloqueadas</p>
+                </div>
+
+                {/* Overall progress bar */}
+                <div className="mb-4">
+                  <div className="h-2 bg-background rounded-full overflow-hidden">
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: `${milestones.next.percent}%` }}
-                      transition={{ delay: 0.6, duration: 0.8 }}
-                      className="h-full bg-primary rounded-full"
+                      animate={{ width: `${Math.round((milestones.achieved / Math.max(milestones.total, 1)) * 100)}%` }}
+                      transition={{ delay: 0.6, duration: 0.8, ease: "easeOut" }}
+                      className="h-full bg-gradient-to-r from-amber-400 to-yellow-500 rounded-full"
                     />
                   </div>
-                  <p className="text-[11px] text-textDim mt-1.5 tabular-nums">
-                    {milestones.next.current.toLocaleString("pt-BR")} /{" "}
-                    {milestones.next.target.toLocaleString("pt-BR")}
-                  </p>
                 </div>
-              )}
 
-              {/* Achievement grid */}
-              <div className="grid grid-cols-3 gap-2">
-                {(showAllMilestones
-                  ? milestones.all
-                  : milestones.all.slice(0, 9)
-                ).map((m) => (
-                  <MilestoneCard key={m.id} milestone={m} />
-                ))}
+                {/* Next milestone */}
+                {milestones.next && (
+                  <div className="bg-background/40 rounded-xl p-3 mb-4 border border-white/5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+                        <Target className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] text-textDim/70 uppercase tracking-wider">Próxima</p>
+                        <p className="text-sm font-semibold text-textMain truncate">
+                          {milestones.next.title}
+                        </p>
+                        <div className="mt-1.5 h-1.5 bg-background rounded-full overflow-hidden">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${milestones.next.percent}%` }}
+                            transition={{ delay: 0.7, duration: 0.8, ease: "easeOut" }}
+                            className="h-full bg-primary rounded-full"
+                          />
+                        </div>
+                        <p className="text-[10px] text-textDim/60 mt-0.5 tabular-nums">
+                          {milestones.next.current.toLocaleString("pt-BR")} / {milestones.next.target.toLocaleString("pt-BR")}
+                        </p>
+                      </div>
+                      <span className="text-sm font-bold text-primary shrink-0">
+                        {milestones.next.percent}%
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <Link href="/achievements">
+                  <motion.div
+                    whileTap={{ scale: 0.97 }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 text-sm font-semibold hover:bg-amber-400/15 transition-colors"
+                  >
+                    Ver todas as conquistas
+                    <ChevronRight className="w-4 h-4" />
+                  </motion.div>
+                </Link>
               </div>
-              {milestones.all.length > 9 && (
-                <motion.button
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => setShowAllMilestones(!showAllMilestones)}
-                  className="w-full mt-3 py-2 text-xs text-textDim hover:text-primary font-medium transition-colors"
-                >
-                  {showAllMilestones
-                    ? "Mostrar menos"
-                    : `+${milestones.all.length - 9} conquistas`}
-                </motion.button>
-              )}
             </motion.div>
           )}
 
-          {/* ===== Library Overview ===== */}
+          {/* ===== LIBRARY OVERVIEW ===== */}
           {library && (
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -619,53 +992,53 @@ export default function ProfilePage() {
             >
               <SectionHeader icon={Library} title="Biblioteca" />
               <div className="bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <p className="text-xs text-textDim">Catálogo explorado</p>
-                      <p className="text-xs font-bold text-purple-400 tabular-nums">
-                        {library.libraryExploredPercent}%
-                      </p>
+                <div className="flex items-center gap-5">
+                  {/* Donut ring */}
+                  <div className="shrink-0">
+                    <div
+                      className="h-20 w-20 rounded-full relative"
+                      style={{
+                        background: `conic-gradient(var(--color-primary) ${library.libraryExploredPercent}%, #1e1e1e 0)`,
+                      }}
+                    >
+                      <div className="absolute inset-[5px] flex items-center justify-center rounded-full bg-[#0f0f0f]">
+                        <span className="text-sm font-bold text-textMain tabular-nums">
+                          {library.libraryExploredPercent}%
+                        </span>
+                      </div>
                     </div>
-                    <div className="h-2.5 bg-background rounded-full overflow-hidden">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{
-                          width: `${library.libraryExploredPercent}%`,
-                        }}
-                        transition={{ delay: 0.65, duration: 0.8 }}
-                        className="h-full bg-purple-500 rounded-full"
-                      />
-                    </div>
+                    <p className="text-[9px] text-textDim/60 text-center mt-1.5">do catálogo</p>
                   </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="text-center bg-background/30 rounded-xl py-2.5">
-                    <div className="flex items-center justify-center gap-1 mb-1">
-                      <Heart className="w-3 h-3 text-primary" />
+
+                  {/* Stats */}
+                  <div className="flex-1 grid grid-cols-1 gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <Heart className="w-3.5 h-3.5 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] text-textDim">Favoritos</p>
+                      </div>
+                      <p className="text-sm font-bold text-textMain tabular-nums">{library.favorites}</p>
                     </div>
-                    <p className="text-lg font-bold text-textMain">
-                      {library.favorites}
-                    </p>
-                    <p className="text-[11px] text-textDim">Favoritos</p>
-                  </div>
-                  <div className="text-center bg-background/30 rounded-xl py-2.5">
-                    <div className="flex items-center justify-center gap-1 mb-1">
-                      <BookOpen className="w-3 h-3 text-emerald-400" />
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                        <BookOpen className="w-3.5 h-3.5 text-blue-400" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] text-textDim">Lendo</p>
+                      </div>
+                      <p className="text-sm font-bold text-textMain tabular-nums">{library.reading}</p>
                     </div>
-                    <p className="text-lg font-bold text-textMain">
-                      {library.reading}
-                    </p>
-                    <p className="text-[11px] text-textDim">Lendo</p>
-                  </div>
-                  <div className="text-center bg-background/30 rounded-xl py-2.5">
-                    <div className="flex items-center justify-center gap-1 mb-1">
-                      <Library className="w-3 h-3 text-purple-400" />
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
+                        <Library className="w-3.5 h-3.5 text-purple-400" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[10px] text-textDim">Total séries</p>
+                      </div>
+                      <p className="text-sm font-bold text-textMain tabular-nums">{library.totalSeriesInLibrary}</p>
                     </div>
-                    <p className="text-lg font-bold text-textMain">
-                      {library.totalSeriesInLibrary}
-                    </p>
-                    <p className="text-[11px] text-textDim">Total séries</p>
                   </div>
                 </div>
               </div>
@@ -674,7 +1047,7 @@ export default function ProfilePage() {
         </>
       )}
 
-      {/* ===== Account & Settings Section ===== */}
+      {/* ===== SETTINGS / LINKS ===== */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -684,52 +1057,38 @@ export default function ProfilePage() {
         <SectionHeader icon={Settings} title="Configurações" />
 
         <div className="space-y-2">
-          {/* Dashboard (admin only) */}
           {user?.role === "ADMIN" && (
-            <Link href="/dashboard">
-              <motion.div
-                whileTap={{ scale: 0.98 }}
-                className="flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm rounded-2xl border border-yellow-500/10 hover:border-yellow-500/20 transition-all"
-              >
-                <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center ring-1 ring-yellow-400/10">
-                  <Shield className="w-5 h-5 text-yellow-400" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium text-textMain text-sm">
-                    Painel Administrativo
-                  </p>
-                  <p className="text-[11px] text-textDim">
-                    Gerenciar séries, mídias e usuários
-                  </p>
-                </div>
-                <ChevronRight className="w-4 h-4 text-textDim/40" />
-              </motion.div>
-            </Link>
+            <SettingsRow
+              href="/dashboard"
+              icon={Shield}
+              iconBg="bg-yellow-500/10"
+              iconColor="text-yellow-400"
+              title="Painel Administrativo"
+              subtitle="Gerenciar séries, mídias e usuários"
+            />
           )}
 
-          <Link href="/profile/edit">
-            <motion.div
-              whileTap={{ scale: 0.98 }}
-              className="flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4 hover:border-primary/20 transition-all"
-            >
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/10">
-                <Settings className="w-5 h-5 text-primary" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-textMain text-sm">
-                  Editar perfil
-                </p>
-                <p className="text-[11px] text-textDim">
-                  Gerenciar conta, sessões e segurança
-                </p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-textDim/40" />
-            </motion.div>
-          </Link>
+          <SettingsRow
+            href="/profile/edit"
+            icon={Settings}
+            iconBg="bg-primary/10"
+            iconColor="text-primary"
+            title="Editar perfil"
+            subtitle="Gerenciar conta, sessões e segurança"
+          />
 
-          {/* App info */}
+          <SettingsRow
+            href="/subscription"
+            icon={CreditCard}
+            iconBg="bg-blue-500/10"
+            iconColor="text-blue-400"
+            title="Assinatura"
+            subtitle="Gerenciar plano e pagamentos"
+          />
+
+          {/* App info (non-navigable) */}
           <div className="flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4">
-            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/10 overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-primary/10 overflow-hidden shrink-0">
               <img
                 src="/logo-192.png"
                 alt="ManHQ"
@@ -747,202 +1106,23 @@ export default function ProfilePage() {
           </div>
 
           {/* Logout */}
-          <motion.button
-            onClick={handleLogout}
-            whileTap={{ scale: 0.98 }}
-            className="w-full flex items-center gap-4 p-4 bg-surface/60 backdrop-blur-sm hover:bg-red-500/5 rounded-2xl transition-all border border-white/4 hover:border-red-500/15"
-          >
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/8 ring-1 ring-red-400/10">
-              <LogOut className="w-5 h-5 text-red-400" />
-            </div>
-            <div className="flex-1 text-left">
-              <p className="font-medium text-red-400 text-sm">Sair da conta</p>
-              <p className="text-[11px] text-textDim">
-                Desconectar deste dispositivo
-              </p>
-            </div>
-            <ChevronRight className="w-4 h-4 text-red-400/30" />
-          </motion.button>
+          <SettingsRow
+            icon={LogOut}
+            iconBg="bg-red-500/8"
+            iconColor="text-red-400"
+            title="Sair da conta"
+            subtitle="Desconectar deste dispositivo"
+            onClick={() => { void handleLogout(); }}
+            isRed
+          />
         </div>
       </motion.div>
 
       <div className="mt-8 mb-4 text-center">
         <p className="text-xs text-textDim/40">
-          Feito com ❤️ para leitores de manhwa
+          Feito com amor para leitores de manhwa
         </p>
       </div>
     </main>
-  );
-}
-
-// ===== Sub-components =====
-
-function SectionHeader({
-  icon: Icon,
-  title,
-  badge,
-}: {
-  icon: React.ElementType;
-  title: string;
-  badge?: string;
-}) {
-  return (
-    <div className="flex items-center gap-2 mb-3 px-1">
-      <Icon className="w-4 h-4 text-textDim" />
-      <h2 className="text-sm font-semibold text-textDim uppercase tracking-wider">
-        {title}
-      </h2>
-      {badge && (
-        <span className="ml-auto text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full tabular-nums">
-          {badge}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function WeeklyChart({
-  data,
-  mostProductiveDay,
-}: {
-  data: { day: string; pages: number; time: number }[];
-  mostProductiveDay: string;
-}) {
-  const maxPages = Math.max(...data.map((d) => d.pages), 1);
-
-  return (
-    <div className="bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4">
-      <div className="flex items-end gap-2 h-28 mb-2">
-        {data.map((d) => {
-          const height = Math.max((d.pages / maxPages) * 100, 4);
-          const isTop = d.day === mostProductiveDay;
-          return (
-            <div key={d.day} className="flex-1 flex flex-col items-center">
-              <span className="text-[10px] text-textDim/70 mb-1 tabular-nums">
-                {d.pages > 0 ? d.pages : ""}
-              </span>
-              <motion.div
-                initial={{ height: 0 }}
-                animate={{ height: `${height}%` }}
-                transition={{ delay: 0.3, duration: 0.5 }}
-                className={`w-full rounded-lg ${
-                  isTop
-                    ? "bg-primary shadow-sm shadow-primary/20"
-                    : "bg-primary/25"
-                }`}
-              />
-            </div>
-          );
-        })}
-      </div>
-      <div className="flex gap-2">
-        {data.map((d) => (
-          <div key={d.day} className="flex-1 text-center">
-            <span className="text-[10px] text-textDim">
-              {d.day.slice(0, 3)}
-            </span>
-          </div>
-        ))}
-      </div>
-      <p className="text-[11px] text-textDim mt-3 text-center">
-        Dia mais produtivo:{" "}
-        <span className="text-primary font-medium">{mostProductiveDay}</span>
-      </p>
-    </div>
-  );
-}
-
-function TopSeriesCard({
-  series,
-  rank,
-}: {
-  series: TopSeriesStats;
-  rank: number;
-}) {
-  return (
-    <Link href={`/serie/${series.id}`} className="shrink-0 w-36">
-      <motion.div
-        whileTap={{ scale: 0.96 }}
-        className="bg-surface/60 backdrop-blur-sm rounded-2xl overflow-hidden border border-white/4 hover:border-white/8 transition-all"
-      >
-        <div className="relative h-44 overflow-hidden">
-          {series.coverUrl ? (
-            <AuthCover
-              coverUrl={series.coverUrl}
-              alt={series.title}
-              className="object-cover"
-            />
-          ) : (
-            <div className="w-full h-full bg-surface flex items-center justify-center">
-              <BookOpen className="w-8 h-8 text-textDim/30" />
-            </div>
-          )}
-          <div className="absolute inset-0 bg-linear-to-t from-black/80 via-transparent to-transparent" />
-          {/* Rank badge */}
-          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm text-white text-xs font-bold w-6 h-6 rounded-lg flex items-center justify-center">
-            #{rank}
-          </div>
-          {/* Progress bar */}
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
-            <div
-              className="h-full bg-primary"
-              style={{ width: `${series.progressPercent}%` }}
-            />
-          </div>
-        </div>
-        <div className="p-2.5">
-          <p className="text-xs font-semibold text-textMain line-clamp-1">
-            {series.title}
-          </p>
-          <p className="text-[10px] text-textDim mt-0.5 tabular-nums">
-            {series.chaptersRead}/{series.totalChapters} caps ·{" "}
-            {series.pagesRead} pgs
-          </p>
-        </div>
-      </motion.div>
-    </Link>
-  );
-}
-
-function MilestoneCard({ milestone }: { milestone: Milestone }) {
-  const achieved = milestone.achieved;
-
-  return (
-    <motion.div
-      whileTap={{ scale: 0.95 }}
-      className={`rounded-xl p-2.5 text-center border transition-colors ${
-        achieved
-          ? "bg-primary/5 border-primary/20"
-          : "bg-surface border-white/4"
-      }`}
-    >
-      <div className="flex justify-center mb-1.5">
-        {achieved ? (
-          <CheckCircle2 className="w-5 h-5 text-primary" />
-        ) : (
-          <Lock className="w-5 h-5 text-textDim/30" />
-        )}
-      </div>
-      <p
-        className={`text-[10px] leading-tight font-medium line-clamp-2 ${
-          achieved ? "text-textMain" : "text-textDim/60"
-        }`}
-      >
-        {milestone.title}
-      </p>
-      {!achieved && (
-        <div className="mt-1.5">
-          <div className="h-1 bg-background rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary/40 rounded-full"
-              style={{ width: `${milestone.percent}%` }}
-            />
-          </div>
-          <p className="text-[9px] text-textDim/50 mt-0.5 tabular-nums">
-            {milestone.percent}%
-          </p>
-        </div>
-      )}
-    </motion.div>
   );
 }

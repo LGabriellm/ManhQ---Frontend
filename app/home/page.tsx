@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Search, Flame, Play, ChevronRight, WifiOff } from "lucide-react";
+import { Search, ChevronRight, WifiOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { Logo } from "@/components/Logo";
 import { MangaCard } from "@/components/MangaCard";
@@ -15,6 +15,7 @@ import { useContinueReading } from "@/hooks/useApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { getPublicCoverUrl } from "@/lib/coverUrl";
 import type { DiscoverResponse } from "@/services/discover.service";
+import type { Series } from "@/types/api";
 
 type DiscoverSectionKey = "mostViewed" | "recentlyAdded" | "recentlyUpdated" | "trending";
 
@@ -34,6 +35,10 @@ const EMPTY_DISCOVER: DiscoverResponse = {
   unavailableSections: [],
 };
 
+// ---------------------------------------------------------------------------
+// Skeletons
+// ---------------------------------------------------------------------------
+
 function CardSkeleton() {
   return (
     <div className="w-32 shrink-0 snap-start">
@@ -45,7 +50,7 @@ function CardSkeleton() {
 
 function ContinueSkeleton() {
   return (
-    <div className="mx-4 flex gap-3 rounded-2xl bg-surface/40 p-3 animate-pulse">
+    <div className="flex gap-3 rounded-2xl bg-surface/40 p-3 animate-pulse">
       <div className="h-20 w-14 rounded-xl bg-surface" />
       <div className="flex-1 space-y-2 py-1">
         <div className="h-4 w-2/3 rounded-full bg-surface" />
@@ -56,36 +61,66 @@ function ContinueSkeleton() {
   );
 }
 
-interface RowTitleProps {
-  label: string;
-  href?: string;
-  accentColor?: string;
+function FeaturedSkeleton() {
+  return <div className="h-72 w-full animate-pulse bg-surface/60" />;
 }
 
-function RowTitle({ label, href, accentColor = "#e50914" }: RowTitleProps) {
+function SectionSkeleton() {
   return (
-    <div className="mb-3.5 flex items-center justify-between px-5">
-      <div className="flex items-center gap-2.5">
-        <span
-          className="h-5 w-1 shrink-0 rounded-full"
-          style={{ background: accentColor }}
-        />
-        <h2 className="text-[15px] font-bold tracking-tight text-textMain">
-          {label}
-        </h2>
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 px-4">
+        <div className="h-6 w-1 rounded-full animate-pulse bg-surface/70" />
+        <div className="h-4 w-32 rounded-full animate-pulse bg-surface/50" />
       </div>
-      {href ? (
+      <HorizontalScroll>
+        {[1, 2, 3, 4, 5].map((i) => (
+          <CardSkeleton key={i} />
+        ))}
+      </HorizontalScroll>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SectionHeader
+// ---------------------------------------------------------------------------
+
+interface SectionHeaderProps {
+  title: string;
+  badge?: ReactNode;
+  link?: string;
+  variant?: "standard" | "hq";
+}
+
+function SectionHeader({ title, badge, link, variant = "standard" }: SectionHeaderProps) {
+  return (
+    <div className="flex items-center gap-3 mb-4 px-4">
+      {variant === "standard" ? (
+        <div className="w-1 h-6 rounded-full shrink-0 bg-[var(--color-primary)]" />
+      ) : (
+        <div className="border-l-2 border-white/20 pl-3 flex items-center">
+          {/* hq variant: no red bar, uses subtle left border */}
+        </div>
+      )}
+      <h2 className="text-base font-black text-textMain uppercase tracking-wide leading-none">
+        {title}
+      </h2>
+      {badge}
+      {link ? (
         <Link
-          href={href}
-          className="flex items-center gap-0.5 text-[11px] font-semibold text-primary/70 transition-colors hover:text-primary"
+          href={link}
+          className="ml-auto text-[11px] font-semibold text-[var(--color-primary)] flex items-center gap-1 shrink-0"
         >
-          Ver tudo
-          <ChevronRight className="h-3 w-3" />
+          Ver mais <ChevronRight className="w-3 h-3" />
         </Link>
       ) : null}
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// SectionRow
+// ---------------------------------------------------------------------------
 
 function SectionRow({
   items,
@@ -106,22 +141,108 @@ function SectionRow({
     rating?: number | null;
   }) => ReactNode;
 }) {
-  return loading ? (
+  if (loading) {
+    return (
+      <HorizontalScroll>
+        {[1, 2, 3, 4, 5].map((index) => (
+          <CardSkeleton key={index} />
+        ))}
+      </HorizontalScroll>
+    );
+  }
+  return (
     <HorizontalScroll>
-      {[1, 2, 3, 4, 5].map((index) => (
-        <CardSkeleton key={index} />
-      ))}
-    </HorizontalScroll>
-  ) : (
-    <HorizontalScroll>
-      {items.map((item) => (
-        <div key={item.id} className="w-32 shrink-0 snap-start">
+      {items.map((item, i) => (
+        <motion.div
+          key={item.id}
+          className="w-32 shrink-0 snap-start"
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-50px" }}
+          transition={{ duration: 0.3, ease: "easeOut", delay: i * 0.04 }}
+        >
           {renderCard(item)}
-        </div>
+        </motion.div>
       ))}
     </HorizontalScroll>
   );
 }
+
+// ---------------------------------------------------------------------------
+// FeaturedBanner
+// ---------------------------------------------------------------------------
+
+function FeaturedBanner({ featured }: { featured: Series }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.6, ease: "easeOut" }}
+    >
+      <Link href={`/serie/${featured.id}`} className="block">
+        <div className="relative h-72 w-full overflow-hidden">
+          {/* Cover image */}
+          <div className="absolute inset-0">
+            <AuthCover
+              coverUrl={getPublicCoverUrl(featured.id, featured.coverUrl)}
+              alt={featured.title}
+              className="h-full w-full object-cover"
+              loading="eager"
+            />
+          </div>
+
+          {/* Gradient: top fade */}
+          <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-transparent to-transparent" />
+          {/* Gradient: bottom strong fade */}
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent" />
+          {/* Gradient: left tint */}
+          <div className="absolute inset-0 bg-gradient-to-r from-background/30 to-transparent" />
+
+          {/* Top-right badge */}
+          <div className="absolute top-4 right-4">
+            <span className="text-[10px] font-black uppercase tracking-widest text-white bg-[var(--color-primary)] px-2.5 py-1 rounded-full">
+              ● Em Destaque
+            </span>
+          </div>
+
+          {/* Bottom-left content */}
+          <div className="absolute bottom-0 left-0 right-0 px-4 pb-5">
+            <h2 className="text-2xl font-black text-white leading-tight line-clamp-2 drop-shadow-lg">
+              {featured.title}
+            </h2>
+            <div className="mt-1.5 flex items-center gap-3">
+              {featured.rating != null && featured.rating > 0 ? (
+                <span className="text-[12px] font-semibold text-white/60 flex items-center gap-1">
+                  <span className="text-yellow-400">★</span>
+                  {featured.rating.toFixed(1)}
+                </span>
+              ) : null}
+              {featured.genres && featured.genres.length > 0 ? (
+                <span className="text-[11px] text-white/40 font-medium">
+                  {featured.genres.slice(0, 2).join(" · ")}
+                </span>
+              ) : null}
+            </div>
+
+            {/* CTA buttons */}
+            <div className="mt-3.5 flex items-center gap-2.5">
+              <span className="bg-white text-black font-black text-sm px-5 py-2.5 rounded-full hover:bg-white/90 transition-colors">
+                Começar a ler
+              </span>
+              <span className="border border-white/30 text-white font-semibold text-sm px-4 py-2.5 rounded-full hover:bg-white/5 transition-colors">
+                + Biblioteca
+              </span>
+            </div>
+          </div>
+        </div>
+      </Link>
+    </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function HomePage() {
   const {
@@ -161,7 +282,7 @@ export default function HomePage() {
     )
     .filter(Boolean);
 
-  // WorkType-based filtering from the mostViewed list (already returned by backend)
+  // WorkType-based filtering from the mostViewed list
   const mangaSeries = discoverData.mostViewed
     .filter((s) => s.workType?.toLowerCase() === "manga")
     .slice(0, 12);
@@ -175,9 +296,8 @@ export default function HomePage() {
   const sectionConfigs = [
     {
       key: "mostViewed" as const,
-      label: "Mais populares",
+      label: "🔥 Mais Vistas",
       href: "/category/popular",
-      accentColor: "#e50914",
       items:
         featuredSource === "mostViewed"
           ? discoverData.mostViewed.slice(1, 13)
@@ -198,9 +318,8 @@ export default function HomePage() {
     },
     {
       key: "trending" as const,
-      label: "Em alta esta semana",
+      label: "↑ Em Alta",
       href: "/category/trending",
-      accentColor: "#f97316",
       items:
         featuredSource === "trending"
           ? (discoverData.trending ?? []).slice(1, 13)
@@ -221,9 +340,8 @@ export default function HomePage() {
     },
     {
       key: "recentlyAdded" as const,
-      label: "Novidades",
+      label: "Recém Adicionadas",
       href: "/category/recent",
-      accentColor: "#facc15",
       items:
         featuredSource === "recentlyAdded"
           ? discoverData.recentlyAdded.slice(1, 13)
@@ -243,9 +361,8 @@ export default function HomePage() {
     },
     {
       key: "recentlyUpdated" as const,
-      label: "Atualizados",
+      label: "Recém Atualizadas",
       href: "/category/updated",
-      accentColor: "#60a5fa",
       items:
         featuredSource === "recentlyUpdated"
           ? discoverData.recentlyUpdated.slice(1, 13)
@@ -266,31 +383,12 @@ export default function HomePage() {
     },
   ];
 
-  // WorkType rows (only shown when there are items)
-  const workTypeSections = [
-    {
-      key: "manga-popular",
-      label: "Mangás Populares",
-      items: mangaSeries,
-      accentColor: "#818cf8",
-    },
-    {
-      key: "manhwa-popular",
-      label: "Manhwas",
-      items: manhwaSeries,
-      accentColor: "#34d399",
-    },
-    {
-      key: "hq-popular",
-      label: "HQs & Comics",
-      items: hqSeries,
-      accentColor: "#fb923c",
-    },
-  ].filter((section) => section.items.length > 0);
-
   const hasAnyDiscoverContent =
     !!featured || sectionConfigs.some((section) => section.items.length > 0);
 
+  // ---------------------------------------------------------------------------
+  // Auth loading skeleton
+  // ---------------------------------------------------------------------------
   if (authLoading) {
     return (
       <main className="min-h-screen bg-background pb-28">
@@ -300,27 +398,33 @@ export default function HomePage() {
           </div>
         </div>
         <div className="space-y-7 pt-5">
-          <div className="px-5">
-            <div className="h-4 w-24 animate-pulse rounded-full bg-surface/50" />
-            <div className="mt-2 h-7 w-48 animate-pulse rounded-full bg-surface/50" />
+          {/* Greeting skeleton */}
+          <div className="px-5 space-y-1.5">
+            <div className="h-3 w-28 animate-pulse rounded-full bg-surface/50" />
+            <div className="h-6 w-44 animate-pulse rounded-full bg-surface/50" />
           </div>
-          <div className="mx-4 h-56 animate-pulse rounded-3xl bg-surface/60" />
-          <div className="space-y-2.5">
+          {/* Featured skeleton */}
+          <FeaturedSkeleton />
+          {/* Continue reading skeleton */}
+          <div className="space-y-3 px-4">
+            <div className="flex items-center gap-3">
+              <div className="h-6 w-1 rounded-full animate-pulse bg-surface/70" />
+              <div className="h-4 w-36 rounded-full animate-pulse bg-surface/50" />
+            </div>
             <ContinueSkeleton />
             <ContinueSkeleton />
           </div>
-          <section>
-            <HorizontalScroll>
-              {[1, 2, 3, 4, 5].map((index) => (
-                <CardSkeleton key={index} />
-              ))}
-            </HorizontalScroll>
-          </section>
+          {/* Section skeletons */}
+          <SectionSkeleton />
+          <SectionSkeleton />
         </div>
       </main>
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Unauthenticated
+  // ---------------------------------------------------------------------------
   if (!isAuthenticated) {
     return (
       <main className="min-h-screen bg-background pb-28">
@@ -340,8 +444,9 @@ export default function HomePage() {
         <div className="px-4 pt-8">
           <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-surface/70 p-6 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
             <div className="pointer-events-none absolute -top-16 -right-16 h-40 w-40 rounded-full bg-primary/8 blur-[60px]" />
-            <p className="text-base font-semibold text-textMain">
-              Entre para ver sua home personalizada
+            <div className="w-1 h-6 rounded-full bg-[var(--color-primary)] mb-4" />
+            <p className="text-base font-black text-textMain uppercase tracking-wide">
+              Sua home personalizada
             </p>
             <p className="mt-2 text-sm leading-6 text-textDim">
               Descobertas, progresso de leitura e atualizações aparecem aqui em
@@ -350,13 +455,13 @@ export default function HomePage() {
             <div className="mt-5 flex flex-wrap gap-2.5">
               <Link
                 href="/auth/login"
-                className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90"
+                className="rounded-full bg-[var(--color-primary)] px-5 py-2.5 text-sm font-black text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90"
               >
                 Fazer login
               </Link>
               <Link
                 href="/search"
-                className="rounded-xl border border-white/8 bg-white/4 px-5 py-2.5 text-sm font-semibold text-textMain transition-colors hover:bg-white/8"
+                className="rounded-full border border-white/8 bg-white/4 px-5 py-2.5 text-sm font-semibold text-textMain transition-colors hover:bg-white/8"
               >
                 Explorar catálogo
               </Link>
@@ -367,8 +472,14 @@ export default function HomePage() {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Authenticated
+  // ---------------------------------------------------------------------------
+  const dayOfWeek = new Date().toLocaleDateString("pt-BR", { weekday: "long" });
+
   return (
     <main className="min-h-screen bg-background pb-28">
+      {/* Header */}
       <div className="sticky top-0 z-40 border-b border-white/4 bg-background/85 backdrop-blur-2xl safe-header">
         <div className="flex h-14 items-center justify-between px-5">
           <Logo size="sm" href="/home" />
@@ -383,27 +494,28 @@ export default function HomePage() {
       </div>
 
       <div className="space-y-7 pt-5">
+        {/* Greeting */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, ease: "easeOut" }}
           className="px-5"
         >
-          <p className="text-sm text-textDim">
-            Olá,{" "}
-            <span className="font-semibold capitalize text-textMain">
-              {firstName}
-            </span>
-          </p>
-          <h1 className="mt-1 text-[26px] font-black leading-tight tracking-tight text-textMain">
-            O que vamos ler hoje?
+          <p className="text-[13px] text-textDim capitalize">{dayOfWeek}</p>
+          <h1 className="mt-0.5 text-xl font-black text-textMain">
+            Olá, {firstName}!
           </h1>
+          <p className="mt-0.5 text-[13px] text-textDim">
+            O que você vai ler hoje?
+          </p>
         </motion.div>
 
+        {/* Subscription alert */}
         <div className="px-4">
           <SubscriptionAlertBanner subscription={subscription} />
         </div>
 
+        {/* Partial load warning */}
         {discover?.partial && unavailableSections.length > 0 ? (
           <div className="mx-4 rounded-2xl border border-white/8 bg-surface/70 p-4">
             <p className="text-sm font-semibold text-textMain">
@@ -416,6 +528,7 @@ export default function HomePage() {
           </div>
         ) : null}
 
+        {/* Discover error */}
         {discoverError ? (
           <div className="mx-4 rounded-2xl border border-white/8 bg-surface/70 p-4">
             <div className="flex items-start gap-3">
@@ -444,90 +557,32 @@ export default function HomePage() {
           </div>
         ) : null}
 
+        {/* Featured banner */}
         {discoverLoading ? (
-          <div className="mx-4 h-56 animate-pulse rounded-3xl bg-surface/60" />
+          <FeaturedSkeleton />
         ) : featured ? (
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut", delay: 0.1 }}
-            className="px-4"
-          >
-            <Link href={`/serie/${featured.id}`}>
-              <motion.div
-                whileTap={{ scale: 0.97 }}
-                className="group relative h-56 overflow-hidden rounded-3xl shadow-xl shadow-black/30 ring-1 ring-white/5 hover:shadow-2xl hover:shadow-black/40 transition-all duration-300"
-              >
-                <div className="absolute inset-0 transition-transform duration-700 group-hover:scale-105">
-                  <AuthCover
-                    coverUrl={getPublicCoverUrl(featured.id, featured.coverUrl)}
-                    alt={featured.title}
-                    className="h-full w-full"
-                    loading="eager"
-                  />
-                </div>
-
-                <div className="absolute inset-0 bg-linear-to-r from-black/90 via-black/55 to-transparent" />
-                <div className="absolute inset-0 bg-linear-to-t from-black/60 via-black/10 to-transparent" />
-
-                <div className="absolute inset-0 flex flex-col justify-end p-5">
-                  <div className="mb-2.5 inline-flex self-start rounded-lg bg-primary/90 backdrop-blur-sm px-2.5 py-1 shadow-lg shadow-primary/30">
-                    <div className="flex items-center gap-1.5">
-                      <Flame className="h-3.5 w-3.5 text-white" />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-white">
-                        Em alta
-                      </span>
-                    </div>
-                  </div>
-
-                  <h2 className="line-clamp-2 text-xl font-black leading-tight text-white drop-shadow-lg">
-                    {featured.title}
-                  </h2>
-
-                  {featured.description && (
-                    <p className="mt-1.5 line-clamp-1 text-xs text-white/50 leading-relaxed">
-                      {featured.description}
-                    </p>
-                  )}
-
-                  <div className="mt-3 flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 shadow-md transition-transform duration-200 group-hover:scale-105">
-                      <Play className="h-3.5 w-3.5 fill-black text-black" />
-                      <span className="text-[12px] font-bold text-black">
-                        Ler agora
-                      </span>
-                    </div>
-                    {featured.rating != null && featured.rating > 0 ? (
-                      <span className="text-[12px] font-semibold text-white/60 flex items-center gap-1">
-                        <span className="text-yellow-400">★</span>{" "}
-                        {featured.rating}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              </motion.div>
-            </Link>
-          </motion.div>
+          <FeaturedBanner featured={featured} />
         ) : null}
 
+        {/* Continue reading */}
         {(continueLoading ||
           (continueReading != null && continueReading.length > 0)) && (
           <motion.section
-            initial={{ opacity: 0, y: 14 }}
-            whileInView={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, x: -20 }}
+            whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, amount: 0.2 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
           >
-            <RowTitle label="Continuar lendo" />
-            <div className="space-y-2.5">
-              {continueLoading ? (
-                <>
-                  <ContinueSkeleton />
-                  <ContinueSkeleton />
-                </>
-              ) : (
-                continueReading?.map((item) => (
-                  <div key={item.progressId ?? item.mediaId} className="mx-4">
+            <SectionHeader title="Continuar Lendo" />
+            {continueLoading ? (
+              <div className="space-y-2.5 px-4">
+                <ContinueSkeleton />
+                <ContinueSkeleton />
+              </div>
+            ) : (
+              <div className="flex gap-3 overflow-x-auto scrollbar-hide px-4 pb-1">
+                {continueReading?.map((item) => (
+                  <div key={item.progressId ?? item.mediaId} className="shrink-0 w-72">
                     <ContinueReadingCard
                       seriesId={item.seriesId}
                       mediaId={item.mediaId}
@@ -538,25 +593,25 @@ export default function HomePage() {
                       totalPages={item.pageCount}
                     />
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
           </motion.section>
         )}
 
-        {sectionConfigs.map((section, index) =>
+        {/* Discovery sections */}
+        {sectionConfigs.map((section) =>
           discoverLoading || section.items.length > 0 ? (
             <motion.section
               key={section.key}
               initial={{ opacity: 0, y: 14 }}
               whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.2 }}
+              viewport={{ once: true, margin: "-50px", amount: 0.1 }}
               transition={{ duration: 0.4, ease: "easeOut" }}
             >
-              <RowTitle
-                label={section.label}
-                href={section.href}
-                accentColor={section.accentColor}
+              <SectionHeader
+                title={section.label}
+                link={section.href}
               />
               <SectionRow
                 items={section.items}
@@ -567,20 +622,17 @@ export default function HomePage() {
           ) : null,
         )}
 
-        {!discoverLoading && workTypeSections.map((section) => (
+        {/* WorkType sections: Mangás */}
+        {!discoverLoading && mangaSeries.length > 0 && (
           <motion.section
-            key={section.key}
             initial={{ opacity: 0, y: 14 }}
             whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.2 }}
+            viewport={{ once: true, margin: "-50px", amount: 0.1 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
           >
-            <RowTitle
-              label={section.label}
-              accentColor={section.accentColor}
-            />
+            <SectionHeader title="Mangás Populares" />
             <SectionRow
-              items={section.items}
+              items={mangaSeries}
               loading={false}
               renderCard={(series) => (
                 <MangaCard
@@ -591,8 +643,62 @@ export default function HomePage() {
               )}
             />
           </motion.section>
-        ))}
+        )}
 
+        {/* WorkType sections: Manhwas */}
+        {!discoverLoading && manhwaSeries.length > 0 && (
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px", amount: 0.1 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+          >
+            <SectionHeader
+              title="Manhwas"
+              badge={
+                <span className="text-[9px] font-black bg-white/8 text-textDim px-1.5 py-0.5 rounded uppercase">
+                  KR
+                </span>
+              }
+            />
+            <SectionRow
+              items={manhwaSeries}
+              loading={false}
+              renderCard={(series) => (
+                <MangaCard
+                  id={series.id}
+                  title={series.title}
+                  coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
+                />
+              )}
+            />
+          </motion.section>
+        )}
+
+        {/* WorkType sections: HQs & Comics */}
+        {!discoverLoading && hqSeries.length > 0 && (
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-50px", amount: 0.1 }}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+          >
+            <SectionHeader title="HQs & Comics" variant="hq" />
+            <SectionRow
+              items={hqSeries}
+              loading={false}
+              renderCard={(series) => (
+                <MangaCard
+                  id={series.id}
+                  title={series.title}
+                  coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
+                />
+              )}
+            />
+          </motion.section>
+        )}
+
+        {/* Empty state */}
         {!discoverLoading && !hasAnyDiscoverContent && !discoverError ? (
           <div className="mx-4 rounded-2xl border border-white/8 bg-surface/70 p-4">
             <p className="text-sm font-semibold text-textMain">
@@ -605,6 +711,7 @@ export default function HomePage() {
           </div>
         ) : null}
 
+        {/* Explore CTA */}
         {!discoverLoading && hasAnyDiscoverContent && (
           <motion.div
             initial={{ opacity: 0 }}

@@ -81,6 +81,7 @@ export interface User {
   subExpiresAt?: string | null;
   maxDevices?: number;
   createdAt?: string;
+  avatarUrl?: string | null;
   subscription?: SubscriptionView;
   subscriptionState?: SubscriptionState;
   accessGranted?: boolean;
@@ -2976,6 +2977,35 @@ export interface SuwayomiHealthResponse {
   sources: number;
   sourcesTotal?: number;
   defaultLang?: string;
+  /** Backend → FlareSolverr: checks the URL in backend's FLARESOLVERR_URL env var */
+  flareSolver?: {
+    configured: boolean;
+    reachable: boolean;
+    version?: string;
+  };
+  /** Suwayomi → FlareSolverr: the URL Suwayomi itself is configured to use */
+  suwayomiFlareSolver?: {
+    configuredUrl: string | null;
+    reachable: boolean | null;
+    version?: string;
+  };
+}
+
+export interface SuwayomiCacheDir {
+  name: string;
+  bytes: number;
+  exists: boolean;
+}
+
+export interface SuwayomiCacheResponse {
+  configured: boolean;
+  totalBytes: number;
+  dirs: SuwayomiCacheDir[];
+}
+
+export interface ClearSuwayomiCacheResponse {
+  results: { dir: string; cleared: boolean; bytesFreed: number; error?: string }[];
+  totalFreed: number;
 }
 
 export interface SuwayomiExtension {
@@ -3153,4 +3183,26 @@ export interface CleanupPassResult {
 export interface StorageCleanupResponse {
   orphans: CleanupPassResult;
   cache: CleanupPassResult;
+}
+
+// ===== Achievements =====
+export type AchievementCategory = 'reader' | 'streak' | 'collection' | 'community' | 'supporter';
+export type AchievementRarity = 'common' | 'rare' | 'epic' | 'legendary';
+
+export interface AchievementProgress {
+  id: string;
+  name: string;
+  description: string;
+  category: AchievementCategory;
+  rarity: AchievementRarity;
+  requirement: { type: string; threshold: number };
+  badgeType: string | null;
+  progress: number;
+  completed: boolean;
+  newlyAwarded: boolean;
+}
+
+export interface AchievementsResponse {
+  achievements: AchievementProgress[];
+  summary: { total: number; completed: number; newlyAwarded: string[] };
 }

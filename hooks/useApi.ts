@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { seriesService } from "@/services/series.service";
 import { readerService } from "@/services/reader.service";
 import { notificationsService } from "@/services/notifications.service";
@@ -9,7 +10,7 @@ import { authService } from "@/services/auth.service";
 import { searchService } from "@/services/search.service";
 import { badgeService } from "@/services/badge.service";
 import { useAuth } from "@/contexts/AuthContext";
-import type { ContinueReadingParams, ProgressHistoryParams } from "@/types/api";
+import type { ContinueReadingParams, ProgressHistoryParams, UserBadgeResponse } from "@/types/api";
 
 interface SearchQueryOptions {
   enabled?: boolean;
@@ -69,6 +70,15 @@ export function useSearchSuggestions(
     staleTime: options?.staleTime ?? 1000 * 60,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+  });
+}
+
+export function usePopularSearchTerms() {
+  return useQuery({
+    queryKey: ["search", "popular-terms"],
+    queryFn: ({ signal }) => searchService.getPopularTerms(signal),
+    staleTime: 1000 * 60 * 10,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -313,12 +323,41 @@ export function useMarkAllAsRead() {
 
 export function useMyBadges() {
   const { isAuthenticated } = useAuth();
-  return useQuery({
+  const [newBadges, setNewBadges] = useState<UserBadgeResponse[]>([]);
+
+  const query = useQuery({
     queryKey: ["badges", "me"],
     queryFn: () => badgeService.getMyBadges(),
     enabled: isAuthenticated,
-    staleTime: 1000 * 60 * 10, // 10 minutes — badges rarely change
+    staleTime: 1000 * 60 * 10,
     refetchOnWindowFocus: false,
+  });
+
+  useEffect(() => {
+    if (!query.data) return;
+    const STORAGE_KEY = "manhq_seen_badge_ids";
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const seenIds = new Set<string>(stored ? (JSON.parse(stored) as string[]) : []);
+    const fresh = query.data.filter((b) => !seenIds.has(b.id));
+    if (fresh.length > 0) {
+      const allIds = query.data.map((b) => b.id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(allIds));
+      // Defer the state update to avoid synchronous setState in effect
+      queueMicrotask(() => setNewBadges(fresh));
+    }
+  }, [query.data]);
+
+  return { ...query, newBadges, clearNewBadges: () => setNewBadges([]) };
+}
+
+export function useAchievements() {
+  const { isAuthenticated } = useAuth();
+  return useQuery({
+    queryKey: ["achievements"],
+    queryFn: () => badgeService.getAchievements(),
+    enabled: isAuthenticated,
+    staleTime: 1000 * 60 * 2,
+    refetchOnWindowFocus: true,
   });
 }
 

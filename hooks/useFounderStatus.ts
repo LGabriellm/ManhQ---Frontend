@@ -15,8 +15,7 @@ export function useFounderStatus() {
   return useQuery({
     queryKey: ["founder-status"],
     queryFn: ({ signal }) => founderService.getStatus(signal),
-    staleTime: 1000 * 60 * 2, // 2 min — re-fetch every 2 minutes
-    refetchOnWindowFocus: true,
+    staleTime: 1000 * 60 * 5, // 5 min — founder slot changes are rare
     placeholderData: FALLBACK,
   });
 }

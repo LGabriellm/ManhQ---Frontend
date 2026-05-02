@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Star, BookOpen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AuthCover } from "./AuthCover";
 
@@ -25,82 +24,89 @@ export function MangaCard({
   variant = "portrait",
   className,
 }: MangaCardProps) {
+  if (variant === "landscape") {
+    return (
+      <Link href={`/serie/${id}`}>
+        <motion.div
+          whileTap={{ scale: 0.97 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className={cn(
+            "flex gap-3 cursor-pointer group",
+            className,
+          )}
+        >
+          <div className="w-24 h-32 shrink-0 relative overflow-hidden rounded-xl bg-[var(--color-surface)] ring-1 ring-white/5 shadow-lg shadow-black/40">
+            <AuthCover
+              coverUrl={coverUrl}
+              alt={title}
+              className="object-cover transition-transform duration-400 group-hover:scale-105"
+            />
+          </div>
+          <div className="flex-1 flex flex-col justify-center min-w-0">
+            <h3 className="text-xs font-semibold text-[var(--color-textMain)] line-clamp-2 group-hover:text-white transition-colors duration-200">
+              {title}
+            </h3>
+            {rating != null && rating > 0 && (
+              <p className="text-[10px] text-[var(--color-textDim)] mt-1 tabular-nums">
+                ★ {rating}
+              </p>
+            )}
+          </div>
+        </motion.div>
+      </Link>
+    );
+  }
+
   return (
     <Link href={`/serie/${id}`}>
       <motion.div
-        whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.97 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
         className={cn(
-          "relative group cursor-pointer",
-          variant === "portrait" ? "w-full" : "flex gap-3",
+          "relative w-full cursor-pointer group aspect-[2/3] overflow-hidden rounded-xl",
+          "ring-1 ring-white/5 hover:ring-white/[0.12] transition-[box-shadow,ring-color] duration-300",
+          "shadow-lg shadow-black/40 hover:shadow-xl hover:shadow-black/60",
           className,
         )}
       >
-        {/* Cover Image */}
-        <div
-          className={cn(
-            "relative overflow-hidden rounded-2xl bg-surface ring-1 ring-white/5 shadow-lg shadow-black/20 group-hover:shadow-xl group-hover:ring-white/10 transition-[box-shadow,transform,ring-color] duration-300",
-            variant === "portrait" ? "aspect-2/3" : "w-24 h-32 shrink-0",
-          )}
+        {/* Cover image — scales on hover */}
+        <motion.div
+          className="absolute inset-0"
+          whileHover={{ scale: 1.07 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
         >
           <AuthCover
             coverUrl={coverUrl}
             alt={title}
-            className="object-cover transition-transform duration-500 group-hover:scale-105"
+            className="object-cover"
           />
+        </motion.div>
 
-          {/* Overlay gradiente sutil */}
-          <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent" />
+        {/* Gradient overlay — bottom 60% */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent group-hover:from-black/95 transition-all duration-300" />
 
-          {/* Badge "Novo" */}
-          {isNew && (
-            <div className="absolute top-2 left-2 bg-primary/90 backdrop-blur-sm px-2 py-0.5 rounded-lg shadow-lg">
-              <span className="text-[10px] font-bold text-white tracking-wide">
-                NOVO
-              </span>
-            </div>
-          )}
+        {/* NOVO badge — top-left, flush to left edge */}
+        {isNew && (
+          <div className="absolute top-2 left-0 bg-[var(--color-primary)] px-2 py-0.5 rounded-r-md z-10">
+            <span className="text-[9px] font-black uppercase tracking-widest text-white">
+              NOVO
+            </span>
+          </div>
+        )}
 
-          {/* Rating */}
-          {rating != null && rating > 0 && (
-            <div className="absolute top-2 right-2 bg-black/50 backdrop-blur-md px-2 py-0.5 rounded-lg flex items-center gap-1 ring-1 ring-white/10">
-              <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-              <span className="text-[10px] font-semibold text-white">
-                {rating}
-              </span>
-            </div>
-          )}
+        {/* Rating badge — top-right */}
+        {rating != null && rating > 0 && (
+          <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded-md border border-white/10 z-10">
+            <span className="text-[10px] text-yellow-400 leading-none">★</span>
+            <span className="text-[10px] font-bold text-white leading-none tabular-nums">
+              {rating}
+            </span>
+          </div>
+        )}
 
-          {/* Bottom info overlay */}
-          {variant === "portrait" && (
-            <div className="absolute bottom-0 inset-x-0 p-2.5 pt-8">
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <BookOpen className="w-3 h-3 text-white/70" />
-                <span className="text-[10px] text-white/70 font-medium">
-                  Ver detalhes
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Title */}
-        <div
-          className={cn(
-            variant === "portrait"
-              ? "mt-2 px-0.5"
-              : "flex-1 flex flex-col justify-center",
-          )}
-        >
-          <h3
-            className={cn(
-              "font-semibold text-textMain line-clamp-2 group-hover:text-white transition-colors duration-200",
-              variant === "portrait"
-                ? "text-[13px] leading-tight"
-                : "text-base",
-            )}
-          >
+        {/* Title — inside card, bottom-left */}
+        <div className="absolute bottom-0 inset-x-0 p-2.5 z-10">
+          <h3 className="text-[13px] font-bold text-white leading-tight line-clamp-2 drop-shadow-sm">
             {title}
           </h3>
         </div>

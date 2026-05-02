@@ -1185,6 +1185,14 @@ export const adminService = {
     await api.post("/admin/badges/revoke", { targetUserId, badgeType });
   },
 
+  async updateFounderNumber(userId: string, founderNumber: number): Promise<{ founderNumber: number }> {
+    const response = await api.patch<{ founderNumber: number }>(
+      `/admin/badges/${userId}/founder-number`,
+      { founderNumber },
+    );
+    return response.data;
+  },
+
   async assignFounderZero(email: string): Promise<{ userId: string; founderNumber: number }> {
     const response = await api.post<{ userId: string; founderNumber: number }>(
       "/admin/badges/assign-founder-zero",

@@ -14,6 +14,7 @@ import {
   Grid3X3,
   List,
   ArrowUpDown,
+  ChevronRight,
 } from "lucide-react";
 import { MangaCard } from "@/components/MangaCard";
 import { ContinueReadingCard } from "@/components/ContinueReadingCard";
@@ -27,6 +28,7 @@ import {
 } from "@/hooks/useApi";
 import type { ProgressHistoryItem, Series } from "@/types/api";
 import { getPublicCoverUrl } from "@/lib/coverUrl";
+import { cn } from "@/lib/utils";
 
 type Tab = "favorites" | "reading" | "history";
 type SortOption = "recent" | "name" | "rating";
@@ -54,20 +56,43 @@ function timeAgo(dateStr: string): string {
   });
 }
 
+// ─── Section header ──────────────────────────────────────────────────────────
+function SectionHeader({
+  title,
+  count,
+}: {
+  title: string;
+  count?: number;
+}) {
+  return (
+    <div className="flex items-center gap-2.5 px-4 mb-3">
+      <div className="w-0.5 h-5 rounded-full bg-[var(--color-primary)]" />
+      <h2 className="text-sm font-black text-textMain uppercase tracking-wide">
+        {title}
+      </h2>
+      {count != null && (
+        <span className="text-xs text-textDim/50 font-semibold ml-auto">
+          {count}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ─── Skeleton Loader ────────────────────────────────────────────────────────
 function LibrarySkeleton() {
   return (
-    <div className="px-4 space-y-3">
-      {[1, 2, 3, 4].map((i) => (
+    <div className="space-y-px">
+      {[1, 2, 3, 4, 5].map((i) => (
         <div
           key={i}
-          className="flex gap-3 p-3 bg-surface/50 rounded-2xl animate-pulse"
+          className="flex gap-3 px-4 py-3 border-b border-white/[0.04] last:border-0"
         >
-          <div className="w-14 h-20 rounded-xl bg-surface animate-pulse" />
+          <div className="w-12 h-16 rounded-lg bg-surface/60 animate-pulse shrink-0" />
           <div className="flex-1 space-y-2 py-1">
-            <div className="h-4 w-2/3 rounded bg-surface animate-pulse" />
-            <div className="h-3 w-1/3 rounded bg-surface animate-pulse" />
-            <div className="h-1.5 w-1/2 rounded bg-surface animate-pulse mt-2" />
+            <div className="h-3.5 w-2/3 rounded bg-surface/60 animate-pulse" />
+            <div className="h-2.5 w-1/3 rounded bg-surface/60 animate-pulse" />
+            <div className="h-2 w-1/2 rounded bg-surface/40 animate-pulse mt-2" />
           </div>
         </div>
       ))}
@@ -77,11 +102,11 @@ function LibrarySkeleton() {
 
 function GridSkeleton() {
   return (
-    <div className="px-4 grid grid-cols-3 gap-3">
+    <div className="px-4 grid grid-cols-3 gap-2">
       {[1, 2, 3, 4, 5, 6].map((i) => (
         <div key={i}>
-          <div className="aspect-2/3 rounded-xl bg-surface/50 animate-pulse" />
-          <div className="mt-2 h-3 w-3/4 rounded bg-surface/50 animate-pulse" />
+          <div className="aspect-[2/3] rounded-xl bg-surface/50 animate-pulse" />
+          <div className="mt-2 h-2.5 w-3/4 rounded bg-surface/40 animate-pulse" />
         </div>
       ))}
     </div>
@@ -104,12 +129,17 @@ function HistoryItemCard({ item }: { item: ProgressHistoryItem }) {
 
   const pageCount = item.pageCount ?? 0;
   const progress = pageCount > 0 ? (item.page / pageCount) * 100 : 0;
+
   const cardContent = (
     <motion.div
-      whileTap={{ scale: 0.97 }}
-      className="relative flex gap-3 p-3 bg-surface/60 backdrop-blur-sm rounded-2xl overflow-hidden group border border-white/4 hover:border-white/8 transition-all"
+      whileTap={{ scale: 0.98 }}
+      className={cn(
+        "flex items-center gap-3 px-4 py-3 border-b border-white/[0.04] last:border-0 transition-colors",
+        "hover:bg-white/[0.02] active:bg-white/[0.03]",
+      )}
     >
-      <div className="relative w-13 h-18 shrink-0 rounded-xl overflow-hidden shadow-md ring-1 ring-white/5">
+      {/* Cover */}
+      <div className="relative w-12 h-16 shrink-0 rounded-lg overflow-hidden shadow-md ring-1 ring-white/5">
         {coverUrl ? (
           <AuthCover
             coverUrl={coverUrl}
@@ -118,54 +148,55 @@ function HistoryItemCard({ item }: { item: ProgressHistoryItem }) {
           />
         ) : (
           <div className="w-full h-full bg-surface flex items-center justify-center">
-            <BookOpen className="w-5 h-5 text-textDim" />
+            <BookOpen className="w-4 h-4 text-textDim" />
           </div>
         )}
-      </div>
-
-      <div className="flex-1 flex flex-col justify-center min-w-0">
-        <h3 className="text-sm font-semibold text-textMain line-clamp-1 group-hover:text-white transition-colors">
-          {item.seriesTitle || "Série desconhecida"}
-        </h3>
-        <p className="text-[11px] text-textDim mt-0.5 line-clamp-1">
-          {chapterLabel}
-        </p>
-
-        <div className="flex items-center gap-3 mt-1.5">
-          {item.finished ? (
-            <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium bg-emerald-400/8 px-1.5 py-0.5 rounded-md">
-              <CheckCircle2 className="w-3 h-3" />
-              Concluído
-            </span>
-          ) : (
-            <span className="text-[10px] text-textDim tabular-nums">
-              Pág. {item.page}
-              {pageCount > 0 && ` / ${pageCount}`}
-            </span>
-          )}
-          <span className="flex items-center gap-1 text-[10px] text-textDim/70">
-            <Clock className="w-2.5 h-2.5" />
-            {timeAgo(item.lastReadAt)}
-          </span>
-        </div>
-
+        {/* Progress bar at bottom of cover */}
         {!item.finished && pageCount > 0 && (
-          <div className="mt-2 h-0.75 bg-white/5 rounded-full overflow-hidden">
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-black/40">
             <div
-              className="h-full bg-primary/80 rounded-full transition-all"
+              className="h-full bg-primary/80 rounded-full"
               style={{ width: `${Math.min(progress, 100)}%` }}
             />
           </div>
         )}
       </div>
 
-      <div className="flex items-center shrink-0">
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <h3 className="text-sm font-semibold text-textMain line-clamp-1">
+          {item.seriesTitle || "Série desconhecida"}
+        </h3>
+        <p className="text-[11px] text-textDim mt-0.5 line-clamp-1">
+          {chapterLabel}
+        </p>
+        <div className="flex items-center gap-2 mt-1.5">
+          {item.finished ? (
+            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-semibold bg-emerald-400/8 px-1.5 py-0.5 rounded-md">
+              <CheckCircle2 className="w-2.5 h-2.5" />
+              Concluído
+            </span>
+          ) : (
+            <span className="text-[10px] text-textDim/60 tabular-nums">
+              Pág. {item.page}
+              {pageCount > 0 && ` / ${pageCount}`}
+            </span>
+          )}
+          <span className="flex items-center gap-1 text-[10px] text-textDim/50">
+            <Clock className="w-2.5 h-2.5" />
+            {timeAgo(item.lastReadAt)}
+          </span>
+        </div>
+      </div>
+
+      {/* Action icon */}
+      <div className="shrink-0">
         {item.finished ? (
-          <div className="w-8 h-8 rounded-xl bg-emerald-500/8 flex items-center justify-center ring-1 ring-emerald-400/15">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+          <div className="w-7 h-7 rounded-lg bg-emerald-500/8 flex items-center justify-center ring-1 ring-emerald-400/15">
+            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
           </div>
         ) : (
-          <div className="w-8 h-8 rounded-xl bg-primary/8 flex items-center justify-center group-hover:bg-primary/15 transition-colors ring-1 ring-primary/15">
+          <div className="w-7 h-7 rounded-lg bg-primary/8 flex items-center justify-center ring-1 ring-primary/15">
             <Play className="w-3 h-3 text-primary fill-primary" />
           </div>
         )}
@@ -184,7 +215,7 @@ function HistoryItemCard({ item }: { item: ProgressHistoryItem }) {
   );
 }
 
-// ─── Favorite List Item (alternativa ao grid) ───────────────────────────────
+// ─── Series list item (used in favorites list view + reading list) ───────────
 function LibrarySeriesListItem({
   series,
   icon,
@@ -195,41 +226,89 @@ function LibrarySeriesListItem({
   return (
     <Link href={`/serie/${series.id}`} className="block">
       <motion.div
-        whileTap={{ scale: 0.97 }}
-        className="flex gap-3 p-3 bg-surface/60 backdrop-blur-sm rounded-2xl group border border-white/4 hover:border-white/8 transition-all"
+        whileTap={{ scale: 0.98 }}
+        className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
       >
-        <div className="relative w-13 h-18 shrink-0 rounded-xl overflow-hidden shadow-md ring-1 ring-white/5">
+        {/* Cover */}
+        <div className="relative w-12 h-16 shrink-0 rounded-lg overflow-hidden shadow-md ring-1 ring-white/5">
           <AuthCover
             coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
             alt={series.title}
             className="object-cover"
           />
         </div>
-        <div className="flex-1 flex flex-col justify-center min-w-0">
-          <h3 className="text-sm font-semibold text-textMain line-clamp-1 group-hover:text-white transition-colors">
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <h3 className="text-sm font-semibold text-textMain line-clamp-1">
             {series.title}
           </h3>
-          <div className="flex items-center gap-1.5 mt-1">
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
             {series.genres?.slice(0, 2).map((g) => (
               <span
                 key={g}
-                className="text-[10px] px-1.5 py-0.5 bg-white/5 rounded-md text-textDim"
+                className="text-[10px] px-1.5 py-0.5 bg-white/5 rounded-md text-textDim/70"
               >
                 {g}
               </span>
             ))}
           </div>
           {series._count?.medias != null && (
-            <p className="text-[10px] text-textDim mt-1">
+            <p className="text-[10px] text-textDim/50 mt-0.5">
               {series._count.medias} capítulos
             </p>
           )}
         </div>
-        <div className="flex items-center">
+
+        {/* Right side */}
+        <div className="flex items-center gap-2 shrink-0">
           {icon ?? <Heart className="w-4 h-4 fill-primary text-primary" />}
+          <ChevronRight className="w-3.5 h-3.5 text-textDim/30" />
         </div>
       </motion.div>
     </Link>
+  );
+}
+
+// ─── Empty state ─────────────────────────────────────────────────────────────
+function EmptyState({
+  icon,
+  title,
+  description,
+  actionLabel,
+  actionHref,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  actionLabel?: string;
+  actionHref?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center px-8">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.3 }}
+        className="w-12 h-12 text-textDim/20 mb-4 flex items-center justify-center"
+      >
+        {icon}
+      </motion.div>
+      <h3 className="text-base font-bold text-textMain mb-1.5">{title}</h3>
+      <p className="text-sm text-textDim max-w-xs leading-relaxed">
+        {description}
+      </p>
+      {actionLabel && actionHref && (
+        <Link href={actionHref} className="mt-5 block">
+          <motion.div
+            whileTap={{ scale: 0.95 }}
+            className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl text-sm shadow-lg shadow-primary/20"
+          >
+            {actionLabel}
+          </motion.div>
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -291,7 +370,6 @@ export default function LibraryPage() {
     if (!favorites) return [];
     let items = [...favorites];
 
-    // Filtro de busca
     if (deferredSearchQuery.trim()) {
       const q = deferredSearchQuery.toLowerCase();
       items = items.filter(
@@ -301,7 +379,6 @@ export default function LibraryPage() {
       );
     }
 
-    // Ordenação
     switch (sortBy) {
       case "name":
         items.sort((a, b) => a.title.localeCompare(b.title, "pt-BR"));
@@ -311,7 +388,6 @@ export default function LibraryPage() {
         break;
       case "recent":
       default:
-        // Manter ordem original (mais recente)
         break;
     }
 
@@ -340,7 +416,6 @@ export default function LibraryPage() {
     );
   }, [continueReading, deferredSearchQuery]);
 
-  // Filtrar histórico
   const filteredHistory = useMemo(() => {
     if (!historyData?.items) return [];
     if (!deferredSearchQuery.trim()) return historyData.items;
@@ -354,19 +429,16 @@ export default function LibraryPage() {
     {
       id: "favorites" as Tab,
       label: "Favoritos",
-      icon: Heart,
       count: favorites?.length,
     },
     {
       id: "reading" as Tab,
       label: "Lendo",
-      icon: BookOpen,
       count: readingSeries?.length,
     },
     {
       id: "history" as Tab,
       label: "Histórico",
-      icon: History,
       count: historyData?.total,
     },
   ];
@@ -406,36 +478,36 @@ export default function LibraryPage() {
   return (
     <main className="min-h-screen pt-4 pb-24 safe-header">
       {/* Header */}
-      <div className="px-4 mb-4">
+      <div className="px-4 mb-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-textMain tracking-tight">
+            <h1 className="text-2xl font-black text-textMain tracking-tight">
               Minha Biblioteca
             </h1>
-            <p className="text-xs text-textDim mt-0.5">
+            <p className="text-xs text-textDim/60 mt-0.5 font-medium">
               {activeTabCount} {activeTabLabel}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Toggle busca */}
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={() => {
                 setShowSearch(!showSearch);
                 if (showSearch) setSearchQuery("");
               }}
-              className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+              className={cn(
+                "w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
                 showSearch
                   ? "bg-primary/10 text-primary"
-                  : "bg-surface text-textDim"
-              }`}
+                  : "bg-white/5 text-textDim hover:text-textMain",
+              )}
             >
-              <Search className="w-4.5 h-4.5" />
+              <Search className="w-4 h-4" />
             </motion.button>
           </div>
         </div>
 
-        {/* Barra de busca animada */}
+        {/* Search bar */}
         <AnimatePresence>
           {showSearch && (
             <motion.div
@@ -447,19 +519,19 @@ export default function LibraryPage() {
             >
               <div className="pt-3">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-textDim" />
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-textDim/50" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Buscar na biblioteca..."
                     autoFocus
-                    className="w-full bg-surface border border-white/5 rounded-xl pl-10 pr-4 py-2.5 text-sm text-textMain placeholder:text-textDim/50 outline-none focus:border-primary/30 transition-colors"
+                    className="w-full bg-white/6 border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-sm text-textMain placeholder:text-textDim/50 focus:border-[var(--color-primary)]/40 focus:outline-none transition-colors"
                   />
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery("")}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-textDim hover:text-textMain text-xs"
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-textDim/50 hover:text-textMain text-xs font-medium"
                     >
                       Limpar
                     </button>
@@ -471,37 +543,30 @@ export default function LibraryPage() {
         </AnimatePresence>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1.5 px-4 mb-4 overflow-x-auto scrollbar-hide">
+      {/* Tab bar */}
+      <div className="flex gap-1 bg-white/[0.04] p-1 rounded-2xl mx-4 mb-5">
         {tabs.map((tab) => {
-          const Icon = tab.icon;
           const isActive = activeTab === tab.id;
 
           return (
             <motion.button
               key={tab.id}
-              whileTap={{ scale: 0.95 }}
+              whileTap={{ scale: 0.97 }}
               onClick={() => {
                 setActiveTab(tab.id);
                 setSearchQuery("");
                 setShowSort(false);
               }}
-              className={`relative flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium whitespace-nowrap transition-all duration-200 ${
+              className={cn(
+                "flex-1 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-1.5",
                 isActive
-                  ? "bg-primary text-white shadow-lg shadow-primary/20"
-                  : "bg-white/5 text-textDim hover:text-textMain hover:bg-white/8"
-              }`}
+                  ? "bg-[var(--color-surface)] text-textMain shadow-sm"
+                  : "text-textDim/60 hover:text-textDim",
+              )}
             >
-              <Icon className="w-4 h-4" />
               {tab.label}
               {tab.count != null && tab.count > 0 && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold tabular-nums ${
-                    isActive
-                      ? "bg-white/20 text-white"
-                      : "bg-white/8 text-textDim"
-                  }`}
-                >
+                <span className="text-[9px] font-black text-textDim/50 tabular-nums">
                   {tab.count}
                 </span>
               )}
@@ -510,22 +575,22 @@ export default function LibraryPage() {
         })}
       </div>
 
-      {/* Toolbar para Favoritos (sort + view mode) */}
+      {/* Toolbar for favorites (sort + view mode) */}
       {activeTab === "favorites" && favorites && favorites.length > 0 && (
-        <div className="flex items-center justify-between px-4 mb-3">
-          <p className="text-xs text-textDim">
+        <div className="flex items-center justify-between px-4 mb-4">
+          <p className="text-xs text-textDim/50 font-medium">
             {filteredFavorites.length}{" "}
             {filteredFavorites.length === 1 ? "série" : "séries"}
           </p>
           <div className="flex items-center gap-2">
-            {/* Sort button */}
+            {/* Sort */}
             <div className="relative">
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setShowSort(!showSort)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface rounded-lg text-xs text-textDim hover:text-textMain transition-colors"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/5 rounded-lg text-xs text-textDim/60 hover:text-textMain transition-colors"
               >
-                <ArrowUpDown className="w-3.5 h-3.5" />
+                <ArrowUpDown className="w-3 h-3" />
                 {sortOptions.find((s) => s.id === sortBy)?.label}
               </motion.button>
 
@@ -544,11 +609,12 @@ export default function LibraryPage() {
                           setSortBy(opt.id);
                           setShowSort(false);
                         }}
-                        className={`w-full text-left px-3.5 py-2.5 text-xs transition-colors ${
+                        className={cn(
+                          "w-full text-left px-3.5 py-2.5 text-xs transition-colors",
                           sortBy === opt.id
                             ? "bg-primary/10 text-primary font-semibold"
-                            : "text-textDim hover:bg-white/5 hover:text-textMain"
-                        }`}
+                            : "text-textDim hover:bg-white/5 hover:text-textMain",
+                        )}
                       >
                         {opt.label}
                       </button>
@@ -558,25 +624,27 @@ export default function LibraryPage() {
               </AnimatePresence>
             </div>
 
-            {/* View mode toggle */}
-            <div className="flex bg-surface rounded-lg overflow-hidden">
+            {/* View mode */}
+            <div className="flex bg-white/5 rounded-lg overflow-hidden">
               <button
                 onClick={() => setViewMode("grid")}
-                className={`p-1.5 transition-colors ${
+                className={cn(
+                  "p-1.5 transition-colors",
                   viewMode === "grid"
                     ? "bg-primary/20 text-primary"
-                    : "text-textDim hover:text-textMain"
-                }`}
+                    : "text-textDim/50 hover:text-textMain",
+                )}
               >
                 <Grid3X3 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => setViewMode("list")}
-                className={`p-1.5 transition-colors ${
+                className={cn(
+                  "p-1.5 transition-colors",
                   viewMode === "list"
                     ? "bg-primary/20 text-primary"
-                    : "text-textDim hover:text-textMain"
-                }`}
+                    : "text-textDim/50 hover:text-textMain",
+                )}
               >
                 <List className="w-3.5 h-3.5" />
               </button>
@@ -585,8 +653,8 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {/* Conteúdo */}
-      <div className="px-4">
+      {/* Content */}
+      <div>
         {isLoading ? (
           activeTab === "favorites" ? (
             <GridSkeleton />
@@ -594,17 +662,19 @@ export default function LibraryPage() {
             <LibrarySkeleton />
           )
         ) : hasError ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <WifiOff className="w-12 h-12 text-textDim mb-4" />
-            <p className="text-textMain font-semibold mb-2">Erro ao carregar</p>
-            <p className="text-textDim text-sm mb-4">
+          <div className="flex flex-col items-center justify-center py-20 text-center px-8">
+            <WifiOff className="w-12 h-12 text-textDim/20 mb-4" />
+            <p className="text-base font-bold text-textMain mb-1.5">
+              Erro ao carregar
+            </p>
+            <p className="text-sm text-textDim mb-5">
               Verifique sua conexão e tente novamente
             </p>
             <button
               onClick={() => {
                 void handleRetry();
               }}
-              className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm"
+              className="px-5 py-2.5 bg-primary text-white font-bold rounded-xl text-sm"
             >
               Tentar novamente
             </button>
@@ -622,28 +692,38 @@ export default function LibraryPage() {
               >
                 {filteredFavorites.length > 0 ? (
                   viewMode === "grid" ? (
-                    <div className="grid grid-cols-3 gap-3">
-                      {filteredFavorites.map((series, i) => (
-                        <motion.div
-                          key={series.id}
-                          initial={{ opacity: 0, y: 12 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.03 }}
-                        >
-                          <MangaCard
-                            id={series.id}
-                            title={series.title}
-                            coverUrl={getPublicCoverUrl(
-                              series.id,
-                              series.coverUrl,
-                            )}
-                            rating={series.rating}
-                          />
-                        </motion.div>
-                      ))}
+                    <div className="px-4">
+                      <SectionHeader
+                        title="Favoritos"
+                        count={filteredFavorites.length}
+                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        {filteredFavorites.map((series, i) => (
+                          <motion.div
+                            key={series.id}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.03 }}
+                          >
+                            <MangaCard
+                              id={series.id}
+                              title={series.title}
+                              coverUrl={getPublicCoverUrl(
+                                series.id,
+                                series.coverUrl,
+                              )}
+                              rating={series.rating}
+                            />
+                          </motion.div>
+                        ))}
+                      </div>
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div>
+                      <SectionHeader
+                        title="Favoritos"
+                        count={filteredFavorites.length}
+                      />
                       {filteredFavorites.map((series, i) => (
                         <motion.div
                           key={series.id}
@@ -658,13 +738,13 @@ export default function LibraryPage() {
                   )
                 ) : searchQuery ? (
                   <EmptyState
-                    icon={<Search className="w-10 h-10 text-textDim" />}
+                    icon={<Search className="w-12 h-12" />}
                     title="Sem resultados"
                     description={`Nenhum favorito encontrado para "${searchQuery}"`}
                   />
                 ) : (
                   <EmptyState
-                    icon={<Heart className="w-10 h-10 text-textDim" />}
+                    icon={<Heart className="w-12 h-12" />}
                     title="Nenhum favorito"
                     description="Toque no coração nas páginas de mangás para adicioná-los aos favoritos"
                     actionLabel="Explorar catálogo"
@@ -685,56 +765,48 @@ export default function LibraryPage() {
               >
                 {filteredReadingSeries.length > 0 ||
                 readingProgressItems.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {readingProgressItems.length > 0 && (
-                      <section className="space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-textDim/75">
-                            Continuar lendo
-                          </p>
-                          <span className="text-[11px] text-textDim tabular-nums">
-                            {readingProgressItems.length}
-                          </span>
+                      <section>
+                        <SectionHeader
+                          title="Continuar Lendo"
+                          count={readingProgressItems.length}
+                        />
+                        <div className="px-4 space-y-2.5">
+                          {readingProgressItems.map((item, i) => (
+                            <motion.div
+                              key={item.mediaId}
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: i * 0.04 }}
+                            >
+                              <ContinueReadingCard
+                                seriesId={item.seriesId}
+                                mediaId={item.mediaId}
+                                title={item.seriesTitle || "Sem título"}
+                                coverUrl={getPublicCoverUrl(
+                                  item.seriesId,
+                                  item.coverUrl,
+                                )}
+                                chapterTitle={
+                                  item.mediaTitle ||
+                                  `Capítulo ${item.mediaNumber}`
+                                }
+                                currentPage={item.page}
+                                totalPages={item.pageCount}
+                              />
+                            </motion.div>
+                          ))}
                         </div>
-
-                        {readingProgressItems.map((item, i) => (
-                          <motion.div
-                            key={item.mediaId}
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.04 }}
-                          >
-                            <ContinueReadingCard
-                              seriesId={item.seriesId}
-                              mediaId={item.mediaId}
-                              title={item.seriesTitle || "Sem título"}
-                              coverUrl={getPublicCoverUrl(
-                                item.seriesId,
-                                item.coverUrl,
-                              )}
-                              chapterTitle={
-                                item.mediaTitle ||
-                                `Capítulo ${item.mediaNumber}`
-                              }
-                              currentPage={item.page}
-                              totalPages={item.pageCount}
-                            />
-                          </motion.div>
-                        ))}
                       </section>
                     )}
 
                     {filteredReadingSeries.length > 0 && (
-                      <section className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-textDim/75">
-                            Lista de leitura
-                          </p>
-                          <span className="text-[11px] text-textDim tabular-nums">
-                            {filteredReadingSeries.length}
-                          </span>
-                        </div>
-
+                      <section>
+                        <SectionHeader
+                          title="Lista de Leitura"
+                          count={filteredReadingSeries.length}
+                        />
                         {filteredReadingSeries.map((series, i) => (
                           <motion.div
                             key={series.id}
@@ -755,13 +827,13 @@ export default function LibraryPage() {
                   </div>
                 ) : searchQuery ? (
                   <EmptyState
-                    icon={<Search className="w-10 h-10 text-textDim" />}
+                    icon={<Search className="w-12 h-12" />}
                     title="Sem resultados"
                     description={`Nada encontrado para "${searchQuery}"`}
                   />
                 ) : (
                   <EmptyState
-                    icon={<BookOpen className="w-10 h-10 text-textDim" />}
+                    icon={<BookOpen className="w-12 h-12" />}
                     title="Nada sendo lido"
                     description="Comece a ler um mangá e ele aparecerá aqui para continuar de onde parou"
                     actionLabel="Descobrir séries"
@@ -781,7 +853,11 @@ export default function LibraryPage() {
                 transition={{ duration: 0.2 }}
               >
                 {filteredHistory.length > 0 ? (
-                  <div className="space-y-2.5">
+                  <div>
+                    <SectionHeader
+                      title="Histórico"
+                      count={filteredHistory.length}
+                    />
                     {filteredHistory.map((item, i) => (
                       <motion.div
                         key={`${item.mediaId}-${item.lastReadAt}`}
@@ -795,13 +871,13 @@ export default function LibraryPage() {
                   </div>
                 ) : searchQuery ? (
                   <EmptyState
-                    icon={<Search className="w-10 h-10 text-textDim" />}
+                    icon={<Search className="w-12 h-12" />}
                     title="Sem resultados"
                     description={`Nada encontrado para "${searchQuery}"`}
                   />
                 ) : (
                   <EmptyState
-                    icon={<History className="w-10 h-10 text-textDim" />}
+                    icon={<History className="w-12 h-12" />}
                     title="Histórico vazio"
                     description="Seu histórico de leitura aparecerá aqui conforme você lê"
                     actionLabel="Começar a ler"
@@ -814,45 +890,5 @@ export default function LibraryPage() {
         )}
       </div>
     </main>
-  );
-}
-
-// ─── Empty state reutilizável ───────────────────────────────────────────────
-function EmptyState({
-  icon,
-  title,
-  description,
-  actionLabel,
-  actionHref,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  actionLabel?: string;
-  actionHref?: string;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.3 }}
-        className="w-20 h-20 bg-surface rounded-full flex items-center justify-center mb-4"
-      >
-        {icon}
-      </motion.div>
-      <h3 className="text-lg font-semibold text-textMain mb-2">{title}</h3>
-      <p className="text-textDim text-sm max-w-xs mb-4">{description}</p>
-      {actionLabel && actionHref && (
-        <Link href={actionHref} className="block">
-          <motion.div
-            whileTap={{ scale: 0.95 }}
-            className="px-5 py-2.5 bg-primary text-white font-semibold rounded-xl text-sm shadow-lg shadow-primary/20"
-          >
-            {actionLabel}
-          </motion.div>
-        </Link>
-      )}
-    </div>
   );
 }

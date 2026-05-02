@@ -543,7 +543,7 @@ export default function TrackedTitleDetailPage() {
       <div className="surface-panel flex flex-col gap-4 rounded-xl border border-white/5 p-5 sm:flex-row">
         {title.coverUrl ? (
           <img
-            src={title.coverUrl}
+            src={title.coverUrl.startsWith("/") ? `/api${title.coverUrl}` : title.coverUrl}
             alt={title.title}
             className="h-44 w-32 shrink-0 rounded-lg object-cover"
           />

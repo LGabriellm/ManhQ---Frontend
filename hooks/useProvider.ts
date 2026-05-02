@@ -45,6 +45,7 @@ export const providerKeys = {
   suwayomiHealth: () => [...providerKeys.all, "suwayomi", "health"] as const,
   suwayomiExtensions: () =>
     [...providerKeys.all, "suwayomi", "extensions"] as const,
+  suwayomiCache: () => [...providerKeys.all, "suwayomi", "cache"] as const,
 };
 
 async function syncProviderQueries(qc: QueryClient, queryKeys: QueryKey[]) {
@@ -455,6 +456,26 @@ export function useSuwayomiReload() {
         providerKeys.suwayomiHealth(),
         providerKeys.suwayomiExtensions(),
       ]);
+    },
+  });
+}
+
+export function useSuwayomiCache(enabled = true) {
+  return useQuery({
+    queryKey: providerKeys.suwayomiCache(),
+    queryFn: ({ signal }) => providerService.suwayomiCache(signal),
+    enabled,
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useClearSuwayomiCache() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dirs?: ("downloads" | "thumbnails" | "temp")[]) =>
+      providerService.clearSuwayomiCache(dirs),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: providerKeys.suwayomiCache() });
     },
   });
 }

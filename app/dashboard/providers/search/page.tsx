@@ -318,7 +318,7 @@ export default function CatalogSearchPage() {
                   {/* Cover */}
                   {title.coverUrl ? (
                     <img
-                      src={title.coverUrl}
+                      src={title.coverUrl.startsWith("/") ? `/api${title.coverUrl}` : title.coverUrl}
                       alt={title.title}
                       className="h-32 w-22 shrink-0 rounded-lg object-cover"
                     />
@@ -449,7 +449,7 @@ export default function CatalogSearchPage() {
                     <div className="flex gap-4">
                       {detail.coverUrl ? (
                         <img
-                          src={detail.coverUrl}
+                          src={detail.coverUrl.startsWith("/") ? `/api${detail.coverUrl}` : detail.coverUrl}
                           alt={detail.title}
                           className="h-44 w-30 shrink-0 rounded-xl object-cover"
                         />

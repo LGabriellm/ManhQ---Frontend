@@ -60,7 +60,7 @@ export function UserAvatar({
         setFailed(false);
         const bust = cacheBust ? `?t=${cacheBust}` : "";
         const blobUrl = await mediaService.getBlobUrl(
-          `/v1/account/avatar/${userId}${bust}`,
+          `/account/avatar/${userId}${bust}`,
         );
         // Revogar blob anterior
         if (blobRef.current) URL.revokeObjectURL(blobRef.current);

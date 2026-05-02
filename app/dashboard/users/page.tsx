@@ -11,6 +11,7 @@ import {
   useAdminUserBadges,
   useAdminAssignBadge,
   useAdminRevokeBadge,
+  useAdminUpdateFounderNumber,
   useAdminBackfillFounders,
   useAdminFounderCount,
 } from "@/hooks/useAdmin";
@@ -42,6 +43,8 @@ import {
   Award,
   Plus,
   Trash,
+  Pencil,
+  Check,
 } from "lucide-react";
 
 const ROLES = ["ADMIN", "EDITOR", "SUBSCRIBER", "FREE"] as const;
@@ -102,7 +105,10 @@ function BadgeManagerModal({
   const { data: badges, isLoading } = useAdminUserBadges(user.id);
   const assignBadge = useAdminAssignBadge();
   const revokeBadge = useAdminRevokeBadge();
+  const updateFounderNumber = useAdminUpdateFounderNumber();
   const [selectedType, setSelectedType] = useState<BadgeType>("PREMIUM_MEMBER");
+  const [editingFounderNumber, setEditingFounderNumber] = useState(false);
+  const [founderNumberInput, setFounderNumberInput] = useState("");
 
   const assignedTypes = new Set(badges?.map((b) => b.type) ?? []);
   const availableToAdd = ALL_BADGE_TYPES.filter((bt) => !assignedTypes.has(bt.type));
@@ -128,6 +134,22 @@ function BadgeManagerModal({
       toast.success(`Badge "${badge.name}" removido`);
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || "Erro ao remover badge";
+      toast.error(msg);
+    }
+  };
+
+  const handleSaveFounderNumber = async () => {
+    const num = parseInt(founderNumberInput, 10);
+    if (isNaN(num) || num < 0 || num > 100) {
+      toast.error("Número inválido — use um valor entre 0 e 100");
+      return;
+    }
+    try {
+      await updateFounderNumber.mutateAsync({ userId: user.id, founderNumber: num });
+      toast.success(`Número atualizado para #${String(num).padStart(3, "0")}`);
+      setEditingFounderNumber(false);
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err?.message || "Erro ao atualizar número";
       toast.error(msg);
     }
   };
@@ -164,36 +186,87 @@ function BadgeManagerModal({
           ) : (
             <div className="space-y-2">
               {badges.map((badge) => {
-                const isFounderZero = badge.type === "FOUNDER" && badge.founderNumber === 0;
+                const isFounder = badge.type === "FOUNDER";
+                const isFounderZero = isFounder && badge.founderNumber === 0;
                 const isIrrevocable = isFounderZero || badge.founderNumber != null;
+                const isEditingThis = editingFounderNumber && isFounder;
                 return (
                   <div
                     key={badge.id}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-[var(--color-background)]/50 px-3 py-2.5"
+                    className="rounded-xl border border-white/8 bg-[var(--color-background)]/50 px-3 py-2.5"
                   >
-                    <UserBadge badge={badge} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs text-[var(--color-textDim)] truncate">
-                        {badge.type}
-                        {badge.founderNumber != null && (
-                          <span className="ml-1 font-bold text-amber-400">
-                            #{String(badge.founderNumber).padStart(3, "0")}
-                          </span>
+                    <div className="flex items-center justify-between gap-3">
+                      <UserBadge badge={badge} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-[var(--color-textDim)] truncate">
+                          {badge.type}
+                          {badge.founderNumber != null && (
+                            <span className="ml-1 font-bold text-amber-400">
+                              #{String(badge.founderNumber).padStart(3, "0")}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isFounder && (
+                          <button
+                            onClick={() => {
+                              setFounderNumberInput(String(badge.founderNumber ?? 0));
+                              setEditingFounderNumber(!editingFounderNumber);
+                            }}
+                            title="Editar número do fundador"
+                            className="p-1.5 rounded-lg text-[var(--color-textDim)] hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
                         )}
-                      </p>
+                        <button
+                          onClick={() => void handleRevoke(badge)}
+                          disabled={revokeBadge.isPending || isIrrevocable}
+                          title={isIrrevocable ? "Este badge não pode ser removido" : "Remover badge"}
+                          className="p-1.5 rounded-lg text-[var(--color-textDim)] hover:text-red-400 hover:bg-red-500/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {revokeBadge.isPending ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Trash className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => void handleRevoke(badge)}
-                      disabled={revokeBadge.isPending || isIrrevocable}
-                      title={isIrrevocable ? "Este badge não pode ser removido" : "Remover badge"}
-                      className="shrink-0 p-1.5 rounded-lg text-[var(--color-textDim)] hover:text-red-400 hover:bg-red-500/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {revokeBadge.isPending ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Trash className="h-3.5 w-3.5" />
-                      )}
-                    </button>
+                    {isEditingThis && (
+                      <div className="mt-2.5 flex items-center gap-2">
+                        <span className="text-xs text-[var(--color-textDim)]">#</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={founderNumberInput}
+                          onChange={(e) => setFounderNumberInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") void handleSaveFounderNumber(); if (e.key === "Escape") setEditingFounderNumber(false); }}
+                          className="w-20 px-2 py-1 rounded-lg bg-[var(--color-background)] border border-white/10 text-sm text-[var(--color-textMain)] focus:outline-none focus:border-amber-500"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => void handleSaveFounderNumber()}
+                          disabled={updateFounderNumber.isPending}
+                          className="flex items-center gap-1 px-3 py-1 rounded-lg bg-amber-500/20 text-amber-400 text-xs font-medium hover:bg-amber-500/30 disabled:opacity-50 transition-colors"
+                        >
+                          {updateFounderNumber.isPending ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Check className="h-3 w-3" />
+                          )}
+                          Salvar
+                        </button>
+                        <button
+                          onClick={() => setEditingFounderNumber(false)}
+                          className="px-3 py-1 rounded-lg text-[var(--color-textDim)] text-xs hover:text-[var(--color-textMain)] transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}

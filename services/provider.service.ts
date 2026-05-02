@@ -25,6 +25,8 @@ import type {
   SuwayomiInstallResponse,
   SuwayomiUninstallResponse,
   SuwayomiReloadResponse,
+  SuwayomiCacheResponse,
+  ClearSuwayomiCacheResponse,
   RetryFailedResponse,
   RetryChapterResponse,
   ChapterStatusResponse,
@@ -271,6 +273,24 @@ export const providerService = {
     const res = await api.post<SuwayomiUninstallResponse>(
       "/admin/providers/suwayomi/extensions/uninstall",
       { pkgName },
+    );
+    return res.data;
+  },
+
+  async suwayomiCache(signal?: AbortSignal): Promise<SuwayomiCacheResponse> {
+    const res = await api.get<SuwayomiCacheResponse>(
+      "/admin/providers/suwayomi/cache",
+      { signal },
+    );
+    return res.data;
+  },
+
+  async clearSuwayomiCache(
+    dirs?: ("downloads" | "thumbnails" | "temp")[],
+  ): Promise<ClearSuwayomiCacheResponse> {
+    const res = await api.delete<ClearSuwayomiCacheResponse>(
+      "/admin/providers/suwayomi/cache",
+      { data: dirs ? { dirs } : {} },
     );
     return res.data;
   },

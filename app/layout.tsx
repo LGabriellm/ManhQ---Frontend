@@ -5,6 +5,7 @@ import "./globals.css";
 import { QueryProvider } from "@/contexts/QueryProvider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { LayoutWrapper } from "@/components/LayoutWrapper";
+import { BadgeNotifier } from "@/components/BadgeNotifier";
 import { Toaster } from "react-hot-toast";
 
 const GOOGLE_TAG_ID = "G-Q9GSKB1KXP";
@@ -222,6 +223,7 @@ export default function RootLayout({
         <QueryProvider>
           <AuthProvider>
             <LayoutWrapper>{children}</LayoutWrapper>
+            <BadgeNotifier />
             <Toaster
               position="bottom-center"
               toastOptions={{

@@ -1,10 +1,5 @@
 import type { NextConfig } from "next";
 
-// S3_UPLOAD_ORIGIN — the S3 bucket origin used for presigned PUT uploads.
-// Required in production when S3_BUCKET is set on the backend.
-// Example: https://my-bucket.s3.sa-east-1.amazonaws.com
-const s3UploadOrigin = process.env.S3_UPLOAD_ORIGIN?.trim() ?? null;
-
 const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
@@ -42,26 +37,8 @@ const nextConfig: NextConfig = {
             value:
               "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=()",
           },
-          {
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://connect.facebook.net https://www.google-analytics.com",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "font-src 'self' https://fonts.gstatic.com",
-              "img-src 'self' data: https: http: blob:",
-              [
-                "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://www.facebook.com https://connect.facebook.net",
-                s3UploadOrigin,
-              ]
-                .filter(Boolean)
-                .join(" "),
-              "frame-src 'none'",
-              "object-src 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-            ].join("; "),
-          },
+          // CSP is set dynamically in middleware.ts so S3_UPLOAD_ORIGIN is
+          // read at request time (not baked in at build time).
         ],
       },
     ];

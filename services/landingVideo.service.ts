@@ -15,7 +15,7 @@ export const landingVideoService = {
     form.append("video", file);
     return api
       .post<LandingVideoAdminInfo>("/admin/landing-video", form, {
-        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 0, // disable axios timeout — video upload duration is unpredictable
         onUploadProgress: (e) => {
           if (onProgress && e.total) {
             onProgress(Math.round((e.loaded / e.total) * 100));

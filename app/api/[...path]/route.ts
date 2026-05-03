@@ -75,6 +75,8 @@ const ALLOWED_PREFIXES = [
   "achievements",
   "landing-video",
   "landing-video/",
+  "admin/landing-video/prepare",
+  "admin/landing-video/confirm",
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;

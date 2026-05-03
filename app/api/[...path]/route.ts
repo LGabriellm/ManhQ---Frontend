@@ -73,6 +73,8 @@ const ALLOWED_PREFIXES = [
   "ranking",
   "suwayomi/",
   "achievements",
+  "landing-video",
+  "landing-video/",
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;
@@ -224,6 +226,10 @@ function isUploadSessionEventStream(targetPath: string): boolean {
   return /^upload\/sessions\/[^/]+\/events$/.test(targetPath);
 }
 
+function isLandingVideoStream(targetPath: string): boolean {
+  return targetPath === "landing-video/stream";
+}
+
 function isUploadStagingPath(targetPath: string): boolean {
   return (
     targetPath === "upload/stage" ||
@@ -231,6 +237,10 @@ function isUploadStagingPath(targetPath: string): boolean {
     targetPath.startsWith("upload/series/") ||
     targetPath === "integrations/google-drive/stage"
   );
+}
+
+function isLandingVideoUpload(targetPath: string, method: string): boolean {
+  return targetPath === "admin/landing-video" && method === "POST";
 }
 
 function appendVaryHeader(headers: Headers, value: string): void {
@@ -307,13 +317,16 @@ async function handler(
   const init: RequestInit = {
     method: req.method,
     headers,
-    signal: isUploadSessionEventStream(targetPath)
-      ? undefined
-      : AbortSignal.timeout(
-          isUploadStagingPath(targetPath)
-            ? UPLOAD_TIMEOUT_MS
-            : FETCH_TIMEOUT_MS,
-        ),
+    signal:
+      isUploadSessionEventStream(targetPath) ||
+      isLandingVideoStream(targetPath) ||
+      isLandingVideoUpload(targetPath, req.method)
+        ? undefined
+        : AbortSignal.timeout(
+            isUploadStagingPath(targetPath)
+              ? UPLOAD_TIMEOUT_MS
+              : FETCH_TIMEOUT_MS,
+          ),
   };
 
   // Repassar body para métodos que suportam

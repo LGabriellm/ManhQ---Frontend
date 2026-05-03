@@ -32,6 +32,7 @@ import {
   FounderCountInline,
   FounderBadgePreview,
 } from "@/components/FounderSpotlight";
+import { useLandingVideoInfo } from "@/hooks/useLandingVideo";
 
 const LandingCarousel = dynamic(
   () =>
@@ -194,6 +195,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 export default function LandingPage() {
   const { isAuthenticated, user } = useAuth();
   const { data: founderStatus, isLoading: founderLoading } = useFounderStatus();
+  const { data: videoInfo } = useLandingVideoInfo();
 
   const authenticatedPath = getDefaultAuthenticatedPath(user);
   const primaryCtaHref = isAuthenticated
@@ -361,6 +363,78 @@ export default function LandingPage() {
             </motion.div>
           </div>
         </section>
+
+        {/* ── Video CTA ───────────────────────────────────────────────── */}
+        {videoInfo?.active && (
+          <section className="px-5 py-16 sm:px-8 sm:py-20 lg:px-12">
+            <div className="mx-auto max-w-5xl">
+              <motion.div
+                variants={sectionReveal}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true, amount: 0.15 }}
+                transition={{ duration: 0.6 }}
+              >
+                {/* Label */}
+                <div className="mb-8 flex flex-col items-center gap-3 text-center">
+                  <div className="flex items-center gap-2">
+                    <span className="h-px w-8 bg-primary/40" />
+                    <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-primary/70">
+                      Veja em ação
+                    </span>
+                    <span className="h-px w-8 bg-primary/40" />
+                  </div>
+                  <h2 className="font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+                    A experiência ManhQ,{" "}
+                    <span className="text-primary">sem anúncio. Sem popup.</span>
+                  </h2>
+                </div>
+
+                {/* Video frame */}
+                <div className="relative">
+                  {/* Outer glow rings */}
+                  <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-b from-primary/20 via-transparent to-transparent" />
+                  <div className="pointer-events-none absolute -inset-[2px] rounded-2xl border border-primary/12" />
+                  <div
+                    className="pointer-events-none absolute inset-0 rounded-2xl"
+                    style={{ boxShadow: "0 0 80px rgba(229,9,20,0.10), 0 0 160px rgba(229,9,20,0.05)" }}
+                  />
+
+                  {/* Chrome bar */}
+                  <div className="flex items-center gap-1.5 rounded-t-2xl border-x border-t border-white/8 bg-[#141414] px-4 py-3">
+                    <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-white/10" />
+                    <div className="mx-3 flex-1 rounded-md bg-white/5 px-3 py-1 text-center text-[10px] text-white/20">
+                      manhq.com.br
+                    </div>
+                    <span className="h-5 w-px bg-white/8" />
+                    <div className="ml-2 h-1 w-1 rounded-full bg-primary shadow-[0_0_6px_rgba(229,9,20,0.8)]" />
+                  </div>
+
+                  {/* Video */}
+                  <div className="overflow-hidden rounded-b-2xl border-x border-b border-white/8 bg-black">
+                    <video
+                      src="/api/landing-video/stream"
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      controls
+                      className="w-full"
+                      style={{ maxHeight: "520px", objectFit: "cover" }}
+                    />
+                  </div>
+                </div>
+
+                {/* Sub-caption */}
+                <p className="mt-5 text-center text-xs text-white/30">
+                  Interface real · sem cortes · sem edição
+                </p>
+              </motion.div>
+            </div>
+          </section>
+        )}
 
         {/* ── Founder Badge Section ───────────────────────────────────── */}
         {!isAuthenticated && (

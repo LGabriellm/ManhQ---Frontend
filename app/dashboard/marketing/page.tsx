@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Save, Users, Gauge, Crown } from "lucide-react";
+import { Loader2, Save, Users, Gauge, Crown, Film, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 import { adminService } from "@/services/admin.service";
 import { useFounderStatus } from "@/hooks/useFounderStatus";
@@ -234,6 +235,26 @@ export default function MarketingSettingsPage() {
           </div>
         </div>
       </div>
+      {/* Landing Video Card */}
+      <Link
+        href="/dashboard/marketing/video"
+        className="block rounded-2xl border border-white/8 bg-[var(--color-surface)] p-6 transition-colors hover:border-white/15 hover:bg-white/[0.03]"
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-primary)]/10">
+            <Film className="h-5 w-5 text-[var(--color-primary)]" />
+          </div>
+          <div className="flex-1">
+            <h2 className="text-base font-semibold text-[var(--color-textMain)]">
+              Vídeo da Landing Page
+            </h2>
+            <p className="mt-0.5 text-sm text-[var(--color-textDim)]">
+              Faça upload e gerencie o vídeo de demonstração exibido para visitantes.
+            </p>
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-[var(--color-textDim)]" />
+        </div>
+      </Link>
     </div>
   );
 }

@@ -3206,3 +3206,18 @@ export interface AchievementsResponse {
   achievements: AchievementProgress[];
   summary: { total: number; completed: number; newlyAwarded: string[] };
 }
+
+// ===== Landing Video =====
+export interface LandingVideoInfo {
+  active: boolean;
+  filename?: string;
+  mimeType?: string;
+  size?: number;
+  uploadedAt?: string;
+}
+
+export interface LandingVideoAdminInfo extends LandingVideoInfo {
+  id?: string;
+  uploadedBy?: string;
+  storageKey?: string;
+}

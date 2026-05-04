@@ -49,3 +49,14 @@ export function useDeleteLandingVideo() {
     },
   });
 }
+
+export function useSetLandingVideoFormat() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (format: "desktop" | "mobile") => landingVideoService.setFormat(format),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: landingVideoKeys.adminInfo() });
+      void qc.invalidateQueries({ queryKey: landingVideoKeys.info() });
+    },
+  });
+}

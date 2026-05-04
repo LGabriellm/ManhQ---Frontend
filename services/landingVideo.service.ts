@@ -79,5 +79,10 @@ export const landingVideoService = {
       .delete<{ deleted: boolean }>("/admin/landing-video")
       .then((r) => r.data),
 
+  setFormat: (format: "desktop" | "mobile") =>
+    api
+      .patch<LandingVideoAdminInfo>("/admin/landing-video/format", { format })
+      .then((r) => r.data),
+
   getStreamUrl: () => "/api/landing-video/stream",
 };

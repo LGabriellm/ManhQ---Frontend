@@ -6,6 +6,8 @@ import {
   ArrowLeft,
   Film,
   Loader2,
+  Monitor,
+  Smartphone,
   Trash2,
   Upload,
   CheckCircle2,
@@ -17,6 +19,7 @@ import {
   useLandingVideoAdminInfo,
   useUploadLandingVideo,
   useDeleteLandingVideo,
+  useSetLandingVideoFormat,
 } from "@/hooks/useLandingVideo";
 
 function formatBytes(bytes: number): string {
@@ -35,6 +38,39 @@ function formatDate(iso: string): string {
   });
 }
 
+const FORMAT_OPTIONS = [
+  {
+    value: "desktop" as const,
+    label: "Desktop",
+    description: "Moldura de navegador",
+    icon: Monitor,
+    preview: (
+      <div className="w-full rounded-md border border-white/10 bg-[#141414] p-1.5">
+        <div className="mb-1 flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
+          <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
+          <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
+          <div className="mx-1 h-2 flex-1 rounded bg-white/8" />
+        </div>
+        <div className="h-10 w-full rounded bg-black/60" />
+      </div>
+    ),
+  },
+  {
+    value: "mobile" as const,
+    label: "Mobile",
+    description: "Moldura de celular",
+    icon: Smartphone,
+    preview: (
+      <div className="mx-auto w-10 rounded-xl border-2 border-white/15 bg-[#141414] p-1">
+        <div className="mx-auto mb-0.5 h-1.5 w-5 rounded-full bg-white/15" />
+        <div className="h-14 w-full rounded-lg bg-black/60" />
+        <div className="mx-auto mt-0.5 h-1 w-4 rounded-full bg-white/15" />
+      </div>
+    ),
+  },
+] as const;
+
 export default function LandingVideoPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +80,7 @@ export default function LandingVideoPage() {
   const { data: video, isLoading } = useLandingVideoAdminInfo();
   const uploadMutation = useUploadLandingVideo();
   const deleteMutation = useDeleteLandingVideo();
+  const setFormatMutation = useSetLandingVideoFormat();
 
   const handleFile = useCallback(
     (file: File) => {
@@ -55,10 +92,7 @@ export default function LandingVideoPage() {
 
       setUploadProgress(0);
       uploadMutation.mutate(
-        {
-          file,
-          onProgress: (pct) => setUploadProgress(pct),
-        },
+        { file, onProgress: (pct) => setUploadProgress(pct) },
         {
           onSuccess: () => {
             setUploadProgress(null);
@@ -92,6 +126,16 @@ export default function LandingVideoPage() {
     });
   }
 
+  function handleSetFormat(format: "desktop" | "mobile") {
+    if (format === video?.format) return;
+    setFormatMutation.mutate(format, {
+      onSuccess: () => toast.success(`Moldura alterada para ${format}.`),
+      onError: () => toast.error("Erro ao alterar moldura."),
+    });
+  }
+
+  const currentFormat = video?.format ?? "desktop";
+
   return (
     <div className="max-w-3xl space-y-6">
       {/* Header */}
@@ -117,13 +161,9 @@ export default function LandingVideoPage() {
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Film className="h-5 w-5 text-[var(--color-primary)]" />
-            <h2 className="font-semibold text-[var(--color-textMain)]">
-              Vídeo atual
-            </h2>
+            <h2 className="font-semibold text-[var(--color-textMain)]">Vídeo atual</h2>
           </div>
-          {isLoading && (
-            <Loader2 className="h-4 w-4 animate-spin text-[var(--color-textDim)]" />
-          )}
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin text-[var(--color-textDim)]" />}
         </div>
 
         {!isLoading && !video?.active && (
@@ -136,7 +176,7 @@ export default function LandingVideoPage() {
         )}
 
         {video?.active && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             {/* Preview */}
             <div className="overflow-hidden rounded-xl border border-white/8 bg-black">
               <video
@@ -153,26 +193,65 @@ export default function LandingVideoPage() {
                 { label: "Arquivo", value: video.filename ?? "—" },
                 { label: "Tamanho", value: video.size ? formatBytes(video.size) : "—" },
                 { label: "Formato", value: video.mimeType ?? "—" },
-                {
-                  label: "Enviado em",
-                  value: video.uploadedAt ? formatDate(video.uploadedAt) : "—",
-                },
+                { label: "Enviado em", value: video.uploadedAt ? formatDate(video.uploadedAt) : "—" },
               ].map(({ label, value }) => (
                 <div
                   key={label}
                   className="rounded-xl border border-white/5 bg-[var(--color-background)]/50 px-3 py-3"
                 >
-                  <p className="text-[10px] uppercase tracking-wider text-[var(--color-textDim)]">
-                    {label}
-                  </p>
-                  <p
-                    className="mt-1 truncate text-sm font-medium text-[var(--color-textMain)]"
-                    title={value}
-                  >
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--color-textDim)]">{label}</p>
+                  <p className="mt-1 truncate text-sm font-medium text-[var(--color-textMain)]" title={value}>
                     {value}
                   </p>
                 </div>
               ))}
+            </div>
+
+            {/* Format selector */}
+            <div>
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--color-textDim)]">
+                Moldura de exibição
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {FORMAT_OPTIONS.map((opt) => {
+                  const active = currentFormat === opt.value;
+                  const loading = setFormatMutation.isPending && setFormatMutation.variables === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => handleSetFormat(opt.value)}
+                      disabled={setFormatMutation.isPending}
+                      className={`relative rounded-xl border p-4 text-left transition-all disabled:opacity-60 ${
+                        active
+                          ? "border-[var(--color-primary)]/50 bg-[var(--color-primary)]/6 ring-1 ring-[var(--color-primary)]/20"
+                          : "border-white/8 hover:border-white/16 hover:bg-white/3"
+                      }`}
+                    >
+                      {active && (
+                        <span className="absolute right-3 top-3">
+                          <CheckCircle2 className="h-3.5 w-3.5 text-[var(--color-primary)]" />
+                        </span>
+                      )}
+                      {loading && (
+                        <span className="absolute right-3 top-3">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--color-textDim)]" />
+                        </span>
+                      )}
+
+                      {/* Mini preview */}
+                      <div className="mb-3">{opt.preview}</div>
+
+                      <div className="flex items-center gap-2">
+                        <opt.icon className={`h-4 w-4 ${active ? "text-[var(--color-primary)]" : "text-[var(--color-textDim)]"}`} />
+                        <span className={`text-sm font-semibold ${active ? "text-[var(--color-textMain)]" : "text-[var(--color-textDim)]"}`}>
+                          {opt.label}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-xs text-[var(--color-textDim)]">{opt.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Status + delete */}
@@ -260,8 +339,7 @@ export default function LandingVideoPage() {
         </div>
 
         <p className="mt-3 text-xs text-[var(--color-textDim)]">
-          O vídeo substituirá o atual imediatamente após o upload e ficará visível
-          na landing page para todos os visitantes.
+          O vídeo substituirá o atual imediatamente após o upload. Ajuste a moldura na seção acima.
         </p>
       </div>
     </div>

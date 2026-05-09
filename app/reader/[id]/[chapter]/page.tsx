@@ -35,6 +35,8 @@ import { useFavorites } from "@/hooks/useFavoritesApi";
 import { AuthImage } from "@/components/AuthImage";
 import { ProgressSlider } from "@/components/reader/ProgressSlider";
 import { CommentSection } from "@/components/community/CommentSection";
+import { useOfflineDownloads } from "@/hooks/useOfflineDownloads";
+import { WifiOff } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -84,6 +86,9 @@ export default function ReaderPage() {
   const urlPage = hasExplicitPageParam ? Number(rawPageParam) : null;
 
   // ─── Data fetching ────────────────────────────────────────────
+  const { isChapterDownloaded } = useOfflineDownloads();
+  const isOfflineAvailable = isChapterDownloaded(seriesId, chapterId);
+
   const {
     data: chapterData,
     isLoading,
@@ -153,7 +158,6 @@ export default function ReaderPage() {
   }, [currentPage, resetZoom]);
 
   // ─── Derived data ─────────────────────────────────────────────
-  const totalPages = chapterData?.pageCount ?? 1;
   const chapters = useMemo(
     () => seriesData?.medias ?? [],
     [seriesData?.medias],
@@ -164,8 +168,37 @@ export default function ReaderPage() {
   );
   const isHorizontal = readingMode === "horizontal";
   const isWebtoon = readingMode === "webtoon";
+  const [offlineMeta, setOfflineMeta] = useState<{
+    title: string;
+    number: number;
+    pageCount: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (error && isOfflineAvailable) {
+      import("@/services/offline-storage.service").then((m) =>
+        m.getChapterMeta(seriesId, chapterId).then((meta) => {
+          if (meta) {
+            setOfflineMeta({
+              title: meta.chapterTitle,
+              number: meta.chapterNumber,
+              pageCount: meta.pageCount,
+            });
+          }
+        }),
+      );
+    }
+  }, [error, isOfflineAvailable, seriesId, chapterId]);
+
+  const resolvedChapterData = chapterData || offlineMeta;
+  const totalPages = resolvedChapterData?.pageCount ?? 1;
+
   const chapterTitle =
-    chapterData?.title || `Capítulo ${chapterData?.number ?? "-"}`;
+    chapterData?.title ||
+    offlineMeta?.title ||
+    `Capítulo ${resolvedChapterData?.number ?? "-"}`;
+
+  const isUsingOfflineData = !chapterData && !!offlineMeta;
 
   // ─── Progress sync ────────────────────────────────────────────
   useProgressSync(chapterId, currentPage, totalPages);
@@ -522,9 +555,14 @@ export default function ReaderPage() {
               </motion.button>
 
               <div className="mx-4 min-w-0 flex-1 text-center">
-                <h1 className="truncate text-sm font-semibold text-white">
-                  {chapterTitle}
-                </h1>
+                <div className="flex items-center justify-center gap-2">
+                  <h1 className="truncate text-sm font-semibold text-white">
+                    {chapterTitle}
+                  </h1>
+                  {isUsingOfflineData && (
+                    <WifiOff className="h-3.5 w-3.5 shrink-0 text-yellow-400" />
+                  )}
+                </div>
                 {seriesData?.title && (
                   <p className="truncate text-xs text-white/40">
                     {seriesData.title}
@@ -620,6 +658,8 @@ export default function ReaderPage() {
                     alt={`Página ${pageNumber}`}
                     className={getImageClasses()}
                     loading={pageNumber <= 3 ? "eager" : "lazy"}
+                    seriesId={seriesId}
+                    useOffline={isOfflineAvailable}
                     preloadMargin="800px"
                   />
                 </div>

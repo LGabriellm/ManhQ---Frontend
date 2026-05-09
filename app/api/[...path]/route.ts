@@ -131,7 +131,6 @@ function buildForwardedHeaders(
     headers.set("cookie", forwardedCookieHeader);
   }
 
-  headers.set("accept-encoding", "identity");
   headers.set("x-forwarded-host", req.headers.get("host") || req.nextUrl.host);
   headers.set("x-forwarded-proto", req.nextUrl.protocol.replace(":", ""));
 

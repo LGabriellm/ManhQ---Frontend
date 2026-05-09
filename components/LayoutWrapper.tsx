@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { BottomNav } from "@/components/BottomNav";
+import { DownloadManager } from "@/components/DownloadManager";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   isPublicAppPath,
@@ -77,6 +78,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         {children}
       </div>
       {!shouldHideNav && <BottomNav />}
+      <DownloadManager />
     </>
   );
 }

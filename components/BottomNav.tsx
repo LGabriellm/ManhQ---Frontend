@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Search, Library, Trophy, User } from "lucide-react";
+import { Home, Search, Library, Trophy, User, Download } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,6 +13,7 @@ const navItems = [
   { href: "/search",  icon: Search,  label: "Buscar" },
   { href: "/ranking", icon: Trophy,  label: "Ranking" },
   { href: "/library", icon: Library, label: "Biblioteca" },
+  { href: "/offline", icon: Download, label: "Offline" },
   { href: "/profile", icon: User,    label: "Perfil" },
 ];
 

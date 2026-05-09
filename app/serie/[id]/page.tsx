@@ -27,6 +27,7 @@ import {
 import { useSeriesChapterProgress } from "@/hooks/useSeriesChapterProgress";
 import { AuthCover } from "@/components/AuthCover";
 import { CommentSection } from "@/components/community/CommentSection";
+import { DownloadButton } from "@/components/DownloadButton";
 import { useAuth } from "@/contexts/AuthContext";
 import { getPublicCoverUrl } from "@/lib/coverUrl";
 
@@ -281,17 +282,31 @@ export default function MangaDetailsPage() {
           className="mb-6"
         >
           {mainReadLink ? (
-            <Link href={mainReadLink} className="block">
-              <motion.div
-                whileTap={{ scale: 0.97 }}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-4 font-semibold text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90"
-              >
-                <Play className="h-5 w-5 fill-white" />
-                {hasContinue
-                  ? `Continuar · ${continueItem?.mediaTitle || `Cap. ${continueItem?.mediaNumber}`}`
-                  : "Começar a Ler"}
-              </motion.div>
-            </Link>
+            <div className="flex gap-3">
+              <Link href={mainReadLink} className="block flex-1">
+                <motion.div
+                  whileTap={{ scale: 0.97 }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-6 py-4 font-semibold text-white shadow-lg shadow-primary/20 transition-colors hover:bg-primary/90"
+                >
+                  <Play className="h-5 w-5 fill-white" />
+                  {hasContinue
+                    ? `Continuar · ${continueItem?.mediaTitle || `Cap. ${continueItem?.mediaNumber}`}`
+                    : "Começar a Ler"}
+                </motion.div>
+              </Link>
+              <DownloadButton
+                seriesId={seriesId}
+                seriesTitle={series.title}
+                chapters={chapters.map((ch) => ({
+                  chapterId: ch.id,
+                  chapterNumber: ch.number,
+                  chapterTitle: ch.title,
+                  pageCount: ch.pageCount ?? 0,
+                }))}
+                variant="button"
+                className="shrink-0"
+              />
+            </div>
           ) : (
             <div className="rounded-xl border border-dashed border-surface bg-surface/20 px-5 py-4 text-center">
               <p className="text-sm font-semibold text-textMain">
@@ -431,28 +446,28 @@ export default function MangaDetailsPage() {
                       : "Número de páginas indisponível";
 
                 return (
-                  <Link
+                  <motion.div
                     key={chapter.id}
-                    href={`/reader/${series.id}/${chapter.id}`}
+                    initial={{ opacity: 0, x: -10 }}
+                    whileInView={{ opacity: 1, x: 0 }}
+                    viewport={{ once: true, amount: 0.3 }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                    className={`group relative my-4 flex items-center overflow-hidden rounded-xl transition-all ${
+                      isCurrent
+                        ? "border-2 border-primary/40 bg-primary/8 shadow-[0_0_12px_rgba(229,9,20,0.08)]"
+                        : isRead
+                          ? "border border-emerald-500/25 bg-surface/30"
+                          : "border border-surface bg-surface/50 hover:border-white/10 hover:bg-surface"
+                    }`}
                   >
-                    <motion.div
-                      initial={{ opacity: 0, x: -10 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true, amount: 0.3 }}
-                      transition={{ duration: 0.3, ease: "easeOut" }}
-                      whileTap={{ scale: 0.98 }}
-                      className={`group relative my-4 flex items-center overflow-hidden rounded-xl p-4 transition-all ${
-                        isCurrent
-                          ? "border-2 border-primary/40 bg-primary/8 shadow-[0_0_12px_rgba(229,9,20,0.08)]"
-                          : isRead
-                            ? "border border-emerald-500/25 bg-surface/30"
-                            : "border border-surface bg-surface/50 hover:border-white/10 hover:bg-surface"
-                      }`}
-                    >
-                      {isCurrent && (
-                        <div className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full bg-primary" />
-                      )}
+                    {isCurrent && (
+                      <div className="absolute bottom-2 left-0 top-2 w-0.5 rounded-full bg-primary" />
+                    )}
 
+                    <Link
+                      href={`/reader/${series.id}/${chapter.id}`}
+                      className="flex flex-1 items-center p-4"
+                    >
                       <div
                         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
                           isRead
@@ -505,8 +520,19 @@ export default function MangaDetailsPage() {
                       ) : (
                         <Play className="h-4 w-4 shrink-0 fill-current text-textDim transition-colors group-hover:text-white" />
                       )}
-                    </motion.div>
-                  </Link>
+                    </Link>
+
+                    <div className="pr-3">
+                      <DownloadButton
+                        seriesId={series.id}
+                        chapterId={chapter.id}
+                        chapterNumber={chapter.number}
+                        chapterTitle={chapter.title || `Capítulo ${chapter.number}`}
+                        seriesTitle={series.title}
+                        pageCount={chapter.pageCount ?? 0}
+                      />
+                    </div>
+                  </motion.div>
                 );
               })}
             </div>

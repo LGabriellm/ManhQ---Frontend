@@ -62,7 +62,7 @@ export function useProgressSync(
 
     isSending.current = true;
     try {
-      await readerService.updateProgress(chapter, { page });
+      await progressService.saveProgress(chapter, { page });
       lastSentPage.current = page;
     } catch {
       // Será tentado novamente na próxima mudança
@@ -246,6 +246,15 @@ export function useProgressSync(
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
+  }, []);
+
+  // Sincronizar progresso offline ao reconectar
+  useEffect(() => {
+    const handleOnline = () => {
+      progressService.flushProgressQueue().catch(() => {});
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
   }, []);
 
   // Flush + invalidação no unmount do reader

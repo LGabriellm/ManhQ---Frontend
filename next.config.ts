@@ -4,14 +4,17 @@ const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
   images: {
+    unoptimized: true,
     remotePatterns: [
       { protocol: "https", hostname: "api.manhq.com.br" },
       { protocol: "https", hostname: "*.manhq.com.br" },
       { protocol: "https", hostname: "*.googleusercontent.com" },
+      { protocol: "https", hostname: "*.b-cdn.net" }, // Bunny.net CDN
       { protocol: "http", hostname: "localhost" },
       { protocol: "http", hostname: "127.0.0.1" },
     ],
   },
+  productionBrowserSourceMaps: false,
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
   },
@@ -45,8 +48,9 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: https: http: blob:",
-              // *.s3.sa-east-1.amazonaws.com: presigned PUT uploads bypass Cloudflare body limit
-              "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://www.facebook.com https://connect.facebook.net https://*.s3.sa-east-1.amazonaws.com",
+              // Bunny CDN images load via https: (covered by img-src https:)
+              // Presigned S3 uploads bypass Cloudflare body limit
+              "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://www.facebook.com https://connect.facebook.net https://*.s3.sa-east-1.amazonaws.com https://*.b-cdn.net",
               "frame-src 'none'",
               "object-src 'none'",
               "base-uri 'self'",

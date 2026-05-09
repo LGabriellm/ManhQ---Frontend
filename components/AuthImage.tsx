@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Loader2, RefreshCcw } from "lucide-react";
 import { readerService } from "@/services/reader.service";
+import * as offlineStorage from "@/services/offline-storage.service";
 
 interface AuthImageProps {
   chapterId: string;
@@ -11,6 +12,8 @@ interface AuthImageProps {
   className?: string;
   loading?: "eager" | "lazy";
   preloadMargin?: string;
+  seriesId?: string;
+  useOffline?: boolean;
 }
 
 export function AuthImage({
@@ -20,6 +23,8 @@ export function AuthImage({
   className,
   loading = "lazy",
   preloadMargin = "800px",
+  seriesId = "",
+  useOffline = false,
 }: AuthImageProps) {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -63,6 +68,18 @@ export function AuthImage({
       try {
         setIsLoading(true);
         setError(false);
+
+        if (useOffline && seriesId) {
+          const cached = await offlineStorage.getPageUrl(chapterId, pageNumber);
+          if (cached) {
+            if (isMounted) {
+              setImageSrc(cached);
+              setIsLoading(false);
+            }
+            return;
+          }
+        }
+
         blobUrl = await readerService.getPageBlob(chapterId, pageNumber);
         if (isMounted) {
           setImageSrc(blobUrl);

@@ -1,5 +1,6 @@
 import api from "./api";
 import { getCoverUrl } from "@/lib/utils";
+import * as offlineStorage from "./offline-storage.service";
 import type {
   MediaProgress,
   SeriesProgress,
@@ -246,5 +247,47 @@ export const progressService = {
   async getStats(): Promise<ProgressStats> {
     const response = await api.get<ProgressStats>("/progress/stats");
     return response.data;
+  },
+
+  async saveProgress(
+    chapterId: string,
+    data: { page: number; finished?: boolean; stats?: { pages: number; timeSpent: number; chapterCompleted?: boolean } | null },
+  ): Promise<void> {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      await offlineStorage.queueProgress({
+        chapterId,
+        page: data.page,
+        finished: data.finished ?? false,
+        stats: data.stats ?? null,
+        queuedAt: Date.now(),
+      });
+    } else {
+      await api.post(`/read/${chapterId}/progress`, { page: data.page });
+    }
+  },
+
+  async flushProgressQueue(): Promise<{ synced: number; failed: number }> {
+    const entries = await offlineStorage.getPendingProgress();
+    if (entries.length === 0) return { synced: 0, failed: 0 };
+
+    const synced: number[] = [];
+    const failed: number[] = [];
+
+    for (const entry of entries) {
+      if (entry.attempts >= 5) continue;
+      try {
+        await api.post(`/read/${entry.chapterId}/progress`, {
+          page: entry.page,
+        });
+        if (entry.id !== undefined) synced.push(entry.id);
+      } catch {
+        if (entry.id !== undefined && entry.attempts < 5) failed.push(entry.id);
+      }
+    }
+
+    await offlineStorage.markProgressSynced(synced);
+    await offlineStorage.incrementProgressAttempt(failed);
+
+    return { synced: synced.length, failed: failed.length };
   },
 };

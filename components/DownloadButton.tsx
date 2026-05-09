@@ -10,6 +10,7 @@ interface DownloadButtonProps {
   chapterNumber?: number;
   chapterTitle?: string;
   seriesTitle: string;
+  coverUrl?: string | null;
   pageCount?: number;
   chapters?: {
     chapterId: string;
@@ -27,6 +28,7 @@ export function DownloadButton({
   chapterNumber = 0,
   chapterTitle = "",
   seriesTitle,
+  coverUrl,
   pageCount = 0,
   chapters,
   variant = "icon",
@@ -69,9 +71,10 @@ export function DownloadButton({
         chapterTitle,
         seriesTitle,
         pageCount,
+        coverUrl,
       );
     } else if (chapters && chapters.length > 0) {
-      await downloadSeries(seriesId, chapters, seriesTitle);
+      await downloadSeries(seriesId, chapters, seriesTitle, coverUrl);
     }
   };
 

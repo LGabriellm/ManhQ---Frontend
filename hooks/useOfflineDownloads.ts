@@ -32,6 +32,7 @@ export interface OfflineDownloadsState {
   cancelJob: (jobId: string) => Promise<void>;
   pauseAll: () => void;
   resumeAll: () => void;
+  clearErrors: () => Promise<number>;
   isChapterDownloaded: (seriesId: string, chapterId: string) => boolean;
   isChapterDownloading: (seriesId: string, chapterId: string) => boolean;
 }
@@ -155,6 +156,7 @@ export function useOfflineDownloads(): OfflineDownloadsState {
     cancelJob: offlineDownload.cancelJob,
     pauseAll: offlineDownload.pauseAll,
     resumeAll: offlineDownload.resumeAll,
+    clearErrors: offlineDownload.clearErrors,
     isChapterDownloaded,
     isChapterDownloading,
   };

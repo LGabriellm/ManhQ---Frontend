@@ -7,12 +7,13 @@ import type {
 } from "@/types/offline";
 
 const DB_NAME = "manhq-offline";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 const STORE_CHAPTERS = "chapters";
 const STORE_PAGES = "pages";
 const STORE_PROGRESS = "progressQueue";
 const STORE_JOBS = "downloadQueue";
+const STORE_COVERS = "covers";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -53,6 +54,10 @@ function openDB(): Promise<IDBDatabase> {
         const jobsStore = db.createObjectStore(STORE_JOBS, { keyPath: "id" });
         jobsStore.createIndex("byStatus", "status", { unique: false });
         jobsStore.createIndex("byPriority", "priority", { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains(STORE_COVERS)) {
+        db.createObjectStore(STORE_COVERS, { keyPath: "seriesId" });
       }
     };
 
@@ -469,6 +474,63 @@ export async function deleteJob(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_JOBS, "readwrite");
     tx.objectStore(STORE_JOBS).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function deleteJobsByStatus(status: string): Promise<number> {
+  const db = await getDB();
+  const jobs = await getJobsByStatus(status);
+  if (jobs.length === 0) return 0;
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_JOBS, "readwrite");
+    for (const job of jobs) {
+      tx.objectStore(STORE_JOBS).delete(job.id);
+    }
+    tx.oncomplete = () => resolve(jobs.length);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// ─── Covers ─────────────────────────────────────────────────────────────
+
+export async function saveCover(seriesId: string, blob: Blob): Promise<void> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_COVERS, "readwrite");
+    tx.objectStore(STORE_COVERS).put({ seriesId, blob, savedAt: Date.now() });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function getCover(seriesId: string): Promise<Blob | null> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_COVERS, "readonly");
+    const request = tx.objectStore(STORE_COVERS).get(seriesId);
+    request.onsuccess = () => resolve(request.result?.blob ?? null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function coverExists(seriesId: string): Promise<boolean> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_COVERS, "readonly");
+    const request = tx.objectStore(STORE_COVERS).getKey(seriesId);
+    request.onsuccess = () => resolve(request.result !== undefined);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function deleteSeriesCovers(seriesId: string): Promise<void> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_COVERS, "readwrite");
+    tx.objectStore(STORE_COVERS).delete(seriesId);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });

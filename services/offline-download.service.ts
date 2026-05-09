@@ -3,9 +3,12 @@ import type { DownloadJob } from "@/types/offline";
 import * as offlineStorage from "./offline-storage.service";
 import toast from "react-hot-toast";
 
-const MAX_CONCURRENT_PAGES = 5;
+const MAX_CONCURRENT_PAGES = 2;
 const MAX_CONCURRENT_CHAPTERS = 1;
 const PAGE_RETRY_LIMIT = 3;
+const BATCH_DELAY_MS = 500;
+const RATE_LIMIT_BACKOFF_MS = 2000;
+const MAX_CONSECUTIVE_429 = 3;
 
 const QUALITY_ESTIMATE_BYTES: Record<string, number> = {
   low: 150_000,
@@ -144,6 +147,7 @@ export async function enqueueChapter(
   pageCount: number,
   priority?: number,
   coverUrl?: string | null,
+  notify?: boolean,
 ): Promise<string> {
   const id = crypto.randomUUID();
 
@@ -169,6 +173,7 @@ export async function enqueueChapter(
     chapterNumber,
     chapterTitle,
     seriesTitle,
+    coverUrl: coverUrl ?? null,
     totalPages: pageCount,
     completedPages: 0,
     failedPages: [],
@@ -178,7 +183,7 @@ export async function enqueueChapter(
   };
 
   await offlineStorage.saveJob(job);
-  notifyListeners();
+  if (notify !== false) notifyListeners();
   startProcessing();
   return id;
 }
@@ -206,9 +211,11 @@ export async function enqueueSeries(
       ch.pageCount,
       i,
       coverUrl,
+      false,
     );
     if (id) ids.push(id);
   }
+  notifyListeners();
   return ids;
 }
 
@@ -244,6 +251,16 @@ export async function cancelJob(jobId: string) {
     await offlineStorage.deleteJob(jobId);
   }
   notifyListeners();
+}
+
+export async function clearErrors(): Promise<number> {
+  const errorJobs = await offlineStorage.getJobsByStatus("error");
+  for (const job of errorJobs) {
+    await offlineStorage.deleteChapter(job.seriesId, job.chapterId);
+  }
+  const count = await offlineStorage.deleteJobsByStatus("error");
+  if (count > 0) notifyListeners();
+  return count;
 }
 
 export function pauseAll() {
@@ -336,6 +353,7 @@ async function downloadJob(job: DownloadJob) {
   const downloadedPages = new Set<number>();
   const failedPageSet = new Set<number>(job.failedPages);
   let stopped = false;
+  let consecutive429s = 0;
 
   try {
     await offlineStorage.updateJob(job.id, {
@@ -351,6 +369,27 @@ async function downloadJob(job: DownloadJob) {
     );
     const pageCount = response.data.pageCount ?? job.totalPages;
 
+    // Download cover if available and not already cached
+    let localCoverUrl: string | null = null;
+    if (job.coverUrl) {
+      try {
+        const coverExists = await offlineStorage.coverExists(job.seriesId);
+        if (!coverExists) {
+          const coverResponse = await api.get(job.coverUrl, {
+            responseType: "blob",
+            signal: abort.signal,
+          });
+          await offlineStorage.saveCover(job.seriesId, coverResponse.data as Blob);
+        }
+        const coverBlob = await offlineStorage.getCover(job.seriesId);
+        if (coverBlob) {
+          localCoverUrl = URL.createObjectURL(coverBlob);
+        }
+      } catch {
+        // Cover download is best-effort; don't fail the chapter
+      }
+    }
+
     await offlineStorage.saveChapterMeta({
       compositeKey: `${job.seriesId}:${job.chapterId}`,
       seriesId: job.seriesId,
@@ -358,7 +397,7 @@ async function downloadJob(job: DownloadJob) {
       chapterNumber: job.chapterNumber,
       chapterTitle: job.chapterTitle,
       seriesTitle: job.seriesTitle,
-      coverUrl: null,
+      coverUrl: localCoverUrl,
       pageCount,
       downloadedPages: 0,
       downloadStatus: "downloading",
@@ -407,6 +446,12 @@ async function downloadJob(job: DownloadJob) {
           );
           recordBytes(blobResponse.data.size);
 
+          // Reset 429 counter on successful download
+          consecutive429s = 0;
+
+          // Space out requests to stay under backend rate limit
+          await sleep(BATCH_DELAY_MS);
+
           downloadedPages.add(page);
           failedPageSet.delete(page);
 
@@ -430,9 +475,26 @@ async function downloadJob(job: DownloadJob) {
             throw err;
           }
 
-          // 401 — session expired, abort entire job
+          // Rate limited (429) — back off and reset 429 counter on other errors
           if (err && typeof err === "object" && "response" in err) {
             const axiosErr = err as { response?: { status?: number } };
+            if (axiosErr.response?.status === 429) {
+              consecutive429s++;
+              if (consecutive429s >= MAX_CONSECUTIVE_429) {
+                stopped = true;
+                await offlineStorage.updateJob(job.id, {
+                  status: "error",
+                  errorMessage: "Servidor sobrecarregado. Tente novamente mais tarde.",
+                });
+                activeDownloads.delete(job.id);
+                notifyListeners();
+                throw new Error("RATE_LIMITED");
+              }
+              await sleep(RATE_LIMIT_BACKOFF_MS);
+              continue;
+            }
+
+            // 401 — session expired, abort entire job
             if (axiosErr.response?.status === 401) {
               stopped = true;
               await offlineStorage.updateJob(job.id, {
@@ -444,6 +506,9 @@ async function downloadJob(job: DownloadJob) {
               throw new Error("AUTH_EXPIRED");
             }
           }
+
+          // Non-429 error resets the 429 counter
+          consecutive429s = 0;
         }
       }
 

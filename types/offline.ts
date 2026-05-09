@@ -52,6 +52,7 @@ export interface DownloadJob {
   chapterNumber: number;
   chapterTitle: string;
   seriesTitle: string;
+  coverUrl?: string | null;
   totalPages: number;
   completedPages: number;
   failedPages: number[];

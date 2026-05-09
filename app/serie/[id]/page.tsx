@@ -297,6 +297,7 @@ export default function MangaDetailsPage() {
               <DownloadButton
                 seriesId={seriesId}
                 seriesTitle={series.title}
+                coverUrl={getPublicCoverUrl(seriesId, series.coverUrl)}
                 chapters={chapters.map((ch) => ({
                   chapterId: ch.id,
                   chapterNumber: ch.number,
@@ -529,6 +530,7 @@ export default function MangaDetailsPage() {
                         chapterNumber={chapter.number}
                         chapterTitle={chapter.title || `Capítulo ${chapter.number}`}
                         seriesTitle={series.title}
+                        coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
                         pageCount={chapter.pageCount ?? 0}
                       />
                     </div>

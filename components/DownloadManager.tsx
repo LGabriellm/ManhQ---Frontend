@@ -162,9 +162,10 @@ function JobProgress({ job }: { job: DownloadJob }) {
 
 export function DownloadManager() {
   const [isOpen, setIsOpen] = useState(false);
-  const { jobs, isDownloading, totalProgress, pauseAll, resumeAll } =
+  const { jobs, isDownloading, totalProgress, pauseAll, resumeAll, clearErrors } =
     useOfflineDownloads();
   const [speed, setSpeed] = useState(0);
+  const [confirmClear, setConfirmClear] = useState(false);
   const speedTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -368,6 +369,34 @@ export function DownloadManager() {
                       {errorJobs.map((job) => (
                         <JobProgress key={job.id} job={job} />
                       ))}
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      {confirmClear ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setConfirmClear(false)}
+                            className="rounded-lg px-3 py-1.5 text-xs font-medium text-white/50 hover:text-white"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={async () => {
+                              await clearErrors();
+                              setConfirmClear(false);
+                            }}
+                            className="rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/30"
+                          >
+                            Confirmar limpeza
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmClear(true)}
+                          className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-400/60 hover:bg-red-500/10 hover:text-red-400"
+                        >
+                          Limpar todos os erros
+                        </button>
+                      )}
                     </div>
                   </details>
                 )}

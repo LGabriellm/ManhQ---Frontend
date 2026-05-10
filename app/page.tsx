@@ -409,12 +409,11 @@ export default function LandingPage() {
                       <span className="h-5 w-px bg-white/8" />
                       <div className="ml-2 h-1 w-1 rounded-full bg-primary shadow-[0_0_6px_rgba(229,9,20,0.8)]" />
                     </div>
-                    <div className="overflow-hidden rounded-b-2xl border-x border-b border-white/8 bg-black">
+                    <div className="overflow-hidden rounded-b-2xl border-x border-b border-white/8 bg-black aspect-video">
                       <video
                         src={videoInfo?.streamUrl ?? "/api/landing-video/stream"}
                         autoPlay muted loop playsInline controls
-                        className="w-full block"
-                        style={{ maxHeight: "520px" }}
+                        className="w-full h-full"
                       />
                     </div>
                   </div>
@@ -435,29 +434,30 @@ export default function LandingPage() {
                     <div className="absolute -right-[7px] top-[100px] h-12 w-[5px] rounded-r bg-[#2c2c2e] z-10" />
                     {/* Phone body */}
                     <div
-                      className="overflow-hidden bg-black"
+                      className="relative overflow-hidden bg-black"
                       style={{
+                        aspectRatio: "9/19",
                         borderRadius: "2.6rem",
                         border: "6px solid #1c1c1e",
                         boxShadow:
                           "inset 0 1px 0 rgba(255,255,255,0.07), 0 40px 100px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.04), 0 0 60px rgba(229,9,20,0.07)",
                       }}
                     >
+                      {/* Video */}
+                      <video
+                        src={videoInfo?.streamUrl ?? "/api/landing-video/stream"}
+                        autoPlay muted loop playsInline controls
+                        className="absolute inset-0 w-full h-full"
+                      />
                       {/* Dynamic island */}
-                      <div className="flex justify-center pt-3 pb-1">
+                      <div className="relative z-10 flex justify-center pt-3 pb-1">
                         <div
                           className="h-[24px] w-[88px] rounded-full bg-black"
                           style={{ border: "1px solid rgba(255,255,255,0.05)" }}
                         />
                       </div>
-                      {/* Video */}
-                      <video
-                        src={videoInfo?.streamUrl ?? "/api/landing-video/stream"}
-                        autoPlay muted loop playsInline controls
-                        className="w-full block"
-                      />
                       {/* Home indicator */}
-                      <div className="flex justify-center py-3">
+                      <div className="absolute bottom-0 left-0 right-0 z-10 flex justify-center py-3">
                         <div className="h-[4px] w-24 rounded-full bg-white/20" />
                       </div>
                     </div>

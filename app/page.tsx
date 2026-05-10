@@ -413,8 +413,8 @@ export default function LandingPage() {
                       <video
                         src={videoInfo?.streamUrl ?? "/api/landing-video/stream"}
                         autoPlay muted loop playsInline controls
-                        className="w-full"
-                        style={{ maxHeight: "520px", objectFit: "cover" }}
+                        className="w-full block"
+                        style={{ maxHeight: "520px" }}
                       />
                     </div>
                   </div>

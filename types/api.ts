@@ -3215,6 +3215,7 @@ export interface LandingVideoInfo {
   size?: number;
   uploadedAt?: string;
   format?: "desktop" | "mobile";
+  streamUrl?: string;
 }
 
 export interface LandingVideoAdminInfo extends LandingVideoInfo {

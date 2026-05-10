@@ -180,7 +180,7 @@ export default function LandingVideoPage() {
             {/* Preview */}
             <div className="overflow-hidden rounded-xl border border-white/8 bg-black">
               <video
-                src="/api/landing-video/stream"
+                src={video?.streamUrl ?? "/api/landing-video/stream"}
                 controls
                 className="w-full"
                 style={{ maxHeight: "360px" }}

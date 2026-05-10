@@ -50,6 +50,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' data: https: http: blob:",
               // Bunny CDN images load via https: (covered by img-src https:)
               // Presigned S3 uploads bypass Cloudflare body limit
+              "media-src 'self' https://cdn.manhq.com.br https://*.b-cdn.net",
               "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://www.facebook.com https://connect.facebook.net https://*.s3.sa-east-1.amazonaws.com https://*.b-cdn.net",
               "frame-src 'none'",
               "object-src 'none'",

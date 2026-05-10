@@ -411,7 +411,7 @@ export default function LandingPage() {
                     </div>
                     <div className="overflow-hidden rounded-b-2xl border-x border-b border-white/8 bg-black">
                       <video
-                        src="/api/landing-video/stream"
+                        src={videoInfo?.streamUrl ?? "/api/landing-video/stream"}
                         autoPlay muted loop playsInline controls
                         className="w-full"
                         style={{ maxHeight: "520px", objectFit: "cover" }}
@@ -452,7 +452,7 @@ export default function LandingPage() {
                       </div>
                       {/* Video */}
                       <video
-                        src="/api/landing-video/stream"
+                        src={videoInfo?.streamUrl ?? "/api/landing-video/stream"}
                         autoPlay muted loop playsInline controls
                         className="w-full block"
                       />

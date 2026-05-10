@@ -77,10 +77,12 @@ const ALLOWED_PREFIXES = [
   "landing-video/",
   "admin/landing-video/prepare",
   "admin/landing-video/confirm",
+  "admin/landing-video/reencode",
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;
 const UPLOAD_TIMEOUT_MS = 120_000;
+const REENCODE_TIMEOUT_MS = 600_000;
 const PUBLIC_CACHE_CONTROL =
   "public, max-age=60, s-maxage=300, stale-while-revalidate=1800";
 const PRIVATE_CACHE_CONTROL = "private, no-store, max-age=0, must-revalidate";
@@ -244,6 +246,10 @@ function isLandingVideoUpload(targetPath: string, method: string): boolean {
   return targetPath === "admin/landing-video" && method === "POST";
 }
 
+function isLandingVideoReencode(targetPath: string, method: string): boolean {
+  return targetPath === "admin/landing-video/reencode" && method === "POST";
+}
+
 function appendVaryHeader(headers: Headers, value: string): void {
   const current = headers.get("vary");
   if (!current) {
@@ -324,9 +330,11 @@ async function handler(
       isLandingVideoUpload(targetPath, req.method)
         ? undefined
         : AbortSignal.timeout(
-            isUploadStagingPath(targetPath)
-              ? UPLOAD_TIMEOUT_MS
-              : FETCH_TIMEOUT_MS,
+            isLandingVideoReencode(targetPath, req.method)
+              ? REENCODE_TIMEOUT_MS
+              : isUploadStagingPath(targetPath)
+                ? UPLOAD_TIMEOUT_MS
+                : FETCH_TIMEOUT_MS,
           ),
   };
 

@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   AlertCircle,
   FileVideo,
+  RefreshCw,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
@@ -20,6 +21,7 @@ import {
   useUploadLandingVideo,
   useDeleteLandingVideo,
   useSetLandingVideoFormat,
+  useReencodeLandingVideo,
 } from "@/hooks/useLandingVideo";
 
 function formatBytes(bytes: number): string {
@@ -81,6 +83,7 @@ export default function LandingVideoPage() {
   const uploadMutation = useUploadLandingVideo();
   const deleteMutation = useDeleteLandingVideo();
   const setFormatMutation = useSetLandingVideoFormat();
+  const reencodeMutation = useReencodeLandingVideo();
 
   const handleFile = useCallback(
     (file: File) => {
@@ -123,6 +126,15 @@ export default function LandingVideoPage() {
     deleteMutation.mutate(undefined, {
       onSuccess: () => toast.success("Vídeo removido."),
       onError: () => toast.error("Erro ao remover vídeo."),
+    });
+  }
+
+  function handleReencode() {
+    reencodeMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        toast.success(data.message);
+      },
+      onError: () => toast.error("Erro ao recodificar vídeo."),
     });
   }
 
@@ -254,24 +266,39 @@ export default function LandingVideoPage() {
               </div>
             </div>
 
-            {/* Status + delete */}
+            {/* Status + actions */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs text-emerald-400">
                 <CheckCircle2 className="h-4 w-4" />
                 Ativo na landing page
               </div>
-              <button
-                onClick={handleDelete}
-                disabled={deleteMutation.isPending}
-                className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-40"
-              >
-                {deleteMutation.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Trash2 className="h-3.5 w-3.5" />
-                )}
-                Remover vídeo
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleReencode}
+                  disabled={reencodeMutation.isPending}
+                  className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-500/20 disabled:opacity-40"
+                  title="Recodificar para H.264 (compatível com todos os navegadores)"
+                >
+                  {reencodeMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Recodificar H.264
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleteMutation.isPending}
+                  className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20 disabled:opacity-40"
+                >
+                  {deleteMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                  Remover vídeo
+                </button>
+              </div>
             </div>
           </div>
         )}

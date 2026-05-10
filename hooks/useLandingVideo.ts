@@ -60,3 +60,22 @@ export function useSetLandingVideoFormat() {
     },
   });
 }
+
+export function useReencodeLandingVideo() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => landingVideoService.reencode(),
+    onSuccess: () => {
+      // Refresh now to show "in progress" state, then again after transcode completes
+      void qc.invalidateQueries({ queryKey: landingVideoKeys.adminInfo() });
+      void qc.invalidateQueries({ queryKey: landingVideoKeys.info() });
+      // Poll a few times to catch the reencode completion
+      [10, 30, 60].forEach((delay) => {
+        setTimeout(() => {
+          void qc.invalidateQueries({ queryKey: landingVideoKeys.adminInfo() });
+          void qc.invalidateQueries({ queryKey: landingVideoKeys.info() });
+        }, delay * 1000);
+      });
+    },
+  });
+}

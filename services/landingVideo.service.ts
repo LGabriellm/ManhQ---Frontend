@@ -84,5 +84,12 @@ export const landingVideoService = {
       .patch<LandingVideoAdminInfo>("/admin/landing-video/format", { format })
       .then((r) => r.data),
 
+  reencode: () =>
+    api
+      .post<{ started: boolean; message: string }>(
+        "/admin/landing-video/reencode",
+      )
+      .then((r) => r.data),
+
   getStreamUrl: () => "/api/landing-video/stream",
 };

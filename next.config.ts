@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   reactStrictMode: true,
   images: {
-    unoptimized: true,
+    unoptimized: false,
     remotePatterns: [
       { protocol: "https", hostname: "api.manhq.com.br" },
       { protocol: "https", hostname: "*.manhq.com.br" },

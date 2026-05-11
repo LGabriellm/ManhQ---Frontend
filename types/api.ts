@@ -3207,6 +3207,13 @@ export interface AchievementsResponse {
   summary: { total: number; completed: number; newlyAwarded: string[] };
 }
 
+// ===== Reading Heatmap =====
+export interface HeatmapDay {
+  date: string; // "2026-05-10"
+  count: number; // chapters read
+  chapters: Array<{ id: string; title: string; seriesTitle: string }>;
+}
+
 // ===== Landing Video =====
 export interface LandingVideoInfo {
   active: boolean;

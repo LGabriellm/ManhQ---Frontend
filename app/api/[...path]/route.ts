@@ -54,7 +54,9 @@ const ALLOWED_PREFIXES = [
   "admin/",
   "notifications",
   "stats/",
+  "stats/reading-heatmap",
   "analytics/",
+  "audit-log",
   "collections",
   "account",
   "editor/",
@@ -306,6 +308,7 @@ async function handler(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
+  const startTime = Date.now();
   const { path } = await params;
   const targetPath = path.join("/");
 
@@ -347,6 +350,20 @@ async function handler(
 
   try {
     const response = await fetch(url.toString(), init);
+    const duration = Date.now() - startTime;
+
+    // Log non-2xx responses at a condensed level
+    if (!response.ok) {
+      const correlationId =
+        response.headers.get("x-correlation-id") ??
+        response.headers.get("x-request-id") ??
+        undefined;
+      const extras = correlationId ? ` correlation=${correlationId}` : "";
+      console.warn(
+        `[Proxy] ${req.method} ${targetPath} -> ${response.status} (${duration}ms)${extras}`,
+      );
+    }
+
     const isEventStream = isUploadSessionEventStream(targetPath);
     const isPublicCacheable = shouldApplyPublicCacheHeader(
       req,
@@ -397,6 +414,11 @@ async function handler(
       headers: responseHeaders,
     });
   } catch (err) {
+    const duration = Date.now() - startTime;
+    console.error(
+      `[Proxy] Fetch error for ${req.method} ${targetPath} (${duration}ms):`,
+      err instanceof Error ? err.message : err,
+    );
     if (err instanceof DOMException && err.name === "TimeoutError") {
       return NextResponse.json(
         { error: "Gateway timeout" },

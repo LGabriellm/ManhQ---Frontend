@@ -479,6 +479,20 @@ export default function ReaderPage() {
     return "max-h-full max-w-full object-contain";
   };
 
+  // ─── Windowed rendering ─────────────────────────────────────────
+  // Only render actual image content for pages within this range of the
+  // current page. Pages outside the window render as empty containers
+  // to preserve scroll layout without loading all images into the DOM.
+  const READER_WINDOW = 2;
+
+  function isInReaderWindow(pageNumber: number): boolean {
+    return Math.abs(pageNumber - currentPage) <= READER_WINDOW;
+  }
+
+  // For webtoon mode, empty containers need a minimum height to maintain
+  // the continuous scroll flow since images define the natural height.
+  const webtoonSpacerClasses = "min-h-[300px]";
+
   // ─── Loading state ─────────────────────────────────────────────
   if (isLoading) {
     return (
@@ -626,6 +640,27 @@ export default function ReaderPage() {
         {Array.from({ length: totalPages }, (_, i) => i + 1).map(
           (pageNumber) => {
             const isCurrentPage = pageNumber === currentPage;
+            const isInWindow = isInReaderWindow(pageNumber);
+
+            // Pages outside the reader window: render empty container
+            // to preserve scroll layout and IntersectionObserver targets
+            // without loading image content into the DOM.
+            if (!isInWindow) {
+              const containerClasses = isWebtoon
+                ? `${getPageClasses()} ${webtoonSpacerClasses}`
+                : getPageClasses();
+
+              return (
+                <div
+                  key={pageNumber}
+                  id={`page-${pageNumber}`}
+                  data-reader-page
+                  data-page-number={pageNumber}
+                  className={containerClasses}
+                  aria-hidden="true"
+                />
+              );
+            }
 
             return (
               <div

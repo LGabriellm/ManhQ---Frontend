@@ -135,7 +135,13 @@ export function AuthImage({
 
       {!error && imageSrc && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageSrc} alt={alt} className={className} draggable={false} />
+        <img
+          src={imageSrc}
+          alt={alt}
+          className={className}
+          decoding="async"
+          draggable={false}
+        />
       )}
     </div>
   );

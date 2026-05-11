@@ -13,6 +13,7 @@ import type {
   StatsDashboardResponse,
   StatsWeekResponse,
   StatsAllTimeResponse,
+  HeatmapDay,
 } from "@/types/api";
 
 export const statsService = {
@@ -94,5 +95,13 @@ export const statsService = {
 
   async recordKeepalive(data: RecordStatsRequest): Promise<void> {
     await postKeepalive("/stats/record", data);
+  },
+
+  // Heatmap de leitura (GitHub-style)
+  async getReadingHeatmap(months = 6): Promise<HeatmapDay[]> {
+    const response = await api.get<HeatmapDay[]>("/stats/reading-heatmap", {
+      params: { months },
+    });
+    return response.data;
   },
 };

@@ -102,7 +102,7 @@ export function AuthImage({
         URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [chapterId, pageNumber, shouldLoad, retryCount]);
+  }, [chapterId, pageNumber, shouldLoad, retryCount, useOffline, seriesId]);
 
   const handleRetry = useCallback(() => {
     setError(false);

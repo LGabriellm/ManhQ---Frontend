@@ -72,6 +72,39 @@ const READING_MODES: {
   { value: "horizontal", label: "Horizontal", icon: Columns },
 ];
 
+// ─── Page rendering helpers (memoized, not re-created each render) ───
+
+function getPageClasses(isHorizontal: boolean, isWebtoon: boolean): string {
+  if (isHorizontal) {
+    return "relative flex h-full w-full shrink-0 snap-start items-center justify-center bg-black";
+  }
+  if (isWebtoon) {
+    return "relative flex w-full items-center justify-center bg-black";
+  }
+  return "relative flex h-full w-full snap-start items-center justify-center bg-black";
+}
+
+function getImageClasses(isWebtoon: boolean): string {
+  if (isWebtoon) {
+    return "w-full max-w-[900px] h-auto object-contain";
+  }
+  return "max-h-full max-w-full object-contain";
+}
+
+function getEndScreenClasses(isHorizontal: boolean, isWebtoon: boolean): string {
+  if (isHorizontal) {
+    return "flex h-full w-full shrink-0 snap-start flex-col items-center justify-center bg-gradient-to-b from-black to-background px-8";
+  }
+  return "flex min-h-screen w-full snap-start flex-col items-center justify-center bg-gradient-to-b from-black to-background px-8 py-12";
+}
+
+function getCommentsClasses(isHorizontal: boolean, isWebtoon: boolean): string {
+  if (isHorizontal) {
+    return "h-full w-full shrink-0 snap-start overflow-y-auto bg-background px-4 py-10";
+  }
+  return "min-h-screen w-full snap-start bg-background px-4 py-10";
+}
+
 // ─── Component ───────────────────────────────────────────────────────
 
 export default function ReaderPage() {
@@ -81,8 +114,7 @@ export default function ReaderPage() {
   const seriesId = params.id as string;
   const chapterId = params.chapter as string;
   const rawPageParam = searchParams.get("page");
-  const hasExplicitPageParam =
-    rawPageParam !== null && rawPageParam.trim() !== "";
+  const hasExplicitPageParam = rawPageParam !== null && rawPageParam.trim() !== "";
   const urlPage = hasExplicitPageParam ? Number(rawPageParam) : null;
 
   // ─── Data fetching ────────────────────────────────────────────
@@ -100,7 +132,6 @@ export default function ReaderPage() {
   const {
     data: savedProgress,
     isLoading: isProgressLoading,
-    isFetching: isProgressFetching,
   } = useMediaProgress(chapterId);
   const {
     isFavorite,
@@ -114,11 +145,10 @@ export default function ReaderPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [readingMode, setReadingMode] = useState<ReadingMode>(getStoredMode);
   const containerRef = useRef<HTMLDivElement>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const restoredForChapter = useRef<string | null>(null);
   const latestPageRef = useRef(1);
+  const isScrollingRef = useRef(false);
 
   // ─── Zoom ─────────────────────────────────────────────────────
   const zoomContainerRef = useRef<HTMLDivElement | null>(null);
@@ -126,7 +156,6 @@ export default function ReaderPage() {
 
   const { isZoomed, resetZoom, bindZoomRef, zoomStyle } = useReaderZoom({
     onZoomChange: (zoomed) => {
-      // Disable snap while zoomed
       const container = containerRef.current;
       if (!container) return;
       if (zoomed) {
@@ -137,7 +166,6 @@ export default function ReaderPage() {
     },
   });
 
-  // Bind zoom listeners to the current page's zoom wrapper
   const setZoomRef = useCallback(
     (el: HTMLDivElement | null) => {
       if (cleanupZoomRef.current) {
@@ -152,10 +180,10 @@ export default function ReaderPage() {
     [bindZoomRef],
   );
 
-  // Reset zoom on page change
+  // Reset zoom on page and mode change
   useEffect(() => {
     resetZoom();
-  }, [currentPage, resetZoom]);
+  }, [currentPage, readingMode, resetZoom]);
 
   // ─── Derived data ─────────────────────────────────────────────
   const chapters = useMemo(
@@ -209,14 +237,26 @@ export default function ReaderPage() {
 
   // ─── Scroll helpers ───────────────────────────────────────────
   const scrollToPage = useCallback(
-    (page: number, behavior: ScrollBehavior = "smooth") => {
+    (page: number, behavior: ScrollBehavior = "auto") => {
       const targetPage = clampPage(page, totalPages);
       const target = document.getElementById(`page-${targetPage}`);
-      target?.scrollIntoView({
-        behavior,
-        block: "start",
-        inline: "start",
-      });
+      if (!target) return;
+      // Use scrollIntoView only when the element isn't already visible
+      const container = containerRef.current;
+      if (!container) return;
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const isVisible =
+        targetRect.top >= containerRect.top - 50 &&
+        targetRect.bottom <= containerRect.bottom + 50;
+
+      if (!isVisible) {
+        target.scrollIntoView({
+          behavior,
+          block: "start",
+          inline: "start",
+        });
+      }
     },
     [totalPages],
   );
@@ -259,24 +299,17 @@ export default function ReaderPage() {
     [chapterData?.nextChapter, currentChapterIndex, resolveAdjacentChapter],
   );
 
-  // ─── Reset UI when chapter changes ──────────────────────────
-  const [prevChapterId, setPrevChapterId] = useState(chapterId);
-  if (prevChapterId !== chapterId) {
-    setPrevChapterId(chapterId);
+  // ─── Reset UI when chapter changes (useEffect, not during render) ───
+  useEffect(() => {
     setShowControls(true);
     setShowSettings(false);
-  }
-
-  useEffect(() => {
     restoredForChapter.current = null;
   }, [chapterId]);
 
+  // ─── Restore progress / scroll to saved page ───────────────────
   useEffect(() => {
     if (!chapterData || restoredForChapter.current === chapterId) return;
-
-    if (!hasExplicitPageParam && (isProgressLoading || isProgressFetching)) {
-      return;
-    }
+    if (!hasExplicitPageParam && isProgressLoading) return;
 
     const targetPage = clampPage(
       hasExplicitPageParam
@@ -288,9 +321,10 @@ export default function ReaderPage() {
     );
 
     restoredForChapter.current = chapterId;
+    setCurrentPage(targetPage);
     latestPageRef.current = targetPage;
+
     const frame = requestAnimationFrame(() => {
-      setCurrentPage(targetPage);
       scrollToPage(targetPage, "auto");
     });
 
@@ -299,7 +333,6 @@ export default function ReaderPage() {
     chapterData,
     chapterId,
     hasExplicitPageParam,
-    isProgressFetching,
     isProgressLoading,
     savedProgress,
     scrollToPage,
@@ -319,7 +352,6 @@ export default function ReaderPage() {
   // ─── Controls auto-hide ────────────────────────────────────────
   useEffect(() => {
     if (!showControls || showSettings) return;
-
     timeoutRef.current = setTimeout(() => setShowControls(false), 4000);
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -331,43 +363,61 @@ export default function ReaderPage() {
     const container = containerRef.current;
     if (!container || totalPages < 1) return;
 
-    const observedPages = Array.from(
-      container.querySelectorAll<HTMLElement>("[data-reader-page]"),
-    );
-    if (observedPages.length === 0) return;
+    // Delay observation slightly to let initial scroll settle
+    const initTimer = setTimeout(() => {
+      const observedPages = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-reader-page]"),
+      );
+      if (observedPages.length === 0) return;
 
-    // For webtoon mode, use lower thresholds since pages can be taller
-    const thresholds = isWebtoon ? [0.1, 0.3, 0.5] : [0.55, 0.7, 0.85];
+      // Single threshold to reduce callback frequency
+      const threshold = isWebtoon ? 0.3 : 0.6;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        let bestMatch: { page: number; ratio: number } | null = null;
+      let pendingPage: number | null = null;
+      let rafId: number | null = null;
 
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const rawPage = Number(
-            (entry.target as HTMLElement).dataset.pageNumber,
-          );
-          if (!Number.isFinite(rawPage)) continue;
-          if (!bestMatch || entry.intersectionRatio > bestMatch.ratio) {
-            bestMatch = { page: rawPage, ratio: entry.intersectionRatio };
+      const observer = new IntersectionObserver(
+        (entries) => {
+          let bestMatch: { page: number; ratio: number } | null = null;
+
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const rawPage = Number(
+              (entry.target as HTMLElement).dataset.pageNumber,
+            );
+            if (!Number.isFinite(rawPage)) continue;
+            if (!bestMatch || entry.intersectionRatio > bestMatch.ratio) {
+              bestMatch = { page: rawPage, ratio: entry.intersectionRatio };
+            }
           }
-        }
 
-        if (bestMatch) {
-          setCurrentPage((prev) =>
-            prev === bestMatch?.page ? prev : bestMatch.page,
-          );
-        }
-      },
-      { root: container, threshold: thresholds },
-    );
+          if (bestMatch && bestMatch.page !== latestPageRef.current) {
+            // Batch updates: only update state once per frame
+            pendingPage = bestMatch.page;
+            if (rafId === null) {
+              rafId = requestAnimationFrame(() => {
+                if (pendingPage !== null) {
+                  setCurrentPage(pendingPage);
+                }
+                pendingPage = null;
+                rafId = null;
+              });
+            }
+          }
+        },
+        { root: container, threshold: [threshold] },
+      );
 
-    for (const page of observedPages) {
-      observer.observe(page);
-    }
+      for (const page of observedPages) {
+        observer.observe(page);
+      }
 
-    return () => observer.disconnect();
+      return () => observer.disconnect();
+    }, 300);
+
+    return () => {
+      clearTimeout(initTimer);
+    };
   }, [chapterId, readingMode, totalPages, isWebtoon]);
 
   // ─── Persist reading mode ──────────────────────────────────────
@@ -425,16 +475,22 @@ export default function ReaderPage() {
     [scrollToPage],
   );
 
-  const goToNextPage = () => {
-    if (currentPage < totalPages) goToPage(currentPage + 1);
-  };
+  const goToNextPage = useCallback(() => {
+    if (latestPageRef.current < totalPages) {
+      goToPage(latestPageRef.current + 1);
+    }
+  }, [totalPages, goToPage]);
 
-  const goToPrevPage = () => {
-    if (currentPage > 1) goToPage(currentPage - 1);
-  };
+  const goToPrevPage = useCallback(() => {
+    if (latestPageRef.current > 1) {
+      goToPage(latestPageRef.current - 1);
+    }
+  }, [goToPage]);
 
+  // ─── Tap handling — ignore taps during/after scroll ─────────────
   const handleTap = (event: MouseEvent<HTMLDivElement>) => {
-    if (isZoomed) return; // Don't navigate while zoomed
+    if (isZoomed) return;
+    if (isScrollingRef.current) return;
 
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -442,56 +498,74 @@ export default function ReaderPage() {
     const x = event.clientX - rect.left;
     const width = rect.width;
 
-    if (x < width * 0.25) {
-      if (currentPage > 1) goToPrevPage();
+    if (x < width * 0.2) {
+      goToPrevPage();
       return;
     }
-    if (x > width * 0.75) {
-      if (currentPage < totalPages) goToNextPage();
+    if (x > width * 0.8) {
+      goToNextPage();
       return;
     }
 
     setShowControls((v) => !v);
   };
 
-  // ─── Container CSS classes ─────────────────────────────────────
-  const containerClasses = isHorizontal
-    ? "flex h-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide"
-    : isWebtoon
-      ? "h-full overflow-y-auto scrollbar-hide"
-      : "h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide";
+  // ─── Track scroll state to differentiate scroll from tap ────────
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-  const getPageClasses = () => {
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const onScroll = () => {
+      isScrollingRef.current = true;
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        isScrollingRef.current = false;
+      }, 150);
+    };
+
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      container.removeEventListener("scroll", onScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+    };
+  }, []);
+
+  // ─── Container CSS class ────────────────────────────────────────
+  const containerClasses = useMemo(() => {
     if (isHorizontal) {
-      return "relative flex h-full w-full shrink-0 snap-start items-center justify-center bg-black";
+      return "flex h-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide";
     }
     if (isWebtoon) {
-      return "relative flex w-full items-center justify-center bg-black";
+      return "h-full overflow-y-auto scrollbar-hide";
     }
-    return "relative flex h-screen w-full snap-start items-center justify-center bg-black";
-  };
+    return "h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide";
+  }, [isHorizontal, isWebtoon]);
 
-  const getImageClasses = () => {
-    if (isWebtoon) {
-      // Webtoon: images fill width, natural height, capped for readability
-      return "w-full max-w-[900px] h-auto object-contain";
-    }
-    return "max-h-full max-w-full object-contain";
-  };
+  // ─── Memoized page helpers ──────────────────────────────────────
+  const pageClass = useMemo(
+    () => getPageClasses(isHorizontal, isWebtoon),
+    [isHorizontal, isWebtoon],
+  );
+  const imgClass = useMemo(
+    () => getImageClasses(isWebtoon),
+    [isWebtoon],
+  );
+  const endClass = useMemo(
+    () => getEndScreenClasses(isHorizontal, isWebtoon),
+    [isHorizontal, isWebtoon],
+  );
+  const commentsClass = useMemo(
+    () => getCommentsClasses(isHorizontal, isWebtoon),
+    [isHorizontal, isWebtoon],
+  );
 
-  // ─── Windowed rendering ─────────────────────────────────────────
-  // Only render actual image content for pages within this range of the
-  // current page. Pages outside the window render as empty containers
-  // to preserve scroll layout without loading all images into the DOM.
-  const READER_WINDOW = 2;
-
-  function isInReaderWindow(pageNumber: number): boolean {
-    return Math.abs(pageNumber - currentPage) <= READER_WINDOW;
-  }
-
-  // For webtoon mode, empty containers need a minimum height to maintain
-  // the continuous scroll flow since images define the natural height.
-  const webtoonSpacerClasses = "min-h-[300px]";
+  // ─── Memoized pages array ───────────────────────────────────────
+  const pages = useMemo(() => {
+    if (totalPages < 1) return [];
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }, [totalPages]);
 
   // ─── Loading state ─────────────────────────────────────────────
   if (isLoading) {
@@ -637,82 +711,52 @@ export default function ReaderPage() {
 
       {/* ── Content container ─────────────────────────────────────── */}
       <div ref={containerRef} className={containerClasses} onClick={handleTap}>
-        {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-          (pageNumber) => {
-            const isCurrentPage = pageNumber === currentPage;
-            const isInWindow = isInReaderWindow(pageNumber);
+        {/* Page containers — all rendered, AuthImage handles lazy loading */}
+        {pages.map((pageNumber) => {
+          const isCurrentPage = pageNumber === currentPage;
 
-            // Pages outside the reader window: render empty container
-            // to preserve scroll layout and IntersectionObserver targets
-            // without loading image content into the DOM.
-            if (!isInWindow) {
-              const containerClasses = isWebtoon
-                ? `${getPageClasses()} ${webtoonSpacerClasses}`
-                : getPageClasses();
-
-              return (
-                <div
-                  key={pageNumber}
-                  id={`page-${pageNumber}`}
-                  data-reader-page
-                  data-page-number={pageNumber}
-                  className={containerClasses}
-                  aria-hidden="true"
-                />
-              );
-            }
-
-            return (
+          return (
+            <div
+              key={pageNumber}
+              id={`page-${pageNumber}`}
+              data-reader-page
+              data-page-number={pageNumber}
+              className={pageClass}
+            >
+              {/* Zoom wrapper — only active on current page */}
               <div
-                key={pageNumber}
-                id={`page-${pageNumber}`}
-                data-reader-page
-                data-page-number={pageNumber}
-                className={getPageClasses()}
+                ref={isCurrentPage ? setZoomRef : undefined}
+                className="flex h-full w-full items-center justify-center overflow-hidden"
+                style={
+                  isCurrentPage
+                    ? {
+                        ...zoomStyle,
+                        touchAction: isZoomed
+                          ? "none"
+                          : isHorizontal
+                            ? "pan-x"
+                            : "pan-y",
+                      }
+                    : undefined
+                }
               >
-                {/* Zoom wrapper — only active on current page */}
-                <div
-                  ref={isCurrentPage ? setZoomRef : undefined}
-                  className="flex h-full w-full items-center justify-center overflow-hidden"
-                  style={
-                    isCurrentPage
-                      ? {
-                          ...zoomStyle,
-                          touchAction: isZoomed
-                            ? "none"
-                            : isHorizontal
-                              ? "pan-x"
-                              : "pan-y",
-                        }
-                      : undefined
-                  }
-                >
-                  <AuthImage
-                    chapterId={chapterId}
-                    pageNumber={pageNumber}
-                    alt={`Página ${pageNumber}`}
-                    className={getImageClasses()}
-                    loading={pageNumber <= 3 ? "eager" : "lazy"}
-                    seriesId={seriesId}
-                    useOffline={isOfflineAvailable}
-                    preloadMargin="800px"
-                  />
-                </div>
+                <AuthImage
+                  chapterId={chapterId}
+                  pageNumber={pageNumber}
+                  alt={`Página ${pageNumber}`}
+                  className={imgClass}
+                  loading={pageNumber <= 3 ? "eager" : "lazy"}
+                  seriesId={seriesId}
+                  useOffline={isOfflineAvailable}
+                  preloadMargin="800px"
+                />
               </div>
-            );
-          },
-        )}
+            </div>
+          );
+        })}
 
         {/* ── End screen ───────────────────────────────────────── */}
-        <div
-          className={
-            isHorizontal
-              ? "flex h-full w-full shrink-0 snap-start flex-col items-center justify-center gap-6 bg-gradient-to-b from-black via-black/95 to-background px-8"
-              : isWebtoon
-                ? "flex min-h-screen flex-col items-center justify-center gap-6 bg-gradient-to-b from-black via-black/95 to-background px-8"
-                : "flex h-screen snap-start flex-col items-center justify-center gap-6 bg-gradient-to-b from-black via-black/95 to-background px-8"
-          }
-        >
+        <div className={endClass}>
           <div className="mb-4 text-center">
             <p className="mb-2 text-lg font-semibold text-white">
               Fim do Capítulo
@@ -763,9 +807,7 @@ export default function ReaderPage() {
                   <div className="w-full border-t border-white/10" />
                 </div>
                 <div className="relative flex justify-center">
-                  <span className="bg-black px-3 text-xs text-white/40">
-                    ou
-                  </span>
+                  <span className="bg-black px-3 text-xs text-white/40">ou</span>
                 </div>
               </div>
             )}
@@ -782,15 +824,7 @@ export default function ReaderPage() {
         </div>
 
         {/* ── Comments ─────────────────────────────────────────── */}
-        <section
-          className={
-            isHorizontal
-              ? "h-full w-full shrink-0 snap-start overflow-y-auto bg-background px-4 py-10"
-              : isWebtoon
-                ? "min-h-screen bg-background px-4 py-10"
-                : "min-h-screen snap-start bg-background px-4 py-10"
-          }
-        >
+        <section className={commentsClass}>
           <div className="mx-auto max-w-2xl">
             <CommentSection
               scope={{ type: "media", id: chapterId }}

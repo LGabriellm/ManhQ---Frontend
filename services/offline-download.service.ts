@@ -253,6 +253,39 @@ export async function cancelJob(jobId: string) {
   notifyListeners();
 }
 
+export async function retryJob(jobId: string): Promise<void> {
+  const job = await offlineStorage.getJob(jobId);
+  if (!job) return;
+  // Reset failed pages and error message, set back to queued
+  await offlineStorage.updateJob(jobId, {
+    status: "queued",
+    errorMessage: undefined,
+    failedPages: [],
+    completedPages: 0,
+  });
+  await offlineStorage.updateChapterStatus(job.seriesId, job.chapterId, "downloading");
+  notifyListeners();
+  startProcessing();
+}
+
+export async function retryAllErrors(): Promise<number> {
+  const errorJobs = await offlineStorage.getJobsByStatus("error");
+  for (const job of errorJobs) {
+    await offlineStorage.updateJob(job.id, {
+      status: "queued",
+      errorMessage: undefined,
+      failedPages: [],
+      completedPages: 0,
+    });
+    await offlineStorage.updateChapterStatus(job.seriesId, job.chapterId, "downloading");
+  }
+  if (errorJobs.length > 0) {
+    notifyListeners();
+    startProcessing();
+  }
+  return errorJobs.length;
+}
+
 export async function clearErrors(): Promise<number> {
   const errorJobs = await offlineStorage.getJobsByStatus("error");
   for (const job of errorJobs) {

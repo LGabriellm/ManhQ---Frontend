@@ -26,12 +26,18 @@ body {
   min-height: 100vh;
   /* Suporta safe area em telas com notch */
   min-height: 100dvh;
-  /* Isso evita que a página faça o "bounce" chato do iOS Safari */
   overscroll-behavior-y: none;
   /* Esconde a barra de rolagem mas permite rolar */
   scrollbar-width: none;
   /* Previne zoom indesejado ao tocar em inputs no iOS (font-size < 16px) */
   -webkit-text-size-adjust: 100%;
+}
+
+/* No PWA standalone, reabilita pull-to-refresh (não há botão de refresh no chrome) */
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: auto;
+  }
 }
 
 body::-webkit-scrollbar {
@@ -323,6 +329,12 @@ button {
   touch-action: pan-y;
 }
 
+@media (display-mode: standalone) {
+  .scroll-region {
+    overscroll-behavior-y: auto;
+  }
+}
+
 .scroll-region::-webkit-scrollbar {
   width: 8px;
 }
@@ -414,7 +426,7 @@ input[type="checkbox"]:focus-visible {
   top: var(--safe-top);
 }
 
-/* ─── iOS-specific: previne pull-to-refresh e gestos indesejados ─── */
+/* ─── iOS-specific: previne gestos indesejados (pull-to-refresh reabilitado no PWA via display-mode) ─── */
 
 @supports (-webkit-touch-callout: none) {
   /* Previne callout (context menu longo) em imagens no Safari */

@@ -372,11 +372,16 @@ api.interceptors.response.use(
       }
     }
 
-    // Formatar erro - suporta tanto o formato antigo quanto o novo
+    // Format error — supports both old flat format and new nested format
+    // Old: { error: "msg", errorCode: "CODE", message: "...", requestId: "..." }
+    // New: { error: { code: "CODE", message: "msg", details?: [...] }, correlationId: "..." }
     const responseData =
       parsedPayload && typeof parsedPayload === "object" ? parsedPayload : {};
+    const isNestedError =
+      typeof responseData.error === "object" && responseData.error !== null;
     const fallbackMessage = extractMessageFromPayload(parsedPayload, contentType);
     const requestId =
+      (responseData.correlationId as string | undefined) ||
       (responseData.requestId as string | undefined) ||
       getHeaderValue(responseHeaders, "x-request-id");
     const endpoint = requestUrl || undefined;
@@ -386,18 +391,22 @@ api.interceptors.response.use(
       getRetryAfterSeconds(getHeaderValue(responseHeaders, "retry-after"));
     const apiError = {
       message:
+        (isNestedError && (responseData.error as Record<string, unknown>).message as string) ||
         (responseData.message as string) ||
-        (responseData.error as string) ||
+        (typeof responseData.error === "string" ? responseData.error : undefined) ||
         fallbackMessage ||
         "Erro desconhecido",
       errors: responseData.errors as Record<string, string[]> | undefined,
       statusCode: error.response.status || 500,
-      error: responseData.error as string | undefined,
-      details: responseData.details as string[] | undefined,
+      error: typeof responseData.error === "string" ? responseData.error : undefined,
+      details:
+        (isNestedError && (responseData.error as Record<string, unknown>).details as string[]) ||
+        (responseData.details as string[] | undefined),
       retryAfter,
       data: responseData,
       authRequired: responseData.authRequired as boolean | undefined,
       errorCode:
+        (isNestedError && (responseData.error as Record<string, unknown>).code as string) ||
         (responseData.errorCode as string | undefined) ||
         getHeaderValue(responseHeaders, "x-error-code"),
       googleDrive: responseData.googleDrive as Record<string, unknown> | undefined,

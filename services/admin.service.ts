@@ -468,6 +468,7 @@ export const adminService = {
     formData.append("file", file);
     const response = await api.post<UploadResponse>("/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120_000,
     });
     return response.data;
   },
@@ -478,7 +479,10 @@ export const adminService = {
     const response = await api.post<UploadBulkResponse>(
       "/upload/bulk",
       formData,
-      { headers: { "Content-Type": "multipart/form-data" } },
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120_000,
+      },
     );
     return response.data;
   },
@@ -493,7 +497,10 @@ export const adminService = {
     const response = await api.post<UploadFolderResponse>(
       "/upload/folder",
       formData,
-      { headers: { "Content-Type": "multipart/form-data" } },
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120_000,
+      },
     );
     return response.data;
   },
@@ -511,6 +518,7 @@ export const adminService = {
     const response = await api.post<LocalUploadStageResponse>(
       "/upload/stage",
       formData,
+      { timeout: 120_000 },
     );
     return response.data;
   },
@@ -530,6 +538,7 @@ export const adminService = {
     const response = await api.post<LocalUploadStageResponse>(
       "/upload/workflow/series-stage",
       formData,
+      { timeout: 120_000 },
     );
     return response.data;
   },
@@ -602,7 +611,10 @@ export const adminService = {
     const response = await api.post<UploadSerieResponse>(
       `/upload/series/${seriesId}`,
       formData,
-      { headers: { "Content-Type": "multipart/form-data" } },
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120_000,
+      },
     );
     return response.data;
   },
@@ -674,6 +686,7 @@ export const adminService = {
         headers: idempotencyKey
           ? { "Idempotency-Key": idempotencyKey }
           : undefined,
+        timeout: 120_000,
       },
     );
     return response.data;

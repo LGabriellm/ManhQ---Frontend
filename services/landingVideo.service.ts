@@ -1,9 +1,7 @@
 import api from "./api";
 import type { LandingVideoInfo, LandingVideoAdminInfo } from "@/types/api";
 
-type PrepareResponse =
-  | { mode: "presigned"; uploadUrl: string; key: string }
-  | { mode: "direct"; key: string };
+type PrepareResponse = { mode: "direct"; key: string };
 
 export const landingVideoService = {
   getInfo: (signal?: AbortSignal) =>
@@ -15,10 +13,8 @@ export const landingVideoService = {
       .then((r) => r.data),
 
   /**
-   * Two-step upload that bypasses Cloudflare's body size limit when S3 is configured:
-   * 1. Ask backend for a presigned PUT URL (or "direct" mode for local storage)
-   * 2a. Presigned: PUT directly to S3, then confirm with backend
-   * 2b. Direct: POST multipart through the Next.js proxy (local dev / no S3)
+   * Two-step API shape retained for compatibility. Bunny uploads go through the
+   * backend so the storage password never reaches the browser.
    */
   upload: async (file: File, onProgress?: (pct: number) => void): Promise<LandingVideoAdminInfo> => {
     const prepareRes = await api
@@ -28,38 +24,9 @@ export const landingVideoService = {
       })
       .then((r) => r.data);
 
-    if (prepareRes.mode === "presigned") {
-      // Upload directly to S3 — bypasses Cloudflare completely
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("PUT", prepareRes.uploadUrl);
-        xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
-        if (onProgress) {
-          xhr.upload.addEventListener("progress", (e) => {
-            if (e.lengthComputable) {
-              onProgress(Math.round((e.loaded / e.total) * 100));
-            }
-          });
-        }
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve();
-          else reject(new Error(`S3 upload failed: ${xhr.status}`));
-        };
-        xhr.onerror = () => reject(new Error("S3 upload network error"));
-        xhr.send(file);
-      });
+    void prepareRes;
 
-      return api
-        .post<LandingVideoAdminInfo>("/admin/landing-video/confirm", {
-          storageKey: prepareRes.key,
-          filename: file.name,
-          mimeType: file.type || "video/mp4",
-          size: file.size,
-        })
-        .then((r) => r.data);
-    }
-
-    // Direct mode: local storage — POST multipart through the proxy
+    // Direct mode: backend persists to Bunny when configured, otherwise local storage.
     const form = new FormData();
     form.append("video", file);
     return api

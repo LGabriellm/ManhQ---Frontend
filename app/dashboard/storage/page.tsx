@@ -188,16 +188,16 @@ function CleanupResultCard({
 // ─── Storage mode badge ───────────────────────────────────────────────────────
 
 function StorageModeBadge({ mode }: { mode: StorageStatusResponse["config"]["storageMode"] }) {
-  const isS3 = mode === "s3";
+  const isBunny = mode === "bunny";
   return (
     <span className={cn(
       "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold border",
-      isS3
+      isBunny
         ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
         : "border-yellow-500/30 bg-yellow-500/10 text-yellow-400",
     )}>
-      {isS3 ? <Cloud className="h-3 w-3" /> : <Server className="h-3 w-3" />}
-      {isS3 ? "S3 / Object Storage" : "Armazenamento local (VPS)"}
+      {isBunny ? <Cloud className="h-3 w-3" /> : <Server className="h-3 w-3" />}
+      {isBunny ? "Bunny Edge Storage" : "Armazenamento local (VPS)"}
     </span>
   );
 }
@@ -267,7 +267,7 @@ export default function StoragePage() {
                 <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                 <span>
                   Modo local ativo — todos os capítulos ficam permanentemente no VPS.
-                  Configure <code className="font-mono text-yellow-200">S3_BUCKET</code> para usar Cloudflare R2 ou S3 e evitar lotação do disco.
+                  Em produção, configure Bunny Storage; o backend não deve iniciar sem as variáveis obrigatórias.
                 </span>
               </div>
             )}
@@ -299,8 +299,8 @@ export default function StoragePage() {
               sizeBytes={status.libraryDir.sizeBytes}
               fileCount={status.libraryDir.fileCount}
               note={
-                status.config.storageMode === "s3"
-                  ? "Modo S3 ativo — apenas uploads em progresso ficam aqui temporariamente."
+                status.config.storageMode === "bunny"
+                  ? "Modo Bunny ativo — apenas uploads em progresso ficam aqui temporariamente."
                   : "Modo local — todos os CBZs ficam aqui permanentemente."
               }
             />
@@ -419,22 +419,21 @@ export default function StoragePage() {
             )}
           </div>
 
-          {/* S3 config hint */}
+          {/* Bunny config hint */}
           {status.config.storageMode === "local" && (
             <div className="rounded-xl border border-white/5 bg-[var(--color-surface)] p-4 space-y-2">
               <p className="text-sm font-semibold text-[var(--color-textMain)]">
-                Migrar para Cloudflare R2 / S3
+                Migrar para Bunny Storage
               </p>
               <p className="text-xs text-[var(--color-textDim)] leading-5">
                 Com armazenamento remoto, capítulos nunca ficam no VPS — apenas arquivos temporários durante o processamento.
                 Configure as variáveis de ambiente no servidor e reinicie o backend:
               </p>
               <pre className="rounded-lg bg-black/40 px-4 py-3 text-[11px] text-[var(--color-textDim)] overflow-x-auto leading-6">
-                {`S3_BUCKET=seu-bucket
-S3_ENDPOINT=https://...r2.cloudflarestorage.com
-S3_ACCESS_KEY_ID=...
-S3_SECRET_ACCESS_KEY=...
-S3_PUBLIC_URL=https://...`}
+                {`BUNNY_STORAGE_ZONE=sua-zone
+BUNNY_STORAGE_PASSWORD=...
+BUNNY_STORAGE_REGION=br
+BUNNY_CDN_DOMAIN=https://cdn.seudominio.com.br`}
               </pre>
             </div>
           )}

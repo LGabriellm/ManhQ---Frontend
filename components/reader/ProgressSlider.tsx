@@ -6,12 +6,14 @@ interface ProgressSliderProps {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  progressPercent?: number;
 }
 
 export function ProgressSlider({
   currentPage,
   totalPages,
   onPageChange,
+  progressPercent,
 }: ProgressSliderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragPage, setDragPage] = useState(currentPage);
@@ -58,7 +60,15 @@ export function ProgressSlider({
   );
 
   const displayPage = isDragging ? dragPage : currentPage;
-  const progress = totalPages > 1 ? ((displayPage - 1) / (totalPages - 1)) * 100 : 100;
+  const progress = isDragging
+    ? totalPages > 1
+      ? ((displayPage - 1) / (totalPages - 1)) * 100
+      : 100
+    : typeof progressPercent === "number" && Number.isFinite(progressPercent)
+      ? Math.max(0, Math.min(100, progressPercent))
+      : totalPages > 1
+        ? ((displayPage - 1) / (totalPages - 1)) * 100
+        : 100;
 
   return (
     <div className="relative w-full">

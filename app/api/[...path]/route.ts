@@ -237,10 +237,14 @@ function isLandingVideoStream(targetPath: string): boolean {
 
 function isUploadStagingPath(targetPath: string): boolean {
   return (
+    targetPath === "upload" ||
+    targetPath === "upload/bulk" ||
+    targetPath === "upload/folder" ||
     targetPath === "upload/stage" ||
     targetPath === "upload/workflow/series-stage" ||
     targetPath.startsWith("upload/series/") ||
-    targetPath === "integrations/google-drive/stage"
+    targetPath === "integrations/google-drive/stage" ||
+    targetPath === "integrations/google-drive/import"
   );
 }
 

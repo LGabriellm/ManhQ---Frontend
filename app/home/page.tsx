@@ -259,7 +259,7 @@ export default function HomePage() {
   } = useDiscover({ enabled: isAuthenticated, limit: 16 });
   const { data: continueReading, isLoading: continueLoading } =
     useContinueReading(
-      { limit: 5, onlyInProgress: true },
+      { limit: 12, onlyInProgress: true },
       { enabled: isAuthenticated },
     );
 
@@ -385,6 +385,16 @@ export default function HomePage() {
 
   const hasAnyDiscoverContent =
     !!featured || sectionConfigs.some((section) => section.items.length > 0);
+  const continueReadingCurrent = (() => {
+    const seenSeries = new Set<string>();
+    return (continueReading ?? [])
+      .filter((item) => {
+        if (seenSeries.has(item.seriesId)) return false;
+        seenSeries.add(item.seriesId);
+        return true;
+      })
+      .slice(0, 5);
+  })();
 
   // ---------------------------------------------------------------------------
   // Auth loading skeleton
@@ -566,7 +576,7 @@ export default function HomePage() {
 
         {/* Continue reading */}
         {(continueLoading ||
-          (continueReading != null && continueReading.length > 0)) && (
+          continueReadingCurrent.length > 0) && (
           <motion.section
             initial={{ opacity: 0, x: -20 }}
             whileInView={{ opacity: 1, x: 0 }}
@@ -581,7 +591,7 @@ export default function HomePage() {
               </div>
             ) : (
               <div className="flex gap-3 overflow-x-auto scrollbar-hide px-4 pb-1">
-                {continueReading?.map((item) => (
+                {continueReadingCurrent.map((item) => (
                   <div key={item.progressId ?? item.mediaId} className="shrink-0 w-72">
                     <ContinueReadingCard
                       seriesId={item.seriesId}
@@ -591,6 +601,7 @@ export default function HomePage() {
                       chapterTitle={item.mediaTitle}
                       currentPage={item.page}
                       totalPages={item.pageCount}
+                      percent={item.percent}
                     />
                   </div>
                 ))}

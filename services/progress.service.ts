@@ -56,6 +56,7 @@ function mapMediaProgress(raw: unknown): MediaProgress {
 
   return {
     page: rawPage > 0 ? rawPage : 1,
+    progressPercent: asNumber(item.progressPercent),
     finished: asBoolean(item.finished),
     startedAt: asString(item.startedAt),
     lastReadAt: asString(item.lastReadAt),
@@ -251,18 +252,30 @@ export const progressService = {
 
   async saveProgress(
     chapterId: string,
-    data: { page: number; finished?: boolean; stats?: { pages: number; timeSpent: number; chapterCompleted?: boolean } | null },
+    data: {
+      page: number;
+      progressPercent?: number;
+      suppressStats?: boolean;
+      finished?: boolean;
+      stats?: { pages: number; timeSpent: number; chapterCompleted?: boolean } | null;
+    },
   ): Promise<void> {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       await offlineStorage.queueProgress({
         chapterId,
         page: data.page,
+        progressPercent: data.progressPercent,
+        suppressStats: data.suppressStats,
         finished: data.finished ?? false,
         stats: data.stats ?? null,
         queuedAt: Date.now(),
       });
     } else {
-      await api.post(`/read/${chapterId}/progress`, { page: data.page });
+      await api.post(`/read/${chapterId}/progress`, {
+        page: data.page,
+        progressPercent: data.progressPercent,
+        suppressStats: data.suppressStats,
+      });
     }
   },
 
@@ -278,6 +291,8 @@ export const progressService = {
       try {
         await api.post(`/read/${entry.chapterId}/progress`, {
           page: entry.page,
+          progressPercent: entry.progressPercent,
+          suppressStats: entry.suppressStats,
         });
         if (entry.id !== undefined) synced.push(entry.id);
       } catch {

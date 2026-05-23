@@ -79,7 +79,9 @@ export function useReaderZoom(options: UseReaderZoomOptions = {}) {
 
   const clampPan = useCallback(
     (x: number, y: number, scale: number, rect: DOMRect) => {
-      if (scale <= 1) return { x: 0, y: 0 };
+      if (scale <= 1 || rect.width <= 0 || rect.height <= 0) {
+        return { x: 0, y: 0 };
+      }
       const maxX = (rect.width * (scale - 1)) / (2 * scale);
       const maxY = (rect.height * (scale - 1)) / (2 * scale);
       return {
@@ -111,6 +113,9 @@ export function useReaderZoom(options: UseReaderZoomOptions = {}) {
       const rect = target.getBoundingClientRect();
       const delta = -e.deltaY * 0.01;
       const { minScale: min, maxScale: max } = optionsRef.current;
+      if (!Number.isFinite(delta) || rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
 
       setZoom((prev) => {
         const newScale = Math.max(min, Math.min(max, prev.scale + delta));
@@ -150,6 +155,7 @@ export function useReaderZoom(options: UseReaderZoomOptions = {}) {
       const target = e.currentTarget as HTMLElement;
       const rect = target.getBoundingClientRect();
       const { minScale: min, maxScale: max } = optionsRef.current;
+      if (rect.width <= 0 || rect.height <= 0) return;
 
       if (e.touches.length === 2 && lastPinchDist.current !== null) {
         e.preventDefault();
@@ -173,13 +179,15 @@ export function useReaderZoom(options: UseReaderZoomOptions = {}) {
       ) {
         e.preventDefault();
         const currentScale = zoomRef.current.scale;
-        const dx = (e.touches[0].clientX - panStart.current.x) / currentScale;
-        const dy = (e.touches[0].clientY - panStart.current.y) / currentScale;
+        const start = panStart.current;
+        if (!start || currentScale <= 0) return;
+        const dx = (e.touches[0].clientX - start.x) / currentScale;
+        const dy = (e.touches[0].clientY - start.y) / currentScale;
 
         setZoom((prev) => {
           const clamped = clampPan(
-            panStart.current!.zoomX + dx,
-            panStart.current!.zoomY + dy,
+            start.zoomX + dx,
+            start.zoomY + dy,
             prev.scale,
             rect,
           );
@@ -231,6 +239,7 @@ export function useReaderZoom(options: UseReaderZoomOptions = {}) {
           const target = e.currentTarget as HTMLElement;
           const rect = target.getBoundingClientRect();
           const { doubleTapScale: dts } = optionsRef.current;
+          if (rect.width <= 0 || rect.height <= 0) return;
 
           if (isZoomedRef.current) {
             setZoom({
@@ -278,12 +287,14 @@ export function useReaderZoom(options: UseReaderZoomOptions = {}) {
       el.addEventListener("touchstart", handleTouchStart, opts);
       el.addEventListener("touchmove", handleTouchMove, opts);
       el.addEventListener("touchend", handleTouchEnd, opts);
+      el.addEventListener("touchcancel", handleTouchEnd, opts);
 
       return () => {
         el.removeEventListener("wheel", handleWheel);
         el.removeEventListener("touchstart", handleTouchStart);
         el.removeEventListener("touchmove", handleTouchMove);
         el.removeEventListener("touchend", handleTouchEnd);
+        el.removeEventListener("touchcancel", handleTouchEnd);
       };
     },
     [handleWheel, handleTouchStart, handleTouchMove, handleTouchEnd],

@@ -48,6 +48,31 @@ interface ChapterNavigationItem {
   title: string;
 }
 
+interface PageImageMetrics {
+  naturalWidth: number;
+  naturalHeight: number;
+  renderedWidth: number;
+  renderedHeight: number;
+  aspectRatio: number;
+  isLongPage: boolean;
+}
+
+interface ReaderPosition {
+  page: number;
+  pageProgress: number;
+  chapterProgressPercent: number;
+  statsUnitKey: string;
+}
+
+interface StoredReaderPosition {
+  page: number;
+  scrollTop: number;
+  pageProgress: number;
+  progressPercent: number;
+  mode: ReadingMode;
+  updatedAt: number;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function clampPage(page: number, totalPages: number): number {
@@ -55,9 +80,22 @@ function clampPage(page: number, totalPages: number): number {
   return Math.min(totalPages, Math.max(1, Math.trunc(page)));
 }
 
+function clampRatio(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value));
+}
+
+function getReaderPositionKey(chapterId: string): string {
+  return `manhq:reader:position:${chapterId}`;
+}
+
+function getStoredModeRaw(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("manhq:reader:mode");
+}
+
 function getStoredMode(): ReadingMode {
-  if (typeof window === "undefined") return "vertical";
-  const stored = localStorage.getItem("manhq:reader:mode");
+  const stored = getStoredModeRaw();
   if (stored === "horizontal" || stored === "webtoon") return stored;
   return "vertical";
 }
@@ -89,6 +127,20 @@ function getImageClasses(isWebtoon: boolean): string {
     return "w-full max-w-[900px] h-auto object-contain";
   }
   return "max-h-full max-w-full object-contain";
+}
+
+function getZoomWrapperClasses(isWebtoon: boolean): string {
+  if (isWebtoon) {
+    return "flex w-full items-start justify-center overflow-visible";
+  }
+  return "flex h-full w-full items-center justify-center overflow-hidden";
+}
+
+function getAuthImageContainerClasses(isWebtoon: boolean): string {
+  if (isWebtoon) {
+    return "flex w-full items-start justify-center";
+  }
+  return "flex h-full w-full items-center justify-center";
 }
 
 function getEndScreenClasses(isHorizontal: boolean, isWebtoon: boolean): string {
@@ -144,11 +196,21 @@ export default function ReaderPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [readingMode, setReadingMode] = useState<ReadingMode>(getStoredMode);
+  const [readerPosition, setReaderPosition] = useState<ReaderPosition>({
+    page: 1,
+    pageProgress: 0,
+    chapterProgressPercent: 0,
+    statsUnitKey: "page:1",
+  });
+  const [hasLongPages, setHasLongPages] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const restoredForChapter = useRef<string | null>(null);
   const latestPageRef = useRef(1);
   const isScrollingRef = useRef(false);
+  const imageMetricsRef = useRef(new Map<number, PageImageMetrics>());
+  const hasStoredModePreference = useRef(getStoredModeRaw() !== null);
+  const autoModeApplied = useRef(false);
 
   // ─── Zoom ─────────────────────────────────────────────────────
   const zoomContainerRef = useRef<HTMLDivElement | null>(null);
@@ -229,7 +291,11 @@ export default function ReaderPage() {
   const isUsingOfflineData = !chapterData && !!offlineMeta;
 
   // ─── Progress sync ────────────────────────────────────────────
-  useProgressSync(chapterId, currentPage, totalPages);
+  useProgressSync(chapterId, currentPage, totalPages, {
+    progressPercent: readerPosition.chapterProgressPercent,
+    statsUnitKey: readerPosition.statsUnitKey,
+    isAlreadyFinished: savedProgress?.finished ?? false,
+  });
 
   useEffect(() => {
     latestPageRef.current = currentPage;
@@ -259,6 +325,50 @@ export default function ReaderPage() {
       }
     },
     [totalPages],
+  );
+
+  const restoreStoredPosition = useCallback(
+    (page: number) => {
+      if (typeof window === "undefined") return false;
+      const container = containerRef.current;
+      if (!container) return false;
+
+      try {
+        const raw = localStorage.getItem(getReaderPositionKey(chapterId));
+        if (!raw) return false;
+        const stored = JSON.parse(raw) as Partial<StoredReaderPosition>;
+        if (
+          stored.page !== page ||
+          typeof stored.updatedAt !== "number" ||
+          Date.now() - stored.updatedAt > 1000 * 60 * 60 * 24 * 30
+        ) {
+          return false;
+        }
+
+        const target = document.getElementById(`page-${page}`);
+        if (!target) return false;
+
+        const targetTop =
+          isHorizontal
+            ? 0
+            : target.offsetTop +
+              clampRatio(Number(stored.pageProgress) || 0) * target.offsetHeight -
+              container.clientHeight * 0.45;
+
+        if (isHorizontal) {
+          target.scrollIntoView({ behavior: "auto", block: "start", inline: "start" });
+        } else {
+          container.scrollTo({
+            top: Math.max(0, targetTop),
+            behavior: "auto",
+          });
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [chapterId, isHorizontal],
   );
 
   // ─── Chapter navigation ───────────────────────────────────────
@@ -304,6 +414,15 @@ export default function ReaderPage() {
     setShowControls(true);
     setShowSettings(false);
     restoredForChapter.current = null;
+    imageMetricsRef.current = new Map<number, PageImageMetrics>();
+    setHasLongPages(false);
+    setReaderPosition({
+      page: 1,
+      pageProgress: 0,
+      chapterProgressPercent: 0,
+      statsUnitKey: "page:1",
+    });
+    autoModeApplied.current = false;
   }, [chapterId]);
 
   // ─── Restore progress / scroll to saved page ───────────────────
@@ -323,18 +442,35 @@ export default function ReaderPage() {
     restoredForChapter.current = chapterId;
     setCurrentPage(targetPage);
     latestPageRef.current = targetPage;
+    setReaderPosition({
+      page: targetPage,
+      pageProgress: 0,
+      chapterProgressPercent: hasExplicitPageParam
+        ? Math.round((targetPage / Math.max(1, totalPages)) * 100)
+        : savedProgress?.progressPercent ??
+          Math.round((targetPage / Math.max(1, totalPages)) * 100),
+      statsUnitKey: `page:${targetPage}`,
+    });
 
     const frame = requestAnimationFrame(() => {
       scrollToPage(targetPage, "auto");
+      restoreStoredPosition(targetPage);
     });
+    const retry = window.setTimeout(() => {
+      restoreStoredPosition(targetPage);
+    }, 450);
 
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(retry);
+    };
   }, [
     chapterData,
     chapterId,
     hasExplicitPageParam,
     isProgressLoading,
     savedProgress,
+    restoreStoredPosition,
     scrollToPage,
     totalPages,
     urlPage,
@@ -363,62 +499,160 @@ export default function ReaderPage() {
     const container = containerRef.current;
     if (!container || totalPages < 1) return;
 
-    // Delay observation slightly to let initial scroll settle
-    const initTimer = setTimeout(() => {
-      const observedPages = Array.from(
+    const calculatePosition = (): ReaderPosition | null => {
+      const pageElements = Array.from(
         container.querySelectorAll<HTMLElement>("[data-reader-page]"),
       );
-      if (observedPages.length === 0) return;
+      if (pageElements.length === 0) return null;
 
-      // Single threshold to reduce callback frequency
-      const threshold = isWebtoon ? 0.3 : 0.6;
+      const containerRect = container.getBoundingClientRect();
 
-      let pendingPage: number | null = null;
-      let rafId: number | null = null;
+      if (isHorizontal) {
+        const anchorX = containerRect.left + containerRect.width * 0.5;
+        let best: { page: number; distance: number } | null = null;
 
-      const observer = new IntersectionObserver(
-        (entries) => {
-          let bestMatch: { page: number; ratio: number } | null = null;
-
-          for (const entry of entries) {
-            if (!entry.isIntersecting) continue;
-            const rawPage = Number(
-              (entry.target as HTMLElement).dataset.pageNumber,
-            );
-            if (!Number.isFinite(rawPage)) continue;
-            if (!bestMatch || entry.intersectionRatio > bestMatch.ratio) {
-              bestMatch = { page: rawPage, ratio: entry.intersectionRatio };
-            }
+        for (const element of pageElements) {
+          const page = Number(element.dataset.pageNumber);
+          if (!Number.isFinite(page)) continue;
+          const rect = element.getBoundingClientRect();
+          const distance = Math.abs(rect.left + rect.width * 0.5 - anchorX);
+          if (!best || distance < best.distance) {
+            best = { page, distance };
           }
+        }
 
-          if (bestMatch && bestMatch.page !== latestPageRef.current) {
-            // Batch updates: only update state once per frame
-            pendingPage = bestMatch.page;
-            if (rafId === null) {
-              rafId = requestAnimationFrame(() => {
-                if (pendingPage !== null) {
-                  setCurrentPage(pendingPage);
-                }
-                pendingPage = null;
-                rafId = null;
-              });
-            }
-          }
-        },
-        { root: container, threshold: [threshold] },
-      );
-
-      for (const page of observedPages) {
-        observer.observe(page);
+        const page = clampPage(best?.page ?? 1, totalPages);
+        const chapterProgressPercent =
+          totalPages > 1 ? ((page - 1) / (totalPages - 1)) * 100 : 100;
+        return {
+          page,
+          pageProgress: page >= totalPages ? 1 : 0,
+          chapterProgressPercent: Math.round(chapterProgressPercent),
+          statsUnitKey: `page:${page}`,
+        };
       }
 
-      return () => observer.disconnect();
-    }, 300);
+      const anchorY = containerRect.top + containerRect.height * 0.45;
+      let active:
+        | { page: number; rect: DOMRect; distance: number }
+        | null = null;
 
-    return () => {
-      clearTimeout(initTimer);
+      for (const element of pageElements) {
+        const page = Number(element.dataset.pageNumber);
+        if (!Number.isFinite(page)) continue;
+        const rect = element.getBoundingClientRect();
+        const containsAnchor = rect.top <= anchorY && rect.bottom >= anchorY;
+        const distance = containsAnchor
+          ? 0
+          : Math.min(
+              Math.abs(rect.top - anchorY),
+              Math.abs(rect.bottom - anchorY),
+            );
+        if (!active || distance < active.distance) {
+          active = { page, rect, distance };
+        }
+      }
+
+      const page = clampPage(active?.page ?? 1, totalPages);
+      const rect = active?.rect;
+      const pageProgress = rect
+        ? clampRatio((anchorY - rect.top) / Math.max(rect.height, 1))
+        : 0;
+      const metrics = imageMetricsRef.current.get(page);
+      const isLongPage =
+        isWebtoon ||
+        hasLongPages ||
+        !!metrics?.isLongPage ||
+        (rect ? rect.height > container.clientHeight * 1.5 : false);
+      const chapterProgressPercent =
+        totalPages === 1 && !isLongPage
+          ? 100
+          : clampRatio((page - 1 + pageProgress) / totalPages) * 100;
+      const segmentCount = isLongPage
+        ? Math.max(
+            1,
+            Math.ceil(
+              (rect?.height || container.clientHeight) /
+                Math.max(1, container.clientHeight * 0.75),
+            ),
+          )
+        : 1;
+      const segment = Math.min(
+        segmentCount - 1,
+        Math.max(0, Math.floor(pageProgress * segmentCount)),
+      );
+
+      return {
+        page,
+        pageProgress,
+        chapterProgressPercent: Math.round(chapterProgressPercent),
+        statsUnitKey: isLongPage
+          ? `page:${page}:segment:${segment}`
+          : `page:${page}`,
+      };
     };
-  }, [chapterId, readingMode, totalPages, isWebtoon]);
+
+    const persistPosition = (position: ReaderPosition) => {
+      try {
+        const payload: StoredReaderPosition = {
+          page: position.page,
+          scrollTop: container.scrollTop,
+          pageProgress: position.pageProgress,
+          progressPercent: position.chapterProgressPercent,
+          mode: readingMode,
+          updatedAt: Date.now(),
+        };
+        localStorage.setItem(
+          getReaderPositionKey(chapterId),
+          JSON.stringify(payload),
+        );
+      } catch {
+        // Storage can be unavailable in private contexts.
+      }
+    };
+
+    const syncPosition = () => {
+      const position = calculatePosition();
+      if (!position) return;
+
+      setReaderPosition((current) => {
+        if (
+          current.page === position.page &&
+          current.statsUnitKey === position.statsUnitKey &&
+          Math.abs(
+            current.chapterProgressPercent - position.chapterProgressPercent,
+          ) < 1
+        ) {
+          return current;
+        }
+        return position;
+      });
+
+      if (position.page !== latestPageRef.current) {
+        setCurrentPage(position.page);
+      }
+      persistPosition(position);
+    };
+
+    let rafId: number | null = null;
+    const requestSync = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        syncPosition();
+      });
+    };
+
+    const initTimer = window.setTimeout(requestSync, 120);
+    container.addEventListener("scroll", requestSync, { passive: true });
+    window.addEventListener("resize", requestSync);
+    return () => {
+      window.clearTimeout(initTimer);
+      container.removeEventListener("scroll", requestSync);
+      window.removeEventListener("resize", requestSync);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [chapterId, readingMode, totalPages, isWebtoon, isHorizontal, hasLongPages]);
 
   // ─── Persist reading mode ──────────────────────────────────────
   useEffect(() => {
@@ -552,6 +786,14 @@ export default function ReaderPage() {
     () => getImageClasses(isWebtoon),
     [isWebtoon],
   );
+  const zoomWrapperClass = useMemo(
+    () => getZoomWrapperClasses(isWebtoon),
+    [isWebtoon],
+  );
+  const authImageContainerClass = useMemo(
+    () => getAuthImageContainerClasses(isWebtoon),
+    [isWebtoon],
+  );
   const endClass = useMemo(
     () => getEndScreenClasses(isHorizontal, isWebtoon),
     [isHorizontal, isWebtoon],
@@ -566,6 +808,65 @@ export default function ReaderPage() {
     if (totalPages < 1) return [];
     return Array.from({ length: totalPages }, (_, i) => i + 1);
   }, [totalPages]);
+
+  const handleImageLoad = useCallback(
+    (metrics: {
+      pageNumber: number;
+      naturalWidth: number;
+      naturalHeight: number;
+      renderedWidth: number;
+      renderedHeight: number;
+    }) => {
+      const aspectRatio =
+        metrics.naturalWidth > 0
+          ? metrics.naturalHeight / metrics.naturalWidth
+          : 0;
+      const isLongPage =
+        aspectRatio >= 2.6 ||
+        metrics.renderedHeight > window.innerHeight * 1.5;
+
+      imageMetricsRef.current.set(metrics.pageNumber, {
+        naturalWidth: metrics.naturalWidth,
+        naturalHeight: metrics.naturalHeight,
+        renderedWidth: metrics.renderedWidth,
+        renderedHeight: metrics.renderedHeight,
+        aspectRatio,
+        isLongPage,
+      });
+
+      if (isLongPage) {
+        setHasLongPages(true);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (
+      !hasLongPages ||
+      hasStoredModePreference.current ||
+      autoModeApplied.current ||
+      readingMode !== "vertical"
+    ) {
+      return;
+    }
+
+    autoModeApplied.current = true;
+    setReadingMode("webtoon");
+  }, [hasLongPages, readingMode]);
+
+  const setReaderMode = useCallback((mode: ReadingMode) => {
+    hasStoredModePreference.current = true;
+    setReadingMode(mode);
+  }, []);
+
+  const progressLabel =
+    isWebtoon || hasLongPages
+      ? `${currentPage} / ${totalPages} · ${Math.max(
+          0,
+          Math.min(100, readerPosition.chapterProgressPercent),
+        )}%`
+      : `${currentPage} / ${totalPages}`;
 
   // ─── Loading state ─────────────────────────────────────────────
   if (isLoading) {
@@ -726,7 +1027,7 @@ export default function ReaderPage() {
               {/* Zoom wrapper — only active on current page */}
               <div
                 ref={isCurrentPage ? setZoomRef : undefined}
-                className="flex h-full w-full items-center justify-center overflow-hidden"
+                className={zoomWrapperClass}
                 style={
                   isCurrentPage
                     ? {
@@ -745,10 +1046,12 @@ export default function ReaderPage() {
                   pageNumber={pageNumber}
                   alt={`Página ${pageNumber}`}
                   className={imgClass}
+                  containerClassName={authImageContainerClass}
                   loading={pageNumber <= 3 ? "eager" : "lazy"}
                   seriesId={seriesId}
                   useOffline={isOfflineAvailable}
                   preloadMargin="800px"
+                  onImageLoad={handleImageLoad}
                 />
               </div>
             </div>
@@ -851,6 +1154,7 @@ export default function ReaderPage() {
                 currentPage={currentPage}
                 totalPages={totalPages}
                 onPageChange={goToPage}
+                progressPercent={readerPosition.chapterProgressPercent}
               />
 
               {/* Page counter + chapter nav */}
@@ -871,7 +1175,7 @@ export default function ReaderPage() {
                 </div>
 
                 <span className="text-xs font-medium text-white/60">
-                  {currentPage} / {totalPages}
+                  {progressLabel}
                 </span>
 
                 <div className="flex items-center gap-2">
@@ -901,7 +1205,7 @@ export default function ReaderPage() {
           style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
         >
           <span className="text-xs font-medium text-white/60">
-            {currentPage} / {totalPages}
+            {progressLabel}
           </span>
         </div>
       )}
@@ -957,7 +1261,7 @@ export default function ReaderPage() {
                       return (
                         <button
                           key={mode.value}
-                          onClick={() => setReadingMode(mode.value)}
+                          onClick={() => setReaderMode(mode.value)}
                           className={`flex flex-1 flex-col items-center gap-1.5 rounded-xl px-3 py-3 font-medium transition-all ${
                             isActive
                               ? "bg-primary text-white shadow-lg shadow-primary/20"

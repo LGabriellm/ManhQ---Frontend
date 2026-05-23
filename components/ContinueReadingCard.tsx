@@ -13,6 +13,7 @@ interface ContinueReadingCardProps {
   chapterTitle?: string;
   currentPage: number;
   totalPages: number;
+  percent?: number;
 }
 
 export function ContinueReadingCard({
@@ -23,9 +24,14 @@ export function ContinueReadingCard({
   currentPage,
   seriesId,
   totalPages,
+  percent,
 }: ContinueReadingCardProps) {
   const progress =
-    totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
+    typeof percent === "number" && Number.isFinite(percent)
+      ? Math.max(0, Math.min(100, Math.round(percent)))
+      : totalPages > 0
+        ? Math.round((currentPage / totalPages) * 100)
+        : 0;
   const readLink =
     currentPage > 1
       ? `/reader/${seriesId}/${mediaId}?page=${currentPage}`

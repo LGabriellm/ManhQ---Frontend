@@ -34,6 +34,8 @@ export interface QueuedProgress {
   id?: number;
   chapterId: string;
   page: number;
+  progressPercent?: number;
+  suppressStats?: boolean;
   finished: boolean;
   stats: {
     pages: number;

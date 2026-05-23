@@ -231,7 +231,9 @@ export async function fetchGoogleDriveNodes(params?: {
 export async function stageFromGoogleDrive(
   payload: GoogleDriveStageRequest,
 ): Promise<GoogleDriveStageResponse> {
-  const { data } = await api.post("/integrations/google-drive/stage", payload);
+  const { data } = await api.post("/integrations/google-drive/stage", payload, {
+    timeout: 120_000,
+  });
   return data;
 }
 

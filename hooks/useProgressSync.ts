@@ -4,43 +4,37 @@ import { readerService } from "@/services/reader.service";
 import { progressService } from "@/services/progress.service";
 import { statsService } from "@/services/stats.service";
 
-/**
- * Hook para sincronizar progresso de leitura com o backend.
- *
- * Responsabilidades:
- * 1. Salvar progresso de página (POST /read/:id/progress) com debounce de 1s
- * 2. Salvar progresso periodicamente a cada 15s (inatividade / leitura longa)
- * 3. Marcar capítulo como lido (POST /progress/:mediaId/mark-read) na última página
- * 4. Enviar estatísticas de leitura (POST /stats/record) com deltas acumulados a cada 30s
- * 5. Salvar dados pendentes ao sair (unmount, tab hide, page unload)
- * 6. Invalidar queries de progresso ao sair do reader
- *
- * Regras de stats (backend):
- * - /stats/record é aditivo: envia deltas, nunca totais cumulativos
- * - Requer pages > 0 e timeSpent > 0 — flush só quando ambos são positivos
- * - chapterCompleted: true enviado uma única vez por capítulo/sessão
- */
+interface ProgressSyncOptions {
+  progressPercent?: number;
+  statsUnitKey?: string;
+  isAlreadyFinished?: boolean;
+}
+
+function clampPercent(value: number | undefined, fallback: number): number {
+  const source = Number.isFinite(value) ? value! : fallback;
+  return Math.max(0, Math.min(100, Math.round(source)));
+}
+
 export function useProgressSync(
   chapterId: string,
   currentPage: number,
   totalPages: number,
+  options: ProgressSyncOptions = {},
 ) {
   const queryClient = useQueryClient();
 
-  // --- Progress refs ---
   const lastSentPage = useRef(0);
+  const lastSentPercent = useRef(0);
   const pendingPage = useRef(0);
+  const pendingPercent = useRef(0);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSending = useRef(false);
   const chapterIdRef = useRef(chapterId);
 
-  // --- Stats tracking refs (delta accumulation) ---
-  const uniquePagesVisited = useRef(new Set<number>());
+  const uniqueReadingUnitsVisited = useRef(new Set<string>());
   const lastStatsFlush = useRef(Date.now());
   const statsTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const chapterCompletedSent = useRef(false);
-
-  // --- Periodic progress save ---
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const invalidateProgressQueries = useCallback(
@@ -56,54 +50,73 @@ export function useProgressSync(
     [queryClient],
   );
 
-  // Envia progresso ao backend via axios
-  const sendProgress = async (page: number, chapter: string) => {
-    if (isSending.current || page === lastSentPage.current || page < 1) return;
+  const sendProgress = async (
+    page: number,
+    chapter: string,
+    progressPercent = pendingPercent.current,
+  ) => {
+    const normalizedPercent = clampPercent(progressPercent, 0);
+    const percentMovedEnough =
+      Math.abs(normalizedPercent - lastSentPercent.current) >= 2;
+
+    if (
+      isSending.current ||
+      page < 1 ||
+      (page === lastSentPage.current && !percentMovedEnough)
+    ) {
+      return;
+    }
 
     isSending.current = true;
     try {
-      await progressService.saveProgress(chapter, { page });
+      await progressService.saveProgress(chapter, {
+        page,
+        progressPercent: normalizedPercent,
+        suppressStats: true,
+      });
       lastSentPage.current = page;
+      lastSentPercent.current = normalizedPercent;
     } catch {
-      // Será tentado novamente na próxima mudança
+      // Retry on the next page/percent change.
     } finally {
       isSending.current = false;
     }
   };
 
-  // Envia progresso via sendBeacon (para unmount / visibilitychange)
   const flushProgressKeepalive = (chapter: string) => {
     const page = pendingPage.current;
-    if (page < 1 || page === lastSentPage.current) return;
+    const progressPercent = clampPercent(pendingPercent.current, 0);
+    const percentMovedEnough =
+      Math.abs(progressPercent - lastSentPercent.current) >= 2;
 
-    readerService.updateProgressKeepalive(chapter, { page }).catch(() => {});
-    lastSentPage.current = page;
-  };
-
-  // Marca capítulo como lido explicitamente (POST /progress/:mediaId/mark-read)
-  const markChapterRead = async (chapter: string) => {
-    if (chapterCompletedSent.current) return;
-    try {
-      await progressService.markAsRead(chapter);
-    } catch {
-      // Será contabilizado pelo auto-finish do backend em ≥90%
+    if (page < 1 || (page === lastSentPage.current && !percentMovedEnough)) {
+      return;
     }
+
+    readerService
+      .updateProgressKeepalive(chapter, {
+        page,
+        progressPercent,
+        suppressStats: true,
+      })
+      .catch(() => {});
+    lastSentPage.current = page;
+    lastSentPercent.current = progressPercent;
   };
 
-  // Flush de stats com acumulação de deltas
-  // Backend requer pages > 0 e timeSpent > 0
   const flushStats = async (forceChapterCompleted = false) => {
     const now = Date.now();
     const elapsedSec = Math.round((now - lastStatsFlush.current) / 1000);
-    const pages = uniquePagesVisited.current.size;
+    const pages = uniqueReadingUnitsVisited.current.size;
 
-    if (pages <= 0 || elapsedSec <= 0) return;
+    if (elapsedSec <= 0) return;
+    if (pages <= 0 && !forceChapterCompleted) return;
 
     const chapterCompleted =
       forceChapterCompleted && !chapterCompletedSent.current;
 
     lastStatsFlush.current = now;
-    uniquePagesVisited.current = new Set<number>();
+    uniqueReadingUnitsVisited.current = new Set<string>();
 
     if (chapterCompleted) {
       chapterCompletedSent.current = true;
@@ -116,22 +129,22 @@ export function useProgressSync(
         ...(chapterCompleted ? { chapterCompleted: true } : {}),
       });
     } catch {
-      // Não é crítico
+      // Non-critical.
     }
   };
 
-  // Flush de stats via sendBeacon (para unmount / visibilitychange)
   const flushStatsKeepalive = (forceChapterCompleted = false) => {
     const elapsedSec = Math.round((Date.now() - lastStatsFlush.current) / 1000);
-    const pages = uniquePagesVisited.current.size;
+    const pages = uniqueReadingUnitsVisited.current.size;
 
-    if (pages <= 0 || elapsedSec <= 0) return;
+    if (elapsedSec <= 0) return;
+    if (pages <= 0 && !forceChapterCompleted) return;
 
     const chapterCompleted =
       forceChapterCompleted && !chapterCompletedSent.current;
 
     lastStatsFlush.current = Date.now();
-    uniquePagesVisited.current = new Set<number>();
+    uniqueReadingUnitsVisited.current = new Set<string>();
 
     if (chapterCompleted) {
       chapterCompletedSent.current = true;
@@ -146,7 +159,6 @@ export function useProgressSync(
       .catch(() => {});
   };
 
-  // Troca de capítulo: flush do capítulo anterior e reset de estado
   useEffect(() => {
     if (chapterIdRef.current === chapterId) return;
 
@@ -162,34 +174,48 @@ export function useProgressSync(
 
     chapterIdRef.current = chapterId;
     lastSentPage.current = 0;
+    lastSentPercent.current = 0;
     pendingPage.current = 0;
-    uniquePagesVisited.current = new Set<number>();
+    pendingPercent.current = 0;
+    uniqueReadingUnitsVisited.current = new Set<string>();
     lastStatsFlush.current = Date.now();
     chapterCompletedSent.current = false;
   }, [chapterId, invalidateProgressQueries]);
 
-  // Efeito principal: reage a mudanças de página
+  useEffect(() => {
+    if (options.isAlreadyFinished) {
+      chapterCompletedSent.current = true;
+    }
+  }, [chapterId, options.isAlreadyFinished]);
+
   useEffect(() => {
     if (currentPage < 1) return;
 
-    pendingPage.current = currentPage;
-    uniquePagesVisited.current.add(currentPage);
+    const fallbackPercent =
+      totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
+    const progressPercent = clampPercent(options.progressPercent, fallbackPercent);
+    const statsUnit = options.statsUnitKey || `page:${currentPage}`;
 
-    if (currentPage === lastSentPage.current) return;
+    pendingPage.current = currentPage;
+    pendingPercent.current = progressPercent;
+    uniqueReadingUnitsVisited.current.add(statsUnit);
+
+    const percentMovedEnough =
+      Math.abs(progressPercent - lastSentPercent.current) >= 2;
+    if (currentPage === lastSentPage.current && !percentMovedEnough) return;
 
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
 
-    // Na última página: envio imediato + mark-read explícito + stats com completion
-    if (currentPage >= totalPages && totalPages > 1) {
-      sendProgress(currentPage, chapterId);
-      markChapterRead(chapterId);
+    const completed = progressPercent >= 90;
+
+    if (completed) {
+      sendProgress(currentPage, chapterId, progressPercent);
       flushStats(true);
     } else {
-      // Debounce de 1s para páginas intermediárias
       debounceTimer.current = setTimeout(() => {
-        sendProgress(pendingPage.current, chapterId);
+        sendProgress(pendingPage.current, chapterId, pendingPercent.current);
       }, 1000);
     }
 
@@ -199,9 +225,14 @@ export function useProgressSync(
         debounceTimer.current = null;
       }
     };
-  }, [currentPage, chapterId, totalPages]);
+  }, [
+    currentPage,
+    chapterId,
+    totalPages,
+    options.progressPercent,
+    options.statsUnitKey,
+  ]);
 
-  // Timer periódico para enviar stats a cada 30s
   useEffect(() => {
     statsTimer.current = setInterval(() => {
       flushStats();
@@ -215,12 +246,16 @@ export function useProgressSync(
     };
   }, [chapterId]);
 
-  // Timer periódico para salvar progresso a cada 15s (inatividade / leitura longa)
   useEffect(() => {
     progressTimer.current = setInterval(() => {
       const page = pendingPage.current;
-      if (page > 0 && page !== lastSentPage.current) {
-        sendProgress(page, chapterIdRef.current);
+      const progressPercent = pendingPercent.current;
+      if (
+        page > 0 &&
+        (page !== lastSentPage.current ||
+          Math.abs(progressPercent - lastSentPercent.current) >= 2)
+      ) {
+        sendProgress(page, chapterIdRef.current, progressPercent);
       }
     }, 15_000);
 
@@ -232,7 +267,6 @@ export function useProgressSync(
     };
   }, [chapterId]);
 
-  // Salvar ao esconder a tab (visibilitychange)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -248,7 +282,6 @@ export function useProgressSync(
     };
   }, []);
 
-  // Sincronizar progresso offline ao reconectar
   useEffect(() => {
     const handleOnline = () => {
       progressService.flushProgressQueue().catch(() => {});
@@ -257,7 +290,6 @@ export function useProgressSync(
     return () => window.removeEventListener("online", handleOnline);
   }, []);
 
-  // Flush + invalidação no unmount do reader
   useEffect(() => {
     return () => {
       if (debounceTimer.current) {

@@ -383,11 +383,14 @@ export interface ChapterInfo {
 
 export interface ReadProgressRequest {
   page: number;
+  progressPercent?: number;
+  suppressStats?: boolean;
 }
 
 export interface ReadProgress {
   id: string;
   page: number;
+  progressPercent?: number;
   finished: boolean;
   readCount: number;
   lastReadAt: string;
@@ -639,6 +642,7 @@ export interface ToggleListRequest {
 // ===== Progresso de Leitura =====
 export interface MediaProgress {
   page: number;
+  progressPercent?: number;
   finished: boolean;
   startedAt: string;
   lastReadAt: string;
@@ -3166,7 +3170,7 @@ export interface StorageStatusResponse {
     intervalMinutes: number;
     imageCacheMaxSizeMb: number;
     imageCacheMaxAgeHours: number;
-    storageMode: "s3" | "local";
+    storageMode: "bunny" | "local";
   };
 }
 

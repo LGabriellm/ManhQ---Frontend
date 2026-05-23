@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type SyntheticEvent } from "react";
 import { Loader2, RefreshCcw } from "lucide-react";
 import { readerService } from "@/services/reader.service";
 import * as offlineStorage from "@/services/offline-storage.service";
@@ -10,10 +10,18 @@ interface AuthImageProps {
   pageNumber: number;
   alt: string;
   className?: string;
+  containerClassName?: string;
   loading?: "eager" | "lazy";
   preloadMargin?: string;
   seriesId?: string;
   useOffline?: boolean;
+  onImageLoad?: (metrics: {
+    pageNumber: number;
+    naturalWidth: number;
+    naturalHeight: number;
+    renderedWidth: number;
+    renderedHeight: number;
+  }) => void;
 }
 
 export function AuthImage({
@@ -21,10 +29,12 @@ export function AuthImage({
   pageNumber,
   alt,
   className,
+  containerClassName = "flex h-full w-full items-center justify-center",
   loading = "lazy",
   preloadMargin = "800px",
   seriesId = "",
   useOffline = false,
+  onImageLoad,
 }: AuthImageProps) {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -111,10 +121,24 @@ export function AuthImage({
     setRetryCount((c) => c + 1);
   }, []);
 
+  const handleImageLoad = useCallback(
+    (event: SyntheticEvent<HTMLImageElement>) => {
+      const img = event.currentTarget;
+      onImageLoad?.({
+        pageNumber,
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight,
+        renderedWidth: img.clientWidth,
+        renderedHeight: img.clientHeight,
+      });
+    },
+    [onImageLoad, pageNumber],
+  );
+
   return (
     <div
       ref={containerRef}
-      className="flex h-full w-full items-center justify-center"
+      className={containerClassName}
     >
       {error && (
         <div className="flex flex-col items-center justify-center gap-3">
@@ -141,6 +165,7 @@ export function AuthImage({
           className={className}
           decoding="async"
           draggable={false}
+          onLoad={handleImageLoad}
         />
       )}
     </div>

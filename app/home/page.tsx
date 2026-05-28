@@ -1,8 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Search, ChevronRight, WifiOff } from "lucide-react";
+import { BookOpen, ChevronRight, Layers3, Library, Search, Sparkles, WifiOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { Logo } from "@/components/Logo";
 import { MangaCard } from "@/components/MangaCard";
@@ -18,6 +18,7 @@ import type { DiscoverResponse } from "@/services/discover.service";
 import type { Series } from "@/types/api";
 
 type DiscoverSectionKey = "mostViewed" | "recentlyAdded" | "recentlyUpdated" | "trending";
+type ContentShelfKey = "all" | "manga" | "manhwa" | "comic" | "novel" | "other";
 
 const DISCOVER_SECTION_LABELS: Record<DiscoverSectionKey, string> = {
   mostViewed: "Mais populares",
@@ -34,6 +35,88 @@ const EMPTY_DISCOVER: DiscoverResponse = {
   partial: false,
   unavailableSections: [],
 };
+
+const CONTENT_SHELVES: Array<{
+  key: Exclude<ContentShelfKey, "all">;
+  title: string;
+  shortTitle: string;
+  description: string;
+  workTypes: string[];
+  href: string;
+  accentClass: string;
+  icon: ReactNode;
+}> = [
+  {
+    key: "manga",
+    title: "Mangás",
+    shortTitle: "Mangá",
+    description: "Capítulos japoneses, leitura seriada e novidades do catálogo oriental.",
+    workTypes: ["manga"],
+    href: "/category/popular?workType=manga",
+    accentClass: "bg-primary",
+    icon: <BookOpen className="h-4 w-4" />,
+  },
+  {
+    key: "manhwa",
+    title: "Manhwas e webtoons",
+    shortTitle: "Manhwa",
+    description: "Obras coreanas e leitura vertical, boas para sessões rápidas no celular.",
+    workTypes: ["manhwa", "webtoon"],
+    href: "/category/popular?workType=manhwa",
+    accentClass: "bg-sky-400",
+    icon: <Sparkles className="h-4 w-4" />,
+  },
+  {
+    key: "comic",
+    title: "HQs e comics",
+    shortTitle: "HQ",
+    description: "Quadrinhos, encadernados e séries ocidentais separados do fluxo de mangá.",
+    workTypes: ["comic"],
+    href: "/category/popular?workType=comic",
+    accentClass: "bg-amber-400",
+    icon: <Layers3 className="h-4 w-4" />,
+  },
+  {
+    key: "novel",
+    title: "Novels",
+    shortTitle: "Novel",
+    description: "Light novels, novels e leituras longas em uma trilha própria.",
+    workTypes: ["novel", "light_novel"],
+    href: "/category/popular?workType=novel",
+    accentClass: "bg-emerald-400",
+    icon: <Library className="h-4 w-4" />,
+  },
+  {
+    key: "other",
+    title: "Outras obras",
+    shortTitle: "Outros",
+    description: "Itens que ainda precisam de classificação ou não entram nos formatos principais.",
+    workTypes: ["other"],
+    href: "/category/popular?workType=other",
+    accentClass: "bg-white/30",
+    icon: <Library className="h-4 w-4" />,
+  },
+];
+
+function normalizeWorkType(workType: Series["workType"] | string | null | undefined): string {
+  return String(workType ?? "other").toLowerCase();
+}
+
+function dedupeSeries(items: Series[]): Series[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
+function seriesMatchesShelf(
+  series: Series,
+  shelf: Pick<(typeof CONTENT_SHELVES)[number], "workTypes">,
+): boolean {
+  return shelf.workTypes.includes(normalizeWorkType(series.workType));
+}
 
 // ---------------------------------------------------------------------------
 // Skeletons
@@ -89,30 +172,44 @@ interface SectionHeaderProps {
   title: string;
   badge?: ReactNode;
   link?: string;
+  description?: string;
   variant?: "standard" | "hq";
 }
 
-function SectionHeader({ title, badge, link, variant = "standard" }: SectionHeaderProps) {
+function SectionHeader({
+  title,
+  badge,
+  link,
+  description,
+  variant = "standard",
+}: SectionHeaderProps) {
   return (
-    <div className="flex items-center gap-3 mb-4 px-4">
-      {variant === "standard" ? (
-        <div className="w-1 h-6 rounded-full shrink-0 bg-[var(--color-primary)]" />
-      ) : (
-        <div className="border-l-2 border-white/20 pl-3 flex items-center">
-          {/* hq variant: no red bar, uses subtle left border */}
-        </div>
-      )}
-      <h2 className="text-base font-black text-textMain uppercase tracking-wide leading-none">
-        {title}
-      </h2>
-      {badge}
-      {link ? (
-        <Link
-          href={link}
-          className="ml-auto text-[11px] font-semibold text-[var(--color-primary)] flex items-center gap-1 shrink-0"
-        >
-          Ver mais <ChevronRight className="w-3 h-3" />
-        </Link>
+    <div className="mb-4 px-4">
+      <div className="flex items-center gap-3">
+        {variant === "standard" ? (
+          <div className="w-1 h-6 rounded-full shrink-0 bg-[var(--color-primary)]" />
+        ) : (
+          <div className="border-l-2 border-white/20 pl-3 flex items-center">
+            {/* hq variant: no red bar, uses subtle left border */}
+          </div>
+        )}
+        <h2 className="text-base font-black text-textMain uppercase tracking-wide leading-none">
+          {title}
+        </h2>
+        {badge}
+        {link ? (
+          <Link
+            href={link}
+            className="ml-auto text-[11px] font-semibold text-[var(--color-primary)] flex items-center gap-1 shrink-0"
+          >
+            Ver mais <ChevronRight className="w-3 h-3" />
+          </Link>
+        ) : null}
+      </div>
+      {description ? (
+        <p className="mt-2 max-w-2xl text-xs leading-5 text-textDim">
+          {description}
+        </p>
       ) : null}
     </div>
   );
@@ -165,6 +262,98 @@ function SectionRow({
         </motion.div>
       ))}
     </HorizontalScroll>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ContentShelfSelector
+// ---------------------------------------------------------------------------
+
+function ContentShelfSelector({
+  activeKey,
+  shelves,
+  totalCount,
+  onSelect,
+}: {
+  activeKey: ContentShelfKey;
+  shelves: Array<(typeof CONTENT_SHELVES)[number] & { count: number }>;
+  totalCount: number;
+  onSelect: (key: ContentShelfKey) => void;
+}) {
+  const options = [
+    {
+      key: "all" as const,
+      shortTitle: "Tudo",
+      title: "Tudo",
+      count: totalCount,
+      icon: <Library className="h-4 w-4" />,
+    },
+    ...shelves.map((shelf) => ({
+      key: shelf.key,
+      shortTitle: shelf.shortTitle,
+      title: shelf.title,
+      count: shelf.count,
+      icon: shelf.icon,
+    })),
+  ].filter((option) => option.key === "all" || option.count > 0);
+
+  return (
+    <section className="space-y-3">
+      <div className="px-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-primary/80">
+              Catálogo organizado
+            </p>
+            <h2 className="mt-1 text-lg font-black text-textMain">
+              Escolha o tipo de leitura
+            </h2>
+          </div>
+          <Link
+            href="/search"
+            className="rounded-full border border-white/8 px-3 py-2 text-[11px] font-semibold text-textDim transition-colors hover:bg-white/6 hover:text-textMain"
+          >
+            Catálogo
+          </Link>
+        </div>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 pb-1">
+        {options.map((option) => {
+          const isActive = option.key === activeKey;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => onSelect(option.key)}
+              className={[
+                "flex min-w-fit items-center gap-2 rounded-2xl border px-3.5 py-3 text-left transition-colors",
+                isActive
+                  ? "border-primary/50 bg-primary/14 text-white"
+                  : "border-white/8 bg-white/4 text-textDim hover:bg-white/7 hover:text-textMain",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "flex h-8 w-8 items-center justify-center rounded-xl",
+                  isActive ? "bg-primary text-white" : "bg-white/6 text-textDim",
+                ].join(" ")}
+              >
+                {option.icon}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-black leading-none">
+                  {option.shortTitle}
+                </span>
+                <span className="mt-1 block text-[10px] font-semibold text-current/60">
+                  {option.count} obras
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -245,6 +434,7 @@ function FeaturedBanner({ featured }: { featured: Series }) {
 // ---------------------------------------------------------------------------
 
 export default function HomePage() {
+  const [activeShelfKey, setActiveShelfKey] = useState<ContentShelfKey>("all");
   const {
     isAuthenticated,
     isLoading: authLoading,
@@ -256,7 +446,7 @@ export default function HomePage() {
     isLoading: discoverLoading,
     error: discoverError,
     refetch: refetchDiscover,
-  } = useDiscover({ enabled: isAuthenticated, limit: 16 });
+  } = useDiscover({ enabled: isAuthenticated, limit: 40 });
   const { data: continueReading, isLoading: continueLoading } =
     useContinueReading(
       { limit: 12, onlyInProgress: true },
@@ -265,6 +455,40 @@ export default function HomePage() {
 
   const firstName = user?.name?.split(" ")[0] ?? "Leitor";
   const discoverData = discover ?? EMPTY_DISCOVER;
+  const allSeriesPool = useMemo(
+    () =>
+      dedupeSeries([
+        ...(discoverData.trending ?? []),
+        ...discoverData.recentlyUpdated,
+        ...discoverData.mostViewed,
+        ...discoverData.recentlyAdded,
+      ]),
+    [discoverData],
+  );
+  const contentShelves = useMemo(
+    () =>
+      CONTENT_SHELVES.map((shelf) => {
+        const matchingItems = allSeriesPool.filter((series) =>
+          seriesMatchesShelf(series, shelf),
+        );
+        return {
+          ...shelf,
+          items: matchingItems.slice(0, 14),
+          count: matchingItems.length,
+        };
+      }),
+    [allSeriesPool],
+  );
+  const activeShelf =
+    contentShelves.find((shelf) => shelf.key === activeShelfKey) ?? null;
+  const activeShelfItems =
+    activeShelfKey === "all" ? allSeriesPool : activeShelf?.items ?? [];
+  const visibleShelves =
+    activeShelfKey === "all"
+      ? contentShelves.filter((shelf) => shelf.items.length > 0)
+      : contentShelves.filter(
+          (shelf) => shelf.key === activeShelfKey && shelf.items.length > 0,
+        );
   const featuredSourceOrder: DiscoverSectionKey[] = [
     "mostViewed",
     "trending",
@@ -274,7 +498,13 @@ export default function HomePage() {
   const featuredSource =
     featuredSourceOrder.find((section) => (discoverData[section]?.length ?? 0) > 0) ??
     null;
-  const featured = featuredSource ? (discoverData[featuredSource] ?? [])[0] ?? null : null;
+  const defaultFeatured = featuredSource
+    ? (discoverData[featuredSource] ?? [])[0] ?? null
+    : null;
+  const featured =
+    activeShelfKey === "all"
+      ? defaultFeatured
+      : activeShelfItems[0] ?? defaultFeatured;
   const unavailableSections = (discover?.unavailableSections ?? [])
     .map(
       (section) =>
@@ -282,26 +512,21 @@ export default function HomePage() {
     )
     .filter(Boolean);
 
-  // WorkType-based filtering from the mostViewed list
-  const mangaSeries = discoverData.mostViewed
-    .filter((s) => s.workType?.toLowerCase() === "manga")
-    .slice(0, 12);
-  const manhwaSeries = discoverData.mostViewed
-    .filter((s) => s.workType?.toLowerCase() === "manhwa")
-    .slice(0, 12);
-  const hqSeries = discoverData.mostViewed
-    .filter((s) => ["comic", "hq"].includes(s.workType?.toLowerCase() ?? ""))
-    .slice(0, 12);
-
+  const filterForActiveShelf = (items: Series[]) =>
+    activeShelfKey === "all" || !activeShelf
+      ? items
+      : items.filter((series) => seriesMatchesShelf(series, activeShelf));
+  const removeFeatured = (items: Series[]) =>
+    featured ? items.filter((series) => series.id !== featured.id) : items;
   const sectionConfigs = [
     {
       key: "mostViewed" as const,
       label: "🔥 Mais Vistas",
       href: "/category/popular",
-      items:
-        featuredSource === "mostViewed"
-          ? discoverData.mostViewed.slice(1, 13)
-          : discoverData.mostViewed.slice(0, 12),
+      items: removeFeatured(filterForActiveShelf(discoverData.mostViewed)).slice(
+        0,
+        12,
+      ),
       renderCard: (series: {
         id: string;
         title: string;
@@ -320,10 +545,9 @@ export default function HomePage() {
       key: "trending" as const,
       label: "↑ Em Alta",
       href: "/category/trending",
-      items:
-        featuredSource === "trending"
-          ? (discoverData.trending ?? []).slice(1, 13)
-          : (discoverData.trending ?? []).slice(0, 12),
+      items: removeFeatured(
+        filterForActiveShelf(discoverData.trending ?? []),
+      ).slice(0, 12),
       renderCard: (series: {
         id: string;
         title: string;
@@ -342,10 +566,9 @@ export default function HomePage() {
       key: "recentlyAdded" as const,
       label: "Recém Adicionadas",
       href: "/category/recent",
-      items:
-        featuredSource === "recentlyAdded"
-          ? discoverData.recentlyAdded.slice(1, 13)
-          : discoverData.recentlyAdded.slice(0, 12),
+      items: removeFeatured(
+        filterForActiveShelf(discoverData.recentlyAdded),
+      ).slice(0, 12),
       renderCard: (series: {
         id: string;
         title: string;
@@ -363,10 +586,9 @@ export default function HomePage() {
       key: "recentlyUpdated" as const,
       label: "Recém Atualizadas",
       href: "/category/updated",
-      items:
-        featuredSource === "recentlyUpdated"
-          ? discoverData.recentlyUpdated.slice(1, 13)
-          : discoverData.recentlyUpdated.slice(0, 12),
+      items: removeFeatured(
+        filterForActiveShelf(discoverData.recentlyUpdated),
+      ).slice(0, 12),
       renderCard: (series: {
         id: string;
         title: string;
@@ -384,7 +606,7 @@ export default function HomePage() {
   ];
 
   const hasAnyDiscoverContent =
-    !!featured || sectionConfigs.some((section) => section.items.length > 0);
+    !!featured || allSeriesPool.length > 0;
   const continueReadingCurrent = (() => {
     const seenSeries = new Set<string>();
     return (continueReading ?? [])
@@ -610,6 +832,67 @@ export default function HomePage() {
           </motion.section>
         )}
 
+        {/* Content organization */}
+        {discoverLoading ? (
+          <SectionSkeleton />
+        ) : hasAnyDiscoverContent ? (
+          <ContentShelfSelector
+            activeKey={activeShelfKey}
+            shelves={contentShelves}
+            totalCount={allSeriesPool.length}
+            onSelect={setActiveShelfKey}
+          />
+        ) : null}
+
+        {!discoverLoading &&
+          visibleShelves.map((shelf) => (
+            <motion.section
+              key={shelf.key}
+              initial={{ opacity: 0, y: 14 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-50px", amount: 0.1 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+            >
+              <SectionHeader
+                title={shelf.title}
+                description={shelf.description}
+                link={shelf.href}
+                badge={
+                  <span
+                    className={`h-2 w-2 rounded-full ${shelf.accentClass}`}
+                  />
+                }
+                variant={shelf.key === "comic" ? "hq" : "standard"}
+              />
+              <SectionRow
+                items={removeFeatured(shelf.items).slice(0, 12)}
+                loading={false}
+                renderCard={(series) => (
+                  <MangaCard
+                    id={series.id}
+                    title={series.title}
+                    coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
+                    rating={series.rating ?? undefined}
+                  />
+                )}
+              />
+            </motion.section>
+          ))}
+
+        {!discoverLoading &&
+        activeShelfKey !== "all" &&
+        visibleShelves.length === 0 &&
+        hasAnyDiscoverContent ? (
+          <div className="mx-4 rounded-2xl border border-white/8 bg-surface/70 p-4">
+            <p className="text-sm font-semibold text-textMain">
+              Ainda não há obras nesse formato
+            </p>
+            <p className="mt-1 text-xs leading-5 text-textDim">
+              Troque o filtro ou explore todo o catálogo enquanto novas séries são classificadas.
+            </p>
+          </div>
+        ) : null}
+
         {/* Discovery sections */}
         {sectionConfigs.map((section) =>
           discoverLoading || section.items.length > 0 ? (
@@ -622,7 +905,16 @@ export default function HomePage() {
             >
               <SectionHeader
                 title={section.label}
-                link={section.href}
+                description={
+                  activeShelf
+                    ? `Filtrado para ${activeShelf.title.toLowerCase()}.`
+                    : "Visão geral do catálogo, depois das prateleiras por formato."
+                }
+                link={
+                  activeShelf
+                    ? `${section.href}?workType=${activeShelf.workTypes[0]}`
+                    : section.href
+                }
               />
               <SectionRow
                 items={section.items}
@@ -631,82 +923,6 @@ export default function HomePage() {
               />
             </motion.section>
           ) : null,
-        )}
-
-        {/* WorkType sections: Mangás */}
-        {!discoverLoading && mangaSeries.length > 0 && (
-          <motion.section
-            initial={{ opacity: 0, y: 14 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px", amount: 0.1 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-          >
-            <SectionHeader title="Mangás Populares" />
-            <SectionRow
-              items={mangaSeries}
-              loading={false}
-              renderCard={(series) => (
-                <MangaCard
-                  id={series.id}
-                  title={series.title}
-                  coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
-                />
-              )}
-            />
-          </motion.section>
-        )}
-
-        {/* WorkType sections: Manhwas */}
-        {!discoverLoading && manhwaSeries.length > 0 && (
-          <motion.section
-            initial={{ opacity: 0, y: 14 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px", amount: 0.1 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-          >
-            <SectionHeader
-              title="Manhwas"
-              badge={
-                <span className="text-[9px] font-black bg-white/8 text-textDim px-1.5 py-0.5 rounded uppercase">
-                  KR
-                </span>
-              }
-            />
-            <SectionRow
-              items={manhwaSeries}
-              loading={false}
-              renderCard={(series) => (
-                <MangaCard
-                  id={series.id}
-                  title={series.title}
-                  coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
-                />
-              )}
-            />
-          </motion.section>
-        )}
-
-        {/* WorkType sections: HQs & Comics */}
-        {!discoverLoading && hqSeries.length > 0 && (
-          <motion.section
-            initial={{ opacity: 0, y: 14 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-50px", amount: 0.1 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-          >
-            <SectionHeader title="HQs & Comics" variant="hq" />
-            <SectionRow
-              items={hqSeries}
-              loading={false}
-              renderCard={(series) => (
-                <MangaCard
-                  id={series.id}
-                  title={series.title}
-                  coverUrl={getPublicCoverUrl(series.id, series.coverUrl)}
-                />
-              )}
-            />
-          </motion.section>
         )}
 
         {/* Empty state */}

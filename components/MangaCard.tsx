@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,7 @@ interface MangaCardProps {
   className?: string;
 }
 
-export function MangaCard({
+export const MangaCard = React.memo(function MangaCard({
   id,
   title,
   coverUrl,
@@ -113,4 +114,4 @@ export function MangaCard({
       </motion.div>
     </Link>
   );
-}
+});

@@ -21,12 +21,14 @@
 }
 
 body {
+  font-family: var(--font-sans), sans-serif;
   background-color: var(--color-background);
   color: var(--color-textMain);
   min-height: 100vh;
   /* Suporta safe area em telas com notch */
   min-height: 100dvh;
   overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
   /* Esconde a barra de rolagem mas permite rolar */
   scrollbar-width: none;
   /* Previne zoom indesejado ao tocar em inputs no iOS (font-size < 16px) */
@@ -417,6 +419,15 @@ input[type="checkbox"]:focus-visible {
 }
 
 /* ─── Safe area para headers fixos/sticky em dispositivos com notch/Dynamic Island ─── */
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out forwards;
+}
+
+.user-select-none {
+  user-select: none;
+  -webkit-user-select: none;
+}
 
 .safe-header {
   padding-top: var(--safe-top);

@@ -68,19 +68,21 @@ export type AudienceCode =
 export type MetadataSource =
   | "anilist"
   | "mangadex"
+  | "kitsu"
   | "myanimelist"
   | "openlibrary"
   | "googlebooks"
   | "comicvine"
-  | "wikipedia";
+  | "wikipedia"
+  | "wikidata";
 
 export interface MetadataSourceRecord {
   source: MetadataSource;
   externalId: string | number;
-  lastFetchedAt: string | null;
-  matchConfidence: number;
-  matchedTitle?: string;
-  sourceUrl?: string;
+  matchedTitle: string;
+  workTypeHint: WorkType;
+  confidence: number;
+  sourceUrl?: string | null;
 }
 
 export interface MetadataCatalogOption<TCode extends string> {
@@ -142,12 +144,14 @@ export interface MetadataProviderCandidate {
 
 export interface MetadataSuggestion {
   primarySource: MetadataSource | null;
+  primaryExternalId: string | number | null;
   title: string;
   titleEnglish: string | null;
   titleNative: string | null;
   titlePortuguese: string | null;
   titleAliases: string[];
   description: string | null;
+  descriptionSummary: string | null;
   author: string | null;
   artist: string | null;
   status: string | null;
@@ -157,6 +161,7 @@ export interface MetadataSuggestion {
   endYear: number | null;
   coverUrlLarge: string | null;
   coverUrlMedium: string | null;
+  bannerUrl: string | null;
   isAdult: boolean;
   countryOfOrigin: string | null;
   workType: WorkType;
@@ -169,10 +174,14 @@ export interface MetadataSuggestion {
   confidenceReasons: string[];
   metadataSources: MetadataSourceRecord[];
   sourceTags: Array<{
-    rawValue?: string;
     label?: string;
+    normalizedLabel?: string;
+    category?: "genre" | "theme" | "audience" | "format" | "other";
+    mappedTo?: string | null;
+    confidence?: number;
+    source?: MetadataSource | string;
+    rawValue?: string;
     mappedLabel?: string;
-    source?: string;
   }>;
   providerCandidates: MetadataProviderCandidate[];
   legacyTags: string[];

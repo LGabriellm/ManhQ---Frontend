@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, RefreshCcw } from "lucide-react";
 import { motion } from "framer-motion";
@@ -14,12 +14,51 @@ const categoryTitles: Record<string, string> = {
   popular: "Mais Populares",
   recent: "Novos no Catálogo",
   updated: "Atualizados Recentemente",
+  trending: "Em Alta",
 };
+
+const workTypeLabels: Record<string, string> = {
+  manga: "Mangás",
+  manhwa: "Manhwas",
+  webtoon: "Webtoons",
+  comic: "HQs e Comics",
+  novel: "Novels",
+  light_novel: "Light Novels",
+  other: "Outras Obras",
+};
+
+function normalizeWorkTypeParam(value: string | null): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase();
+  return normalized in workTypeLabels ? normalized : undefined;
+}
+
+function getCategoryTitle(category: string, workType?: string): string {
+  const baseTitle = categoryTitles[category] ?? "Categoria";
+  const typeLabel = workType ? workTypeLabels[workType] : null;
+  if (!typeLabel) return baseTitle;
+
+  if (category === "popular") return `${typeLabel} populares`;
+  if (category === "recent") return `${typeLabel} novos`;
+  if (category === "updated") return `${typeLabel} atualizados`;
+  if (category === "trending") return `${typeLabel} em alta`;
+  return `${typeLabel}: ${baseTitle}`;
+}
+
+function matchesWorkType(
+  item: { workType?: string | null },
+  workType?: string,
+): boolean {
+  if (!workType) return true;
+  return String(item.workType ?? "other").toLowerCase() === workType;
+}
 
 export default function CategoryPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const category = params.category as string;
+  const workType = normalizeWorkTypeParam(searchParams.get("workType"));
   const isValidCategory = category in categoryTitles;
 
   const {
@@ -29,15 +68,19 @@ export default function CategoryPage() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["discover", "category", category, CATEGORY_LIMIT],
+    queryKey: ["discover", "category", category, workType ?? "all", CATEGORY_LIMIT],
     queryFn: async ({ signal }) => {
       switch (category) {
         case "popular":
-          return discoverService.getPopular(CATEGORY_LIMIT, signal);
+          return discoverService.getPopular(CATEGORY_LIMIT, signal, workType);
         case "recent":
-          return discoverService.getRecent(CATEGORY_LIMIT, signal);
+          return discoverService.getRecent(CATEGORY_LIMIT, signal, workType);
         case "updated":
-          return discoverService.getUpdated(CATEGORY_LIMIT, signal);
+          return discoverService.getUpdated(CATEGORY_LIMIT, signal, workType);
+        case "trending": {
+          const items = await discoverService.getTrending(CATEGORY_LIMIT, signal);
+          return items.filter((item) => matchesWorkType(item, workType));
+        }
         default:
           return [];
       }
@@ -118,7 +161,7 @@ export default function CategoryPage() {
     );
   }
 
-  const title = categoryTitles[category];
+  const title = getCategoryTitle(category, workType);
 
   return (
     <main className="min-h-screen bg-background pb-20">

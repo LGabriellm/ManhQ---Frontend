@@ -8,6 +8,7 @@ import {
   useCreateManualSubscription,
   useCancelSubscription,
   useReactivateSubscription,
+  useDeleteSubscription,
   useCheckExpiredSubscriptions,
 } from "@/hooks/useAdmin";
 import type {
@@ -35,6 +36,7 @@ import {
   RotateCcw,
   Key,
   Timer,
+  Trash2,
 } from "lucide-react";
 
 const SUB_STATUSES = [
@@ -135,6 +137,9 @@ export default function SubscriptionsPage() {
   const [cancelTarget, setCancelTarget] = useState<SubscriptionItem | null>(
     null,
   );
+  const [deleteTarget, setDeleteTarget] = useState<SubscriptionItem | null>(
+    null,
+  );
   const [cancelReason, setCancelReason] = useState("");
   const [cancelImmediately, setCancelImmediately] = useState(false);
 
@@ -149,6 +154,7 @@ export default function SubscriptionsPage() {
   const createManual = useCreateManualSubscription();
   const cancelSub = useCancelSubscription();
   const reactivateSub = useReactivateSubscription();
+  const deleteSub = useDeleteSubscription();
   const checkExpired = useCheckExpiredSubscriptions();
 
   // Search handler
@@ -162,7 +168,11 @@ export default function SubscriptionsPage() {
       toast.success(
         result.action === "activation_sent"
           ? "Email de ativação enviado!"
-          : "Conta criada com sucesso!",
+          : result.action === "subscription_updated"
+            ? "Assinatura atualizada para este email"
+            : result.action === "activation_pending"
+              ? "Assinatura atualizada; ativacao ainda pendente"
+              : "Conta criada com sucesso!",
       );
       setShowCreateModal(false);
     } catch {
@@ -198,6 +208,17 @@ export default function SubscriptionsPage() {
       toast.success("Assinatura reativada");
     } catch {
       toast.error("Erro ao reativar assinatura");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget?.id) return;
+    try {
+      await deleteSub.mutateAsync(deleteTarget.id);
+      toast.success("Assinatura removida");
+      setDeleteTarget(null);
+    } catch {
+      toast.error("Erro ao remover assinatura");
     }
   };
 
@@ -345,6 +366,7 @@ export default function SubscriptionsPage() {
           onSearch={handleSubSearch}
           onCancel={setCancelTarget}
           onReactivate={handleReactivate}
+          onDelete={setDeleteTarget}
           reactivateLoading={reactivateSub.isPending}
         />
       ) : (
@@ -423,6 +445,46 @@ export default function SubscriptionsPage() {
           </div>
         </div>
       )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+          <div className="bg-[var(--color-surface)] rounded-xl p-6 w-full max-w-md border border-white/10">
+            <h3 className="text-lg font-semibold text-[var(--color-textMain)] mb-2">
+              Remover assinatura
+            </h3>
+            <p className="text-sm text-[var(--color-textDim)] mb-4">
+              Remover definitivamente a assinatura de{" "}
+              <strong className="text-[var(--color-textMain)]">
+                {deleteTarget.user?.name ||
+                  deleteTarget.user?.email ||
+                  deleteTarget.buyerName ||
+                  deleteTarget.buyerEmail}
+              </strong>
+              ? Tokens pendentes vinculados também serão removidos.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 text-sm text-[var(--color-textDim)] hover:text-[var(--color-textMain)] transition-colors"
+              >
+                Voltar
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleteSub.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {deleteSub.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                Remover
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -468,6 +530,7 @@ function SubscriptionsTab({
   onSearch,
   onCancel,
   onReactivate,
+  onDelete,
   reactivateLoading,
 }: {
   data: ReturnType<typeof useSubscriptions>["data"];
@@ -479,6 +542,7 @@ function SubscriptionsTab({
   onSearch: () => void;
   onCancel: (sub: SubscriptionItem) => void;
   onReactivate: (userId: string) => void;
+  onDelete: (sub: SubscriptionItem) => void;
   reactivateLoading: boolean;
 }) {
   return (
@@ -626,6 +690,15 @@ function SubscriptionsTab({
                             className="p-1.5 rounded-lg text-green-400 hover:bg-green-500/10 transition-colors disabled:opacity-50"
                           >
                             <RotateCcw className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                        {sub.id ? (
+                          <button
+                            onClick={() => onDelete(sub)}
+                            title="Remover"
+                            className="p-1.5 rounded-lg text-red-300 hover:bg-red-500/10 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         ) : null}
                       </div>

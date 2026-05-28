@@ -1274,7 +1274,16 @@ export interface UpdateSeriesRequest {
 // ===== Metadata (Multi-fonte) =====
 export interface MetadataResult {
   externalId: number | string;
-  source: "anilist" | "mangadex" | "wikipedia" | "comicvine";
+  source:
+    | "anilist"
+    | "mangadex"
+    | "kitsu"
+    | "myanimelist"
+    | "wikipedia"
+    | "wikidata"
+    | "comicvine"
+    | "openlibrary"
+    | "googlebooks";
   title: string;
   titleEnglish?: string;
   titleNative?: string;
@@ -2647,9 +2656,14 @@ export interface CreateManualSubscriptionRequest {
 }
 
 export interface CreateManualSubscriptionResponse {
-  action: "activation_sent" | "account_created";
+  action:
+    | "activation_sent"
+    | "activation_pending"
+    | "subscription_updated"
+    | "account_created";
   tokenId?: string;
   userId?: string;
+  subscriptionId?: string;
 }
 
 export interface CancelSubscriptionRequest {
@@ -2661,6 +2675,14 @@ export interface CancelSubscriptionResponse {
   success: boolean;
   message: string;
   subscription: SubscriptionView;
+}
+
+export interface DeleteSubscriptionResponse {
+  success: boolean;
+  message: string;
+  subscriptionId: string;
+  userId?: string;
+  email: string;
 }
 
 export interface CheckExpiredResponse {

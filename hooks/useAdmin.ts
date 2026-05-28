@@ -1026,6 +1026,20 @@ export function useReactivateSubscription() {
   });
 }
 
+export function useDeleteSubscription() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (subscriptionId: string) =>
+      adminService.deleteSubscription(subscriptionId),
+    onSuccess: () =>
+      syncAdminQueries(qc, [
+        adminKeys.subscriptionsStats(),
+        adminKeys.subscriptions(),
+        adminKeys.activationTokens(),
+      ]),
+  });
+}
+
 export function useCheckExpiredSubscriptions() {
   const qc = useQueryClient();
   return useMutation({

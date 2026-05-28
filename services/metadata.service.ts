@@ -23,7 +23,7 @@ export async function fetchMetadataCatalog(): Promise<MetadataCatalog> {
 export async function fetchSeriesMetadata(
   seriesId: string,
 ): Promise<SeriesMetadataResponse> {
-  const { data } = await api.get(`/admin/metadata/series/${seriesId}`);
+  const { data } = await api.get(`/admin/series/${seriesId}/metadata`);
   return data;
 }
 
@@ -40,15 +40,19 @@ export interface MetadataSearchResult {
 
 export interface MetadataSearchData {
   query: string;
+  workTypeHint?: string | null;
+  count?: number;
+  sources?: MetadataSource[];
+  suggestion?: unknown;
   results: MetadataSearchResult[];
 }
 
 export async function searchMetadata(
   query: string,
-  source?: string,
+  workTypeHint?: string,
 ): Promise<MetadataSearchData> {
   const { data } = await api.get("/admin/metadata/search", {
-    params: { q: query, source },
+    params: { q: query, workTypeHint },
   });
   return data;
 }
@@ -57,10 +61,7 @@ export async function refreshSeriesMetadata(
   seriesId: string,
   payload?: Record<string, unknown>,
 ): Promise<SeriesMetadataResponse> {
-  const { data } = await api.post(
-    `/admin/metadata/series/${seriesId}/refresh`,
-    payload,
-  );
+  const { data } = await api.post(`/admin/series/${seriesId}/enrich`, payload);
   return data;
 }
 
@@ -68,9 +69,6 @@ export async function reviewSeriesMetadata(
   seriesId: string,
   payload: ReviewSeriesMetadataRequest,
 ): Promise<SeriesMetadataResponse> {
-  const { data } = await api.post(
-    `/admin/metadata/series/${seriesId}/review`,
-    payload,
-  );
+  const { data } = await api.put(`/admin/series/${seriesId}/metadata`, payload);
   return data;
 }

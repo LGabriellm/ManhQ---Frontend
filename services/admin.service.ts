@@ -78,6 +78,7 @@ import type {
   CreateManualSubscriptionRequest,
   CreateManualSubscriptionResponse,
   CancelSubscriptionRequest,
+  DeleteSubscriptionResponse,
   CheckExpiredResponse,
   GoogleDriveFoldersParams,
   GoogleDriveFoldersResponse,
@@ -1151,6 +1152,15 @@ export const adminService = {
   ): Promise<{ success: boolean; message: string }> {
     const response = await api.post<{ success: boolean; message: string }>(
       `/admin/subscriptions/${userId}/reactivate`,
+    );
+    return response.data;
+  },
+
+  async deleteSubscription(
+    subscriptionId: string,
+  ): Promise<DeleteSubscriptionResponse> {
+    const response = await api.delete<DeleteSubscriptionResponse>(
+      `/admin/subscriptions/${subscriptionId}`,
     );
     return response.data;
   },

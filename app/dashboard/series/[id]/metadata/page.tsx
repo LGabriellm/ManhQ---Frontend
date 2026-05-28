@@ -21,7 +21,6 @@ import type {
   CanonicalGenre,
   MetadataReviewDraft,
   MetadataSource,
-  ReviewSeriesMetadataRequest,
   ThemeCode,
   WorkType,
 } from "@/types/metadata";

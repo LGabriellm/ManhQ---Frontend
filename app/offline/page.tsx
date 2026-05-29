@@ -272,6 +272,8 @@ export default function OfflinePage() {
                           coverUrl={s.coverUrl ?? ""}
                           alt={s.seriesTitle}
                           className="aspect-[3/4] w-full rounded-xl"
+                          useOffline={true}
+                          seriesId={s.seriesId}
                         />
                         <p className="mt-2 truncate text-xs font-medium text-white/80">
                           {s.seriesTitle}

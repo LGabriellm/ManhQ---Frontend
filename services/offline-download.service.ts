@@ -249,8 +249,29 @@ export async function cancelJob(jobId: string) {
   if (job) {
     await offlineStorage.deleteChapter(job.seriesId, job.chapterId);
     await offlineStorage.deleteJob(jobId);
+    notifyListeners();
   }
+}
+
+export async function clearLog(jobId: string) {
+  await offlineStorage.deleteJob(jobId);
   notifyListeners();
+}
+
+export async function clearCompletedLogs(): Promise<number> {
+  const count = await offlineStorage.deleteJobsByStatus("complete");
+  if (count > 0) notifyListeners();
+  return count;
+}
+
+export async function clearErrorLogs(): Promise<number> {
+  const errorJobs = await offlineStorage.getJobsByStatus("error");
+  for (const job of errorJobs) {
+    await offlineStorage.deleteChapter(job.seriesId, job.chapterId);
+  }
+  const count = await offlineStorage.deleteJobsByStatus("error");
+  if (count > 0) notifyListeners();
+  return count;
 }
 
 export async function retryJob(jobId: string): Promise<void> {
@@ -287,13 +308,7 @@ export async function retryAllErrors(): Promise<number> {
 }
 
 export async function clearErrors(): Promise<number> {
-  const errorJobs = await offlineStorage.getJobsByStatus("error");
-  for (const job of errorJobs) {
-    await offlineStorage.deleteChapter(job.seriesId, job.chapterId);
-  }
-  const count = await offlineStorage.deleteJobsByStatus("error");
-  if (count > 0) notifyListeners();
-  return count;
+  return clearErrorLogs();
 }
 
 export function pauseAll() {

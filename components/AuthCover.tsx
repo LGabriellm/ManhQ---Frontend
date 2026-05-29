@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { mediaService } from "@/services/media.service";
+import * as offlineStorage from "@/services/offline-storage.service";
 
 interface AuthCoverProps {
   coverUrl: string;
@@ -11,6 +12,8 @@ interface AuthCoverProps {
   loading?: "eager" | "lazy";
   /** Tamanho compacto — spinner menor e texto de erro reduzido */
   compact?: boolean;
+  useOffline?: boolean;
+  seriesId?: string;
 }
 
 export function AuthCover({
@@ -19,6 +22,8 @@ export function AuthCover({
   className,
   loading = "lazy",
   compact = false,
+  useOffline = false,
+  seriesId,
 }: AuthCoverProps) {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -61,6 +66,19 @@ export function AuthCover({
       try {
         setIsLoading(true);
         setError(false);
+
+        if (useOffline && seriesId) {
+          const blob = await offlineStorage.getCover(seriesId);
+          if (blob) {
+            blobUrl = URL.createObjectURL(blob);
+            if (isMounted) {
+              setImageSrc(blobUrl);
+              setIsLoading(false);
+            }
+            return;
+          }
+        }
+
         blobUrl = await mediaService.getBlobUrl(coverUrl);
         if (isMounted) {
           setImageSrc(blobUrl);
@@ -83,7 +101,7 @@ export function AuthCover({
         URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [shouldLoad, coverUrl]);
+  }, [shouldLoad, coverUrl, useOffline, seriesId]);
 
   if (!coverUrl) {
     return (

@@ -56,7 +56,7 @@ function JobCard({ job }: { job: DownloadJob }) {
   const isError = job.status === "error";
   const isQueued = job.status === "queued";
 
-  const { pauseJob, resumeJob, cancelJob, retryJob } = useOfflineDownloads();
+  const { pauseJob, resumeJob, cancelJob, retryJob, clearLog } = useOfflineDownloads();
 
   return (
     <motion.div
@@ -176,9 +176,9 @@ function JobCard({ job }: { job: DownloadJob }) {
           )}
           {(isDone || isError || isQueued) && (
             <button
-              onClick={() => cancelJob(job.id)}
+              onClick={() => (isDone || isError) ? clearLog(job.id) : cancelJob(job.id)}
               className="rounded-xl p-2 text-white/30 transition-all hover:bg-white/[0.08] hover:text-red-400"
-              aria-label="Remover"
+              aria-label={isQueued ? "Remover" : "Limpar Log"}
             >
               <Trash2 className="h-4 w-4" />
             </button>
@@ -200,6 +200,8 @@ export function DownloadManager() {
     resumeAll,
     retryAllErrors,
     clearErrors,
+    clearCompletedLogs,
+    clearLog,
     cancelJob,
   } = useOfflineDownloads();
   const [speed, setSpeed] = useState(0);
@@ -489,6 +491,9 @@ export function DownloadManager() {
                         onClick={async () => {
                           await clearErrors();
                           setConfirmClear(false);
+                          if (activeJobs.length === 0 && pendingJobs.length === 0 && doneJobs.length === 0) {
+                            setIsOpen(false);
+                          }
                         }}
                         className="flex-1 rounded-xl bg-red-500/15 border border-red-500/20 py-2 text-xs font-medium text-red-400 transition-all hover:bg-red-500/20"
                       >
@@ -512,8 +517,9 @@ export function DownloadManager() {
                 <div className="shrink-0 mx-5 mt-2.5">
                   <button
                     onClick={async () => {
-                      for (const job of doneJobs) {
-                        await cancelJob(job.id);
+                      await clearCompletedLogs();
+                      if (activeJobs.length === 0 && pendingJobs.length === 0 && errorJobs.length === 0) {
+                        setIsOpen(false);
                       }
                     }}
                     className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] py-2 text-xs font-medium text-white/30 transition-all hover:bg-white/[0.06] hover:text-white/50"

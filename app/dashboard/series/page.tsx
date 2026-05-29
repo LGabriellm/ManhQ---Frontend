@@ -1947,6 +1947,13 @@ function SeriesDetailView({
                 <Sparkles className="h-3.5 w-3.5" />
                 Revisar metadados
               </Link>
+              <Link
+                href={`/dashboard/series/${series.id}/providers`}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 transition-colors"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                Fontes
+              </Link>
               <button
                 onClick={() => setUploadModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors"

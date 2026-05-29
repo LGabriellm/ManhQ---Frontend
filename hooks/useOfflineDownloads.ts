@@ -35,6 +35,8 @@ export interface OfflineDownloadsState {
   retryJob: (jobId: string) => Promise<void>;
   retryAllErrors: () => Promise<number>;
   clearErrors: () => Promise<number>;
+  clearCompletedLogs: () => Promise<number>;
+  clearLog: (jobId: string) => Promise<void>;
   isChapterDownloaded: (seriesId: string, chapterId: string) => boolean;
   isChapterDownloading: (seriesId: string, chapterId: string) => boolean;
 }
@@ -161,6 +163,8 @@ export function useOfflineDownloads(): OfflineDownloadsState {
     retryJob: offlineDownload.retryJob,
     retryAllErrors: offlineDownload.retryAllErrors,
     clearErrors: offlineDownload.clearErrors,
+    clearCompletedLogs: offlineDownload.clearCompletedLogs,
+    clearLog: offlineDownload.clearLog,
     isChapterDownloaded,
     isChapterDownloading,
   };

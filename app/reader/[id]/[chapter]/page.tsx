@@ -869,7 +869,7 @@ export default function ReaderPage() {
       : `${currentPage} / ${totalPages}`;
 
   // ─── Loading state ─────────────────────────────────────────────
-  if (isLoading) {
+  if (isLoading && !offlineMeta) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-black">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -878,7 +878,7 @@ export default function ReaderPage() {
   }
 
   // ─── Error state ───────────────────────────────────────────────
-  if (error || !chapterData) {
+  if (!resolvedChapterData) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-black px-4">
         <div className="max-w-md text-center">

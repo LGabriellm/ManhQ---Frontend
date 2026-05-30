@@ -32,10 +32,9 @@ import {
   isExternalHref,
 } from "@/lib/subscription";
 import { useAuth } from "@/contexts/AuthContext";
-import { useUserStats, useReadingHeatmap } from "@/hooks/useApi";
+import { useUserStats } from "@/hooks/useApi";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ReadingHeatmap } from "@/components/profile/ReadingHeatmap";
 import { AuthCover } from "@/components/AuthCover";
 import { UserAvatar } from "@/components/community/UserAvatar";
 import { SubscriptionAlertBanner } from "@/components/subscription/SubscriptionAlertBanner";
@@ -128,26 +127,54 @@ function WeeklyChart({
   mostProductiveDay: string;
 }) {
   const maxPages = Math.max(...data.map((d) => d.pages), 1);
-  const topPages = data.find((d) => d.day === mostProductiveDay)?.pages ?? 0;
+  const totalPages = data.reduce((acc, d) => acc + d.pages, 0);
+  const totalTimeSeconds = data.reduce((acc, d) => acc + d.time, 0);
+
+  const formatTime = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    if (h === 0 && m === 0) return "0m";
+    if (h === 0) return `${m}m`;
+    return `${h}h${m > 0 ? ` ${m}m` : ""}`;
+  };
 
   return (
-    <div className="bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4 overflow-hidden p-5">
-      <div className="flex items-end gap-1.5 h-36">
+    <div className="bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4 overflow-hidden">
+      {/* Header Info */}
+      <div className="px-5 py-4 border-b border-white/[0.04] flex items-center justify-between">
+        <div className="flex flex-col">
+          <span className="text-[10px] text-textDim/50 font-semibold uppercase tracking-wider mb-0.5">Total nos 7 dias</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl font-black text-textMain">{totalPages}</span>
+            <span className="text-xs text-textDim/60 font-medium">págs</span>
+          </div>
+        </div>
+        
+        <div className="flex flex-col items-end">
+          <span className="text-[10px] text-textDim/50 font-semibold uppercase tracking-wider mb-0.5">Tempo Total</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-xl font-black text-textMain">{formatTime(totalTimeSeconds)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="px-5 pt-6 pb-5 flex items-end gap-2 h-44">
         {data.map((d, i) => {
-          const fillPct = Math.max((d.pages / maxPages) * 100, 4);
-          const isTop = d.day === mostProductiveDay;
-          const isToday = i === data.length - 1; // Last item is today
+          const fillPct = Math.max((d.pages / maxPages) * 100, d.pages > 0 ? 6 : 0);
+          const isTop = d.day === mostProductiveDay && d.pages > 0;
+          const isToday = i === data.length - 1; 
 
           return (
             <div key={i} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
-              {/* Value floating */}
+              {/* Value Tooltip/Floating */}
               <motion.div
                 initial={{ opacity: 0, y: 4 }}
                 animate={{ opacity: d.pages > 0 ? 1 : 0, y: 0 }}
                 transition={{ delay: 0.2 + i * 0.05 }}
                 className={cn(
                   "text-[10px] font-bold tabular-nums transition-opacity duration-300",
-                  isTop ? "text-[var(--color-primary)]" : "text-textDim/50",
+                  isTop ? "text-[var(--color-primary)] drop-shadow-md" : "text-textDim/50",
                   isToday && d.pages === 0 && "text-textDim/30"
                 )}
               >
@@ -156,16 +183,20 @@ function WeeklyChart({
 
               {/* Bar */}
               <div className="relative w-full flex-1 flex items-end">
+                {/* Track background */}
+                <div className="absolute inset-0 bg-white/[0.02] rounded-md pointer-events-none" />
+                
+                {/* Fill */}
                 <motion.div
                   className={cn(
-                    "w-full rounded-md transition-colors duration-300",
+                    "w-full rounded-md transition-colors duration-300 relative overflow-hidden",
                     isTop 
                       ? "bg-gradient-to-t from-[var(--color-primary)] to-red-400" 
                       : isToday 
                         ? "bg-white/20" 
-                        : "bg-white/5 group-hover:bg-white/10"
+                        : "bg-white/10 group-hover:bg-white/15"
                   )}
-                  style={isTop ? { boxShadow: "0 0 16px rgba(229,9,20,0.4)" } : undefined}
+                  style={isTop ? { boxShadow: "0 0 16px rgba(229,9,20,0.3)" } : undefined}
                   initial={{ height: 0 }}
                   animate={{ height: `${fillPct}%` }}
                   transition={{
@@ -173,15 +204,19 @@ function WeeklyChart({
                     duration: 0.7,
                     ease: [0.22, 1, 0.36, 1],
                   }}
-                />
+                >
+                  {isTop && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent mix-blend-overlay" />
+                  )}
+                </motion.div>
               </div>
 
               {/* Label */}
               <span
                 className={cn(
-                  "text-[10px] font-medium tracking-wide mt-1",
+                  "text-[9px] font-medium tracking-wide mt-1.5 uppercase",
                   isToday 
-                    ? "text-white font-bold" 
+                    ? "text-white font-bold bg-white/10 px-1.5 py-0.5 rounded" 
                     : isTop 
                       ? "text-[var(--color-primary)] font-bold" 
                       : "text-textDim/40"
@@ -467,7 +502,6 @@ export default function ProfilePage() {
     error,
     refetch: refetchUserStats,
   } = useUserStats();
-  const { data: heatmapData } = useReadingHeatmap();
   const { data: badges } = useMyBadges();
   const router = useRouter();
   const [_showAllMilestones, _setShowAllMilestones] = useState(false);
@@ -807,21 +841,6 @@ export default function ProfilePage() {
                 data={time.pagesPerDayOfWeek}
                 mostProductiveDay={time.mostProductiveDay}
               />
-            </motion.div>
-          )}
-
-          {/* ===== READING HEATMAP ===== */}
-          {heatmapData && heatmapData.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.42 }}
-              className="px-4 mt-5"
-            >
-              <SectionHeader icon={CalendarDays} title="Hábitos de Leitura" />
-              <div className="bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4">
-                <ReadingHeatmap data={heatmapData} months={6} />
-              </div>
             </motion.div>
           )}
 

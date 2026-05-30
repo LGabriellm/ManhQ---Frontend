@@ -16,20 +16,22 @@ interface AuthCoverProps {
   seriesId?: string;
 }
 
-function normalizeProxyPath(pathOrUrl: string): string {
+function getFinalCoverUrl(pathOrUrl: string): string {
   let normalized = pathOrUrl.trim();
   
-  // Se já for uma URL absoluta (como do CDN Bunny), NÃO passe pelo proxy local!
+  // Se já for uma URL absoluta (como do CDN Bunny), retorna como está
   if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
     return normalized;
   }
   
-  if (normalized.startsWith("/api/")) {
-    return normalized.slice(4);
+  // Se for relativo, garante que passa pelo proxy local /api
+  if (!normalized.startsWith("/api/")) {
+    if (!normalized.startsWith("/")) {
+      normalized = `/${normalized}`;
+    }
+    return `/api${normalized}`;
   }
-  if (!normalized.startsWith("/")) {
-    return `/${normalized}`;
-  }
+  
   return normalized;
 }
 
@@ -95,7 +97,7 @@ export function AuthCover({
         }
 
         if (isMounted) {
-          setImageSrc(`/api${normalizeProxyPath(coverUrl)}`);
+          setImageSrc(getFinalCoverUrl(coverUrl));
         }
       } catch (err) {
         console.error("Erro ao carregar capa:", err);

@@ -122,7 +122,7 @@ export function AuthCover({
     return (
       <div
         ref={containerRef}
-        className={`flex items-center justify-center bg-surface/50 ${className || ""}`}
+        className={`flex items-center justify-center w-full h-full bg-surface/50 ${className || ""}`}
       >
         {!compact && (
           <span className="text-textSecondary text-sm">Sem capa</span>
@@ -134,7 +134,7 @@ export function AuthCover({
   return (
     <div
       ref={containerRef}
-      className={`relative overflow-hidden ${className || ""}`}
+      className={`relative w-full h-full overflow-hidden ${className || ""}`}
     >
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-surface/50">

@@ -73,6 +73,7 @@ const ALLOWED_PREFIXES = [
   "admin/storage/",
   "public/founder-status",
   "ranking",
+  "ranking/",
   "suwayomi/",
   "achievements",
   "landing-video",

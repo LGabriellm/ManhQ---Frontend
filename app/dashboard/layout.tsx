@@ -105,12 +105,6 @@ const navItems: Array<{
     icon: HardDrive,
     roles: ["ADMIN"],
   },
-  {
-    href: "/dashboard/settings",
-    label: "Configurações",
-    icon: Settings,
-    roles: ["ADMIN"],
-  },
 ];
 
 function canAccessDashboardPath(

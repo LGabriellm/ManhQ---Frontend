@@ -120,8 +120,6 @@ function SectionHeader({
 }
 
 // ─── Weekly chart ────────────────────────────────────────────────────────────
-const PT_DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-
 function WeeklyChart({
   data,
   mostProductiveDay,
@@ -133,76 +131,67 @@ function WeeklyChart({
   const topPages = data.find((d) => d.day === mostProductiveDay)?.pages ?? 0;
 
   return (
-    <div className="bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4 overflow-hidden">
-      <div className="px-5 pt-5 pb-4">
-        <div className="flex gap-2">
-          {data.map((d, i) => {
-            const fillPct = Math.max((d.pages / maxPages) * 100, 3);
-            const isTop = d.day === mostProductiveDay;
-            const dayLabel = PT_DAYS[i] ?? d.day.slice(0, 3);
+    <div className="bg-surface/60 backdrop-blur-sm rounded-2xl border border-white/4 overflow-hidden p-5">
+      <div className="flex items-end gap-1.5 h-36">
+        {data.map((d, i) => {
+          const fillPct = Math.max((d.pages / maxPages) * 100, 4);
+          const isTop = d.day === mostProductiveDay;
+          const isToday = i === data.length - 1; // Last item is today
 
-            return (
-              <div key={d.day} className="flex-1 flex flex-col items-center gap-2">
-                {/* Value label */}
-                <motion.span
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: d.pages > 0 ? 1 : 0, y: 0 }}
-                  transition={{ delay: 0.5 + i * 0.05 }}
-                  className={cn(
-                    "text-[9px] tabular-nums font-bold h-3 leading-3",
-                    isTop ? "text-[var(--color-primary)]" : "text-textDim/30",
-                  )}
-                >
-                  {d.pages > 0 ? d.pages : ""}
-                </motion.span>
+          return (
+            <div key={i} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
+              {/* Value floating */}
+              <motion.div
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: d.pages > 0 ? 1 : 0, y: 0 }}
+                transition={{ delay: 0.2 + i * 0.05 }}
+                className={cn(
+                  "text-[10px] font-bold tabular-nums transition-opacity duration-300",
+                  isTop ? "text-[var(--color-primary)]" : "text-textDim/50",
+                  isToday && d.pages === 0 && "text-textDim/30"
+                )}
+              >
+                {d.pages}
+              </motion.div>
 
-                {/* Bar track + fill */}
-                <div
+              {/* Bar */}
+              <div className="relative w-full flex-1 flex items-end">
+                <motion.div
                   className={cn(
-                    "relative w-full rounded-xl overflow-hidden",
-                    isTop ? "bg-[var(--color-primary)]/10" : "bg-white/[0.04]",
+                    "w-full rounded-md transition-colors duration-300",
+                    isTop 
+                      ? "bg-gradient-to-t from-[var(--color-primary)] to-red-400" 
+                      : isToday 
+                        ? "bg-white/20" 
+                        : "bg-white/5 group-hover:bg-white/10"
                   )}
-                  style={{ height: 120 }}
-                >
-                  <motion.div
-                    className={cn(
-                      "absolute bottom-0 left-0 right-0 rounded-xl",
-                      isTop ? "bg-[var(--color-primary)]" : "bg-[var(--color-primary)]/18",
-                    )}
-                    style={isTop ? { boxShadow: "0 0 24px rgba(229,9,20,0.30)" } : undefined}
-                    initial={{ height: 0 }}
-                    animate={{ height: `${fillPct}%` }}
-                    transition={{
-                      delay: 0.2 + i * 0.06,
-                      duration: 0.65,
-                      ease: [0.22, 1, 0.36, 1],
-                    }}
-                  />
-                </div>
-
-                {/* Day label */}
-                <span
-                  className={cn(
-                    "text-[10px] font-semibold",
-                    isTop ? "text-[var(--color-primary)]" : "text-textDim/40",
-                  )}
-                >
-                  {dayLabel}
-                </span>
+                  style={isTop ? { boxShadow: "0 0 16px rgba(229,9,20,0.4)" } : undefined}
+                  initial={{ height: 0 }}
+                  animate={{ height: `${fillPct}%` }}
+                  transition={{
+                    delay: 0.1 + i * 0.04,
+                    duration: 0.7,
+                    ease: [0.22, 1, 0.36, 1],
+                  }}
+                />
               </div>
-            );
-          })}
-        </div>
-      </div>
 
-      <div className="flex items-center justify-between px-5 py-3 border-t border-white/[0.05]">
-        <span className="text-[11px] text-textDim/40 font-medium">Páginas por dia</span>
-        <div className="flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-[var(--color-primary)]" />
-          <span className="text-[11px] text-[var(--color-primary)] font-semibold">
-            {mostProductiveDay} · {topPages.toLocaleString("pt-BR")} págs.
-          </span>
-        </div>
+              {/* Label */}
+              <span
+                className={cn(
+                  "text-[10px] font-medium tracking-wide mt-1",
+                  isToday 
+                    ? "text-white font-bold" 
+                    : isTop 
+                      ? "text-[var(--color-primary)] font-bold" 
+                      : "text-textDim/40"
+                )}
+              >
+                {isToday ? "Hoje" : d.day}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

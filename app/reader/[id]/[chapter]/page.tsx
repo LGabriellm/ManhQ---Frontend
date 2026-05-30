@@ -7,6 +7,7 @@ import {
   useRef,
   useMemo,
   useCallback,
+  Suspense,
   type MouseEvent,
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -40,7 +41,7 @@ import { WifiOff } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
-type ReadingMode = "vertical" | "webtoon" | "horizontal";
+type ReadingMode = "vertical" | "webtoon" | "horizontal" | "spread";
 
 interface ChapterNavigationItem {
   id: string;
@@ -96,7 +97,7 @@ function getStoredModeRaw(): string | null {
 
 function getStoredMode(): ReadingMode {
   const stored = getStoredModeRaw();
-  if (stored === "horizontal" || stored === "webtoon") return stored;
+  if (stored === "horizontal" || stored === "webtoon" || stored === "spread") return stored;
   return "vertical";
 }
 
@@ -108,12 +109,13 @@ const READING_MODES: {
   { value: "vertical", label: "Vertical", icon: AlignVerticalSpaceAround },
   { value: "webtoon", label: "Contínuo", icon: ScrollText },
   { value: "horizontal", label: "Horizontal", icon: Columns },
+  { value: "spread", label: "Páginas Duplas", icon: BookOpen },
 ];
 
 // ─── Page rendering helpers (memoized, not re-created each render) ───
 
-function getPageClasses(isHorizontal: boolean, isWebtoon: boolean): string {
-  if (isHorizontal) {
+function getPageClasses(isHorizontal: boolean, isWebtoon: boolean, isSpread: boolean): string {
+  if (isHorizontal || isSpread) {
     return "relative flex h-full w-full shrink-0 snap-start items-center justify-center bg-black";
   }
   if (isWebtoon) {
@@ -143,15 +145,15 @@ function getAuthImageContainerClasses(isWebtoon: boolean): string {
   return "flex h-full w-full items-center justify-center";
 }
 
-function getEndScreenClasses(isHorizontal: boolean, isWebtoon: boolean): string {
-  if (isHorizontal) {
+function getEndScreenClasses(isHorizontal: boolean, isWebtoon: boolean, isSpread: boolean): string {
+  if (isHorizontal || isSpread) {
     return "flex h-full w-full shrink-0 snap-start flex-col items-center justify-center bg-gradient-to-b from-black to-background px-8";
   }
   return "flex min-h-screen w-full snap-start flex-col items-center justify-center bg-gradient-to-b from-black to-background px-8 py-12";
 }
 
-function getCommentsClasses(isHorizontal: boolean, isWebtoon: boolean): string {
-  if (isHorizontal) {
+function getCommentsClasses(isHorizontal: boolean, isWebtoon: boolean, isSpread: boolean): string {
+  if (isHorizontal || isSpread) {
     return "h-full w-full shrink-0 snap-start overflow-y-auto bg-background px-4 py-10";
   }
   return "min-h-screen w-full snap-start bg-background px-4 py-10";
@@ -159,7 +161,7 @@ function getCommentsClasses(isHorizontal: boolean, isWebtoon: boolean): string {
 
 // ─── Component ───────────────────────────────────────────────────────
 
-export default function ReaderPage() {
+function ReaderContent() {
   const router = useRouter();
   const params = useParams();
   const searchParams = useSearchParams();
@@ -768,19 +770,19 @@ export default function ReaderPage() {
 
   // ─── Container CSS class ────────────────────────────────────────
   const containerClasses = useMemo(() => {
-    if (isHorizontal) {
+    if (isHorizontal || isSpread) {
       return "flex h-full overflow-x-auto overflow-y-hidden snap-x snap-mandatory scrollbar-hide";
     }
     if (isWebtoon) {
       return "h-full overflow-y-auto scrollbar-hide";
     }
     return "h-full overflow-y-auto snap-y snap-mandatory scrollbar-hide";
-  }, [isHorizontal, isWebtoon]);
+  }, [isHorizontal, isWebtoon, isSpread]);
 
   // ─── Memoized page helpers ──────────────────────────────────────
   const pageClass = useMemo(
-    () => getPageClasses(isHorizontal, isWebtoon),
-    [isHorizontal, isWebtoon],
+    () => getPageClasses(isHorizontal, isWebtoon, isSpread),
+    [isHorizontal, isWebtoon, isSpread],
   );
   const imgClass = useMemo(
     () => getImageClasses(isWebtoon),
@@ -795,12 +797,12 @@ export default function ReaderPage() {
     [isWebtoon],
   );
   const endClass = useMemo(
-    () => getEndScreenClasses(isHorizontal, isWebtoon),
-    [isHorizontal, isWebtoon],
+    () => getEndScreenClasses(isHorizontal, isWebtoon, isSpread),
+    [isHorizontal, isWebtoon, isSpread],
   );
   const commentsClass = useMemo(
-    () => getCommentsClasses(isHorizontal, isWebtoon),
-    [isHorizontal, isWebtoon],
+    () => getCommentsClasses(isHorizontal, isWebtoon, isSpread),
+    [isHorizontal, isWebtoon, isSpread],
   );
 
   // ─── Memoized pages array ───────────────────────────────────────
@@ -808,6 +810,22 @@ export default function ReaderPage() {
     if (totalPages < 1) return [];
     return Array.from({ length: totalPages }, (_, i) => i + 1);
   }, [totalPages]);
+
+  const isSpread = readingMode === "spread";
+
+  const spreadGroups = useMemo(() => {
+    const groups: number[][] = [];
+    if (isSpread) {
+      if (pages.length > 0) groups.push([1]);
+      for (let i = 2; i <= pages.length; i += 2) {
+        if (i + 1 <= pages.length) groups.push([i, i + 1]);
+        else groups.push([i]);
+      }
+    } else {
+      pages.forEach(p => groups.push([p]));
+    }
+    return groups;
+  }, [pages, isSpread]);
 
   const handleImageLoad = useCallback(
     (metrics: {
@@ -1013,8 +1031,9 @@ export default function ReaderPage() {
       {/* ── Content container ─────────────────────────────────────── */}
       <div ref={containerRef} className={containerClasses} onClick={handleTap}>
         {/* Page containers — all rendered, AuthImage handles lazy loading */}
-        {pages.map((pageNumber) => {
-          const isCurrentPage = pageNumber === currentPage;
+        {spreadGroups.map((group) => {
+          const pageNumber = group[0];
+          const isCurrentPage = group.includes(currentPage);
 
           return (
             <div
@@ -1034,25 +1053,42 @@ export default function ReaderPage() {
                         ...zoomStyle,
                         touchAction: isZoomed
                           ? "none"
-                          : isHorizontal
+                          : isHorizontal || isSpread
                             ? "pan-x"
                             : "pan-y",
                       }
                     : undefined
                 }
               >
-                <AuthImage
-                  chapterId={chapterId}
-                  pageNumber={pageNumber}
-                  alt={`Página ${pageNumber}`}
-                  className={imgClass}
-                  containerClassName={authImageContainerClass}
-                  loading={pageNumber <= 3 ? "eager" : "lazy"}
-                  seriesId={seriesId}
-                  useOffline={isOfflineAvailable}
-                  preloadMargin="800px"
-                  onImageLoad={handleImageLoad}
-                />
+                {group.some(p => Math.abs(p - currentPage) <= 3) ? (
+                  <div className={`flex w-full h-full justify-center ${isSpread ? "gap-2" : ""}`}>
+                    {group.map(p => (
+                      <AuthImage
+                        key={p}
+                        chapterId={chapterId}
+                        pageNumber={p}
+                        alt={`Página ${p}`}
+                        className={imgClass}
+                        containerClassName={isSpread ? "flex-1 h-full items-center justify-center flex" : authImageContainerClass}
+                        loading={p <= 3 ? "eager" : "lazy"}
+                        seriesId={seriesId}
+                        useOffline={isOfflineAvailable}
+                        preloadMargin="800px"
+                        onImageLoad={handleImageLoad}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    className={authImageContainerClass}
+                    style={{
+                      minHeight: isWebtoon 
+                        ? (imageMetricsRef.current.get(pageNumber)?.renderedHeight || 800) 
+                        : '100%',
+                      width: '100%'
+                    }}
+                  />
+                )}
               </div>
             </div>
           );
@@ -1353,5 +1389,13 @@ export default function ReaderPage() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function ReaderPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+      <ReaderContent />
+    </Suspense>
   );
 }

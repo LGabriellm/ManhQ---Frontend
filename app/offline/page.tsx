@@ -20,6 +20,8 @@ import type { DownloadQuality } from "@/hooks/useDownloadSettings";
 import * as offlineStorage from "@/services/offline-storage.service";
 import type { OfflineChapter, DownloadedSeries } from "@/types/offline";
 
+import { OfflineReader } from "@/components/reader/OfflineReader";
+
 type Tab = "series" | "chapters";
 
 function formatSize(bytes: number): string {
@@ -39,10 +41,12 @@ export default function OfflinePage() {
     percentUsed: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [readingChapter, setReadingChapter] = useState<{seriesId: string, chapterId: string} | null>(null);
 
   const { quality, setQuality, maxStorageMB, setMaxStorageMB } =
     useDownloadSettings();
 
+// ... existing load function and useEffects ...
   const QUALITY_OPTIONS: { value: DownloadQuality; label: string }[] = [
     { value: "low", label: "Baixa (800px)" },
     { value: "medium", label: "Média (1200px)" },
@@ -94,6 +98,16 @@ export default function OfflinePage() {
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
+    );
+  }
+
+  if (readingChapter) {
+    return (
+      <OfflineReader 
+        seriesId={readingChapter.seriesId} 
+        chapterId={readingChapter.chapterId} 
+        onClose={() => setReadingChapter(null)} 
+      />
     );
   }
 
@@ -255,7 +269,7 @@ export default function OfflinePage() {
           {tab === "series" && (
             <div className="mt-4 px-4">
               {series.length === 0 ? (
-                <p className="py-8 text-center text-sm text-white/40">
+               <p className="py-8 text-center text-sm text-white/40">
                   Nenhuma série baixada
                 </p>
               ) : (
@@ -267,7 +281,7 @@ export default function OfflinePage() {
                       animate={{ opacity: 1, y: 0 }}
                       className="group relative"
                     >
-                      <Link href={`/serie/${s.seriesId}`}>
+                      <button onClick={() => setTab("chapters")} className="block text-left w-full">
                         <AuthCover
                           coverUrl={s.coverUrl ?? ""}
                           alt={s.seriesTitle}
@@ -281,7 +295,7 @@ export default function OfflinePage() {
                         <p className="text-[10px] text-white/40">
                           {s.chapterCount} capítulo{s.chapterCount > 1 ? "s" : ""}
                         </p>
-                      </Link>
+                      </button>
                       <button
                         onClick={() => handleDeleteSeries(s.seriesId)}
                         className="absolute right-1 top-1 rounded-full bg-black/70 p-1.5 opacity-0 transition-opacity group-hover:opacity-100"
@@ -312,12 +326,10 @@ export default function OfflinePage() {
                         key={ch.compositeKey}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
-                        className="flex items-center gap-3 rounded-xl bg-surface p-3"
+                        className="flex items-center gap-3 rounded-xl bg-surface p-3 cursor-pointer hover:bg-surface/80"
+                        onClick={() => setReadingChapter({ seriesId: ch.seriesId, chapterId: ch.chapterId })}
                       >
-                        <Link
-                          href={`/reader/${ch.seriesId}/${ch.chapterId}`}
-                          className="flex min-w-0 flex-1 items-center gap-3"
-                        >
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                             <BookOpen className="h-5 w-5 text-primary" />
                           </div>
@@ -330,11 +342,12 @@ export default function OfflinePage() {
                               {formatSize(ch.totalSizeBytes)}
                             </p>
                           </div>
-                        </Link>
+                        </div>
                         <button
-                          onClick={() =>
-                            handleDeleteChapter(ch.seriesId, ch.chapterId)
-                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteChapter(ch.seriesId, ch.chapterId);
+                          }}
                           className="rounded-lg p-2 text-white/40 transition-colors hover:bg-white/10 hover:text-red-400"
                           aria-label="Excluir capítulo"
                         >

@@ -545,8 +545,14 @@ export async function getStorageEstimate(): Promise<{
 }> {
   let actualUsage = 0;
   try {
-    const chapters = await getAllDownloadedChapters();
-    actualUsage = chapters.reduce((acc, ch) => acc + (ch.totalSizeBytes || 0), 0);
+    const db = await getDB();
+    const allChapters = await new Promise<OfflineChapter[]>((resolve, reject) => {
+      const tx = db.transaction(STORE_CHAPTERS, "readonly");
+      const request = tx.objectStore(STORE_CHAPTERS).getAll();
+      request.onsuccess = () => resolve(request.result ?? []);
+      request.onerror = () => reject(request.error);
+    });
+    actualUsage = allChapters.reduce((acc, ch) => acc + (ch.totalSizeBytes || 0), 0);
   } catch (err) {
     console.error("Failed to calculate actual indexeddb usage", err);
   }

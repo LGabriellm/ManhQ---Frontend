@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
-import { mediaService } from "@/services/media.service";
 import * as offlineStorage from "@/services/offline-storage.service";
 
 interface AuthCoverProps {
@@ -16,6 +15,25 @@ interface AuthCoverProps {
   seriesId?: string;
 }
 
+function normalizeProxyPath(pathOrUrl: string): string {
+  let normalized = pathOrUrl.trim();
+  if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+    try {
+      const parsed = new URL(normalized);
+      normalized = `${parsed.pathname}${parsed.search}`;
+    } catch {
+      return normalized;
+    }
+  }
+  if (normalized.startsWith("/api/")) {
+    return normalized.slice(4);
+  }
+  if (!normalized.startsWith("/")) {
+    return `/${normalized}`;
+  }
+  return normalized;
+}
+
 export function AuthCover({
   coverUrl,
   alt,
@@ -26,7 +44,7 @@ export function AuthCover({
   seriesId,
 }: AuthCoverProps) {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
   const [shouldLoad, setShouldLoad] = useState(loading === "eager");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,7 +82,6 @@ export function AuthCover({
 
     const loadImage = async () => {
       try {
-        setIsLoading(true);
         setError(false);
 
         if (useOffline && seriesId) {
@@ -73,16 +90,13 @@ export function AuthCover({
             blobUrl = URL.createObjectURL(blob);
             if (isMounted) {
               setImageSrc(blobUrl);
-              setIsLoading(false);
             }
             return;
           }
         }
 
-        blobUrl = await mediaService.getBlobUrl(coverUrl);
         if (isMounted) {
-          setImageSrc(blobUrl);
-          setIsLoading(false);
+          setImageSrc(`/api${normalizeProxyPath(coverUrl)}`);
         }
       } catch (err) {
         console.error("Erro ao carregar capa:", err);
@@ -138,12 +152,17 @@ export function AuthCover({
       )}
 
       {imageSrc && (
-        // eslint-disable-next-line @next/next/no-img-element -- blob URL for authenticated media cannot use optimization pipeline safely
+        // eslint-disable-next-line @next/next/no-img-element -- native tag for streams
         <img
           src={imageSrc}
           alt={alt}
           className={className || ""}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          onLoad={() => setIsLoading(false)}
+          onError={() => {
+            setError(true);
+            setIsLoading(false);
+          }}
         />
       )}
 

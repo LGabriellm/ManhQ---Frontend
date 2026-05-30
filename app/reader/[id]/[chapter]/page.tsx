@@ -666,6 +666,29 @@ function ReaderContent() {
     localStorage.setItem("manhq:reader:mode", readingMode);
   }, [readingMode]);
 
+  // ─── Preload Preditivo ────────────────────────────────────────
+  useEffect(() => {
+    if (totalPages <= 1 || !chapterId) return;
+    
+    // Queremos pré-carregar as próximas 3 páginas
+    const pagesToPreload = [currentPage + 1, currentPage + 2, currentPage + 3].filter(
+      (p) => p <= totalPages
+    );
+
+    pagesToPreload.forEach((p) => {
+      const url = `/api/reader/${chapterId}/page/${p}`;
+      // Verifica se a tag link já existe no head para não duplicar
+      if (!document.querySelector(`link[href="${url}"]`)) {
+        const link = document.createElement("link");
+        link.rel = "prefetch";
+        link.as = "fetch";
+        link.crossOrigin = "anonymous";
+        link.href = url;
+        document.head.appendChild(link);
+      }
+    });
+  }, [currentPage, totalPages, chapterId]);
+
   // ─── Keyboard navigation ──────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

@@ -2,13 +2,10 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { BookOpen, ChevronRight, Layers3, Library, Search, Sparkles, WifiOff } from "lucide-react";
+import { BookOpen, Layers3, Library, Search, Sparkles, WifiOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { Logo } from "@/components/Logo";
 import { MangaCard } from "@/components/MangaCard";
-import { ContinueReadingCard } from "@/components/ContinueReadingCard";
-import { HorizontalScroll } from "@/components/HorizontalScroll";
-import { AuthCover } from "@/components/AuthCover";
 import { SubscriptionAlertBanner } from "@/components/subscription/SubscriptionAlertBanner";
 import { ClientDate } from "@/components/ClientDate";
 import { useDiscover } from "@/hooks/useDiscover";
@@ -120,315 +117,15 @@ function seriesMatchesShelf(
 }
 
 // ---------------------------------------------------------------------------
-// Skeletons
+// Imports das Seções Extratas
 // ---------------------------------------------------------------------------
+import { Suspense } from "react";
+import FeaturedSection from "./_sections/FeaturedSection";
+import ContentShelfSelector from "./_sections/ContentShelfSelector";
+import ContinueReadingSection from "./_sections/ContinueReading";
+import DiscoverySection from "./_sections/DiscoverySection";
+import { FeaturedSkeleton, SectionSkeleton, ContinueSkeleton } from "./_sections/Skeletons";
 
-function CardSkeleton() {
-  return (
-    <div className="w-32 shrink-0 snap-start">
-      <div className="aspect-2/3 animate-pulse rounded-2xl bg-surface/50" />
-      <div className="mt-2 h-3 w-3/4 animate-pulse rounded-full bg-surface/50" />
-    </div>
-  );
-}
-
-function ContinueSkeleton() {
-  return (
-    <div className="flex gap-3 rounded-2xl bg-surface/40 p-3 animate-pulse">
-      <div className="h-20 w-14 rounded-xl bg-surface" />
-      <div className="flex-1 space-y-2 py-1">
-        <div className="h-4 w-2/3 rounded-full bg-surface" />
-        <div className="h-3 w-1/3 rounded-full bg-surface" />
-        <div className="mt-2 h-1.5 w-1/2 rounded bg-surface" />
-      </div>
-    </div>
-  );
-}
-
-function FeaturedSkeleton() {
-  return <div className="h-72 w-full animate-pulse bg-surface/60" />;
-}
-
-function SectionSkeleton() {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3 px-4">
-        <div className="h-6 w-1 rounded-full animate-pulse bg-surface/70" />
-        <div className="h-4 w-32 rounded-full animate-pulse bg-surface/50" />
-      </div>
-      <HorizontalScroll>
-        {[1, 2, 3, 4, 5].map((i) => (
-          <CardSkeleton key={i} />
-        ))}
-      </HorizontalScroll>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// SectionHeader
-// ---------------------------------------------------------------------------
-
-interface SectionHeaderProps {
-  title: string;
-  badge?: ReactNode;
-  link?: string;
-  description?: string;
-  variant?: "standard" | "hq";
-}
-
-function SectionHeader({
-  title,
-  badge,
-  link,
-  description,
-  variant = "standard",
-}: SectionHeaderProps) {
-  return (
-    <div className="mb-4 px-4">
-      <div className="flex items-center gap-3">
-        {variant === "standard" ? (
-          <div className="w-1 h-6 rounded-full shrink-0 bg-[var(--color-primary)]" />
-        ) : (
-          <div className="border-l-2 border-white/20 pl-3 flex items-center">
-            {/* hq variant: no red bar, uses subtle left border */}
-          </div>
-        )}
-        <h2 className="text-base font-black text-textMain uppercase tracking-wide leading-none">
-          {title}
-        </h2>
-        {badge}
-        {link ? (
-          <Link
-            href={link}
-            className="ml-auto text-[11px] font-semibold text-[var(--color-primary)] flex items-center gap-1 shrink-0"
-          >
-            Ver mais <ChevronRight className="w-3 h-3" />
-          </Link>
-        ) : null}
-      </div>
-      {description ? (
-        <p className="mt-2 max-w-2xl text-xs leading-5 text-textDim">
-          {description}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// SectionRow
-// ---------------------------------------------------------------------------
-
-function SectionRow({
-  items,
-  loading,
-  renderCard,
-}: {
-  items: Array<{
-    id: string;
-    title: string;
-    coverUrl?: string | null;
-    rating?: number | null;
-  }>;
-  loading: boolean;
-  renderCard: (item: {
-    id: string;
-    title: string;
-    coverUrl?: string | null;
-    rating?: number | null;
-  }) => ReactNode;
-}) {
-  if (loading) {
-    return (
-      <HorizontalScroll>
-        {[1, 2, 3, 4, 5].map((index) => (
-          <CardSkeleton key={index} />
-        ))}
-      </HorizontalScroll>
-    );
-  }
-  return (
-    <HorizontalScroll>
-      {items.map((item, i) => (
-        <motion.div
-          key={item.id}
-          className="w-32 shrink-0 snap-start"
-          initial={{ opacity: 0, y: 12 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-50px" }}
-          transition={{ duration: 0.3, ease: "easeOut", delay: i * 0.04 }}
-        >
-          {renderCard(item)}
-        </motion.div>
-      ))}
-    </HorizontalScroll>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ContentShelfSelector
-// ---------------------------------------------------------------------------
-
-function ContentShelfSelector({
-  activeKey,
-  shelves,
-  totalCount,
-  onSelect,
-}: {
-  activeKey: ContentShelfKey;
-  shelves: Array<(typeof CONTENT_SHELVES)[number] & { count: number }>;
-  totalCount: number;
-  onSelect: (key: ContentShelfKey) => void;
-}) {
-  const options = [
-    {
-      key: "all" as const,
-      shortTitle: "Tudo",
-      title: "Tudo",
-      count: totalCount,
-      icon: <Library className="h-4 w-4" />,
-    },
-    ...shelves.map((shelf) => ({
-      key: shelf.key,
-      shortTitle: shelf.shortTitle,
-      title: shelf.title,
-      count: shelf.count,
-      icon: shelf.icon,
-    })),
-  ].filter((option) => option.key === "all" || option.count > 0);
-
-  return (
-    <section className="space-y-3">
-      <div className="px-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-primary/80">
-              Catálogo organizado
-            </p>
-            <h2 className="mt-1 text-lg font-black text-textMain">
-              Escolha o tipo de leitura
-            </h2>
-          </div>
-          <Link
-            href="/search"
-            className="rounded-full border border-white/8 px-3 py-2 text-[11px] font-semibold text-textDim transition-colors hover:bg-white/6 hover:text-textMain"
-          >
-            Catálogo
-          </Link>
-        </div>
-      </div>
-
-      <div className="flex gap-2 overflow-x-auto scrollbar-hide px-4 pb-1">
-        {options.map((option) => {
-          const isActive = option.key === activeKey;
-          return (
-            <button
-              key={option.key}
-              type="button"
-              onClick={() => onSelect(option.key)}
-              className={[
-                "flex min-w-fit items-center gap-2 rounded-2xl border px-3.5 py-3 text-left transition-colors",
-                isActive
-                  ? "border-primary/50 bg-primary/14 text-white"
-                  : "border-white/8 bg-white/4 text-textDim hover:bg-white/7 hover:text-textMain",
-              ].join(" ")}
-            >
-              <span
-                className={[
-                  "flex h-8 w-8 items-center justify-center rounded-xl",
-                  isActive ? "bg-primary text-white" : "bg-white/6 text-textDim",
-                ].join(" ")}
-              >
-                {option.icon}
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-black leading-none">
-                  {option.shortTitle}
-                </span>
-                <span className="mt-1 block text-[10px] font-semibold text-current/60">
-                  {option.count} obras
-                </span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// FeaturedBanner
-// ---------------------------------------------------------------------------
-
-function FeaturedBanner({ featured }: { featured: Series }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.6, ease: "easeOut" }}
-    >
-      <Link href={`/serie/${featured.id}`} className="block">
-        <div className="relative h-72 w-full overflow-hidden">
-          {/* Cover image */}
-          <div className="absolute inset-0">
-            <AuthCover
-              coverUrl={getPublicCoverUrl(featured.id, featured.coverUrl)}
-              alt={featured.title}
-              className="h-full w-full object-cover"
-              loading="eager"
-            />
-          </div>
-
-          {/* Gradient: top fade */}
-          <div className="absolute inset-0 bg-gradient-to-b from-background/60 via-transparent to-transparent" />
-          {/* Gradient: bottom strong fade */}
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent" />
-          {/* Gradient: left tint */}
-          <div className="absolute inset-0 bg-gradient-to-r from-background/30 to-transparent" />
-
-          {/* Top-right badge */}
-          <div className="absolute top-4 right-4">
-            <span className="text-[10px] font-black uppercase tracking-widest text-white bg-[var(--color-primary)] px-2.5 py-1 rounded-full">
-              ● Em Destaque
-            </span>
-          </div>
-
-          {/* Bottom-left content */}
-          <div className="absolute bottom-0 left-0 right-0 px-4 pb-5">
-            <h2 className="text-2xl font-black text-white leading-tight line-clamp-2 drop-shadow-lg">
-              {featured.title}
-            </h2>
-            <div className="mt-1.5 flex items-center gap-3">
-              {featured.rating != null && featured.rating > 0 ? (
-                <span className="text-[12px] font-semibold text-white/60 flex items-center gap-1">
-                  <span className="text-yellow-400">★</span>
-                  {featured.rating.toFixed(1)}
-                </span>
-              ) : null}
-              {featured.genres && featured.genres.length > 0 ? (
-                <span className="text-[11px] text-white/40 font-medium">
-                  {featured.genres.slice(0, 2).join(" · ")}
-                </span>
-              ) : null}
-            </div>
-
-            {/* CTA buttons */}
-            <div className="mt-3.5 flex items-center gap-2.5">
-              <span className="bg-white text-black font-black text-sm px-5 py-2.5 rounded-full hover:bg-white/90 transition-colors">
-                Começar a ler
-              </span>
-              <span className="border border-white/30 text-white font-semibold text-sm px-4 py-2.5 rounded-full hover:bg-white/5 transition-colors">
-                + Biblioteca
-              </span>
-            </div>
-          </div>
-        </div>
-      </Link>
-    </motion.div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -454,6 +151,7 @@ export default function HomePage() {
       { enabled: isAuthenticated },
     );
 
+  const [now] = useState(() => Date.now());
   const firstName = user?.name?.split(" ")[0] ?? "Leitor";
   const discoverData = discover ?? EMPTY_DISCOVER;
   const allSeriesPool = useMemo(
@@ -734,7 +432,7 @@ export default function HomePage() {
           className="px-5"
         >
           <p className="text-[13px] text-textDim capitalize">
-            <ClientDate date={Date.now()} format="weekday" />
+            <ClientDate date={now} format="weekday" />
           </p>
           <h1 className="mt-0.5 text-xl font-black text-textMain">
             Olá, {firstName}!
@@ -795,81 +493,42 @@ export default function HomePage() {
         {discoverLoading ? (
           <FeaturedSkeleton />
         ) : featured ? (
-          <FeaturedBanner featured={featured} />
+          <Suspense fallback={<FeaturedSkeleton />}>
+            <FeaturedSection featured={featured} />
+          </Suspense>
         ) : null}
 
         {/* Continue reading */}
-        {(continueLoading ||
-          continueReadingCurrent.length > 0) && (
-          <motion.section
-            initial={{ opacity: 0, x: -20 }}
-            whileInView={{ opacity: 1, x: 0 }}
-            viewport={{ once: true, amount: 0.2 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-          >
-            <SectionHeader title="Continuar Lendo" />
-            {continueLoading ? (
-              <div className="space-y-2.5 px-4">
-                <ContinueSkeleton />
-                <ContinueSkeleton />
-              </div>
-            ) : (
-              <div className="flex gap-3 overflow-x-auto scrollbar-hide px-4 pb-1">
-                {continueReadingCurrent.map((item) => (
-                  <div key={item.progressId ?? item.mediaId} className="shrink-0 w-72">
-                    <ContinueReadingCard
-                      seriesId={item.seriesId}
-                      mediaId={item.mediaId}
-                      title={item.seriesTitle}
-                      coverUrl={getPublicCoverUrl(item.seriesId, item.coverUrl)}
-                      chapterTitle={item.mediaTitle}
-                      currentPage={item.page}
-                      totalPages={item.pageCount}
-                      percent={item.percent}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </motion.section>
-        )}
+        <Suspense fallback={<div className="space-y-2.5 px-4"><ContinueSkeleton /><ContinueSkeleton /></div>}>
+          <ContinueReadingSection items={continueReadingCurrent} loading={continueLoading} />
+        </Suspense>
 
         {/* Content organization */}
         {discoverLoading ? (
           <SectionSkeleton />
         ) : hasAnyDiscoverContent ? (
-          <ContentShelfSelector
-            activeKey={activeShelfKey}
-            shelves={contentShelves}
-            totalCount={allSeriesPool.length}
-            onSelect={setActiveShelfKey}
-          />
+          <Suspense fallback={<SectionSkeleton />}>
+            <ContentShelfSelector
+              activeKey={activeShelfKey}
+              shelves={contentShelves}
+              totalCount={allSeriesPool.length}
+              onSelect={setActiveShelfKey}
+            />
+          </Suspense>
         ) : null}
 
         {!discoverLoading &&
           visibleShelves.map((shelf) => (
-            <motion.section
-              key={shelf.key}
-              initial={{ opacity: 0, y: 14 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px", amount: 0.1 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-            >
-              <SectionHeader
+            <Suspense key={shelf.key} fallback={<SectionSkeleton />}>
+              <DiscoverySection
                 title={shelf.title}
                 description={shelf.description}
                 link={shelf.href}
-                badge={
-                  <span
-                    className={`h-2 w-2 rounded-full ${shelf.accentClass}`}
-                  />
-                }
+                badge={<span className={`h-2 w-2 rounded-full ${shelf.accentClass}`} />}
                 variant={shelf.key === "comic" ? "hq" : "standard"}
-              />
-              <SectionRow
                 items={removeFeatured(shelf.items).slice(0, 12)}
                 loading={false}
-                renderCard={(series) => (
+                renderCard={(series: Series) => (
                   <MangaCard
                     id={series.id}
                     title={series.title}
@@ -878,7 +537,7 @@ export default function HomePage() {
                   />
                 )}
               />
-            </motion.section>
+            </Suspense>
           ))}
 
         {!discoverLoading &&
@@ -898,14 +557,8 @@ export default function HomePage() {
         {/* Discovery sections */}
         {sectionConfigs.map((section) =>
           discoverLoading || section.items.length > 0 ? (
-            <motion.section
-              key={section.key}
-              initial={{ opacity: 0, y: 14 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-50px", amount: 0.1 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-            >
-              <SectionHeader
+            <Suspense key={section.key} fallback={<SectionSkeleton />}>
+              <DiscoverySection
                 title={section.label}
                 description={
                   activeShelf
@@ -917,13 +570,11 @@ export default function HomePage() {
                     ? `${section.href}?workType=${activeShelf.workTypes[0]}`
                     : section.href
                 }
-              />
-              <SectionRow
                 items={section.items}
                 loading={discoverLoading}
                 renderCard={section.renderCard}
               />
-            </motion.section>
+            </Suspense>
           ) : null,
         )}
 

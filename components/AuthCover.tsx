@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
+import Image from "next/image";
 import * as offlineStorage from "@/services/offline-storage.service";
 
 interface AuthCoverProps {
@@ -17,14 +18,12 @@ interface AuthCoverProps {
 
 function normalizeProxyPath(pathOrUrl: string): string {
   let normalized = pathOrUrl.trim();
+  
+  // Se já for uma URL absoluta (como do CDN Bunny), NÃO passe pelo proxy local!
   if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
-    try {
-      const parsed = new URL(normalized);
-      normalized = `${parsed.pathname}${parsed.search}`;
-    } catch {
-      return normalized;
-    }
+    return normalized;
   }
+  
   if (normalized.startsWith("/api/")) {
     return normalized.slice(4);
   }
@@ -152,12 +151,12 @@ export function AuthCover({
       )}
 
       {imageSrc && (
-        // eslint-disable-next-line @next/next/no-img-element -- native tag for streams
-        <img
+        <Image
           src={imageSrc}
           alt={alt}
-          className={className || ""}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          fill
+          className={`object-cover ${className || ""}`}
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           onLoad={() => setIsLoading(false)}
           onError={() => {
             setError(true);

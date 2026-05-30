@@ -543,17 +543,32 @@ export async function getStorageEstimate(): Promise<{
   quota: number;
   percentUsed: number;
 }> {
-  if ("storage" in navigator && "estimate" in navigator.storage) {
-    const estimate = await navigator.storage.estimate();
-    const usage = estimate.usage ?? 0;
-    const quota = estimate.quota ?? 0;
-    return {
-      usage,
-      quota,
-      percentUsed: quota > 0 ? (usage / quota) * 100 : 0,
-    };
+  let actualUsage = 0;
+  try {
+    const chapters = await getAllDownloadedChapters();
+    actualUsage = chapters.reduce((acc, ch) => acc + (ch.totalSizeBytes || 0), 0);
+  } catch (err) {
+    console.error("Failed to calculate actual indexeddb usage", err);
   }
-  return { usage: 0, quota: 0, percentUsed: 0 };
+
+  if ("storage" in navigator && "estimate" in navigator.storage) {
+    try {
+      const estimate = await navigator.storage.estimate();
+      const quota = estimate.quota ?? 0;
+      // Many browsers (esp Safari) report 0 or inaccurate estimate.usage, so we enforce our manually tracked size
+      const usage = actualUsage > 0 ? actualUsage : (estimate.usage ?? 0);
+      return {
+        usage,
+        quota,
+        percentUsed: quota > 0 ? (usage / quota) * 100 : 0,
+      };
+    } catch (e) {
+      console.error("navigator.storage.estimate failed", e);
+    }
+  }
+  
+  // Fallback if estimate API is completely unavailable
+  return { usage: actualUsage, quota: 0, percentUsed: 0 };
 }
 
 export async function requestPersistentStorage(): Promise<boolean> {

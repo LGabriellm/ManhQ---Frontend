@@ -42,6 +42,7 @@ import {
 import { UserAvatar } from "@/components/community/UserAvatar";
 import { UserBadge } from "@/components/community/UserBadge";
 import { SubscriptionStateBadge } from "@/components/subscription/SubscriptionStateBadge";
+import { ClientDate } from "@/components/ClientDate";
 import { accountService } from "@/services/account.service";
 import {
   formatSubscriptionDate,
@@ -905,11 +906,9 @@ export default function EditProfilePage() {
                           {session.ipAddress || "IP não informado"}
                         </p>
                         <p className="truncate text-xs text-textDim">
-                          Último uso: {relativeTime(session.lastUsedAt)} •
+                          Último uso: <ClientDate date={session.lastUsedAt} format="timeAgo" fallback="agora" /> •
                           Criada:{" "}
-                          {new Date(session.createdAt).toLocaleDateString(
-                            "pt-BR",
-                          )}
+                          <ClientDate date={session.createdAt} format="date" />
                         </p>
                       </div>
                     </div>

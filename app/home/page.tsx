@@ -10,6 +10,7 @@ import { ContinueReadingCard } from "@/components/ContinueReadingCard";
 import { HorizontalScroll } from "@/components/HorizontalScroll";
 import { AuthCover } from "@/components/AuthCover";
 import { SubscriptionAlertBanner } from "@/components/subscription/SubscriptionAlertBanner";
+import { ClientDate } from "@/components/ClientDate";
 import { useDiscover } from "@/hooks/useDiscover";
 import { useContinueReading } from "@/hooks/useApi";
 import { useAuth } from "@/contexts/AuthContext";
@@ -707,7 +708,6 @@ export default function HomePage() {
   // ---------------------------------------------------------------------------
   // Authenticated
   // ---------------------------------------------------------------------------
-  const dayOfWeek = new Date().toLocaleDateString("pt-BR", { weekday: "long" });
 
   return (
     <main className="min-h-screen bg-background pb-28">
@@ -733,7 +733,9 @@ export default function HomePage() {
           transition={{ duration: 0.4, ease: "easeOut" }}
           className="px-5"
         >
-          <p className="text-[13px] text-textDim capitalize">{dayOfWeek}</p>
+          <p className="text-[13px] text-textDim capitalize">
+            <ClientDate date={Date.now()} format="weekday" />
+          </p>
           <h1 className="mt-0.5 text-xl font-black text-textMain">
             Olá, {firstName}!
           </h1>

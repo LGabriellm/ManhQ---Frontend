@@ -263,22 +263,22 @@ export default function ReaderPage() {
     number: number;
     pageCount: number;
   } | null>(null);
+  const [isCheckingOffline, setIsCheckingOffline] = useState(true);
 
   useEffect(() => {
-    if (error && isOfflineAvailable) {
-      import("@/services/offline-storage.service").then((m) =>
-        m.getChapterMeta(seriesId, chapterId).then((meta) => {
-          if (meta) {
-            setOfflineMeta({
-              title: meta.chapterTitle,
-              number: meta.chapterNumber,
-              pageCount: meta.pageCount,
-            });
-          }
-        }),
-      );
-    }
-  }, [error, isOfflineAvailable, seriesId, chapterId]);
+    import("@/services/offline-storage.service").then((m) =>
+      m.getChapterMeta(seriesId, chapterId).then((meta) => {
+        if (meta) {
+          setOfflineMeta({
+            title: meta.chapterTitle,
+            number: meta.chapterNumber,
+            pageCount: meta.pageCount,
+          });
+        }
+        setIsCheckingOffline(false);
+      }),
+    );
+  }, [seriesId, chapterId]);
 
   const resolvedChapterData = chapterData || offlineMeta;
   const totalPages = resolvedChapterData?.pageCount ?? 1;
@@ -869,7 +869,7 @@ export default function ReaderPage() {
       : `${currentPage} / ${totalPages}`;
 
   // ─── Loading state ─────────────────────────────────────────────
-  if (isLoading && !offlineMeta) {
+  if ((isLoading || isCheckingOffline) && !offlineMeta && !chapterData) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-black">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

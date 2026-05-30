@@ -40,8 +40,10 @@ export function AuthImage({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(false);
   const [shouldLoad, setShouldLoad] = useState(loading === "eager");
+  const [isVisible, setIsVisible] = useState(loading === "eager");
   const [retryCount, setRetryCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [renderedDimensions, setRenderedDimensions] = useState<{ width: number; height: number } | null>(null);
 
   // IntersectionObserver para lazy loading
   useEffect(() => {
@@ -52,6 +54,10 @@ export function AuthImage({
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             setShouldLoad(true);
+            setIsVisible(true);
+          } else {
+            // Unload image from memory if it goes too far off-screen
+            setIsVisible(false);
           }
         });
       },
@@ -124,6 +130,7 @@ export function AuthImage({
   const handleImageLoad = useCallback(
     (event: SyntheticEvent<HTMLImageElement>) => {
       const img = event.currentTarget;
+      setRenderedDimensions({ width: img.clientWidth, height: img.clientHeight });
       onImageLoad?.({
         pageNumber,
         naturalWidth: img.naturalWidth,
@@ -157,7 +164,7 @@ export function AuthImage({
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       )}
 
-      {!error && imageSrc && (
+      {!error && imageSrc && isVisible && (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={imageSrc}
@@ -166,6 +173,14 @@ export function AuthImage({
           decoding="async"
           draggable={false}
           onLoad={handleImageLoad}
+        />
+      )}
+
+      {/* Placeholder to maintain scroll position when image is unloaded */}
+      {!error && imageSrc && !isVisible && renderedDimensions && (
+        <div 
+          style={{ width: renderedDimensions.width, height: renderedDimensions.height }} 
+          className="bg-surface/20"
         />
       )}
     </div>

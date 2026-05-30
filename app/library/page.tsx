@@ -29,6 +29,7 @@ import {
 import type { ProgressHistoryItem, Series } from "@/types/api";
 import { getPublicCoverUrl } from "@/lib/coverUrl";
 import { cn } from "@/lib/utils";
+import { ClientDate } from "@/components/ClientDate";
 
 type Tab = "favorites" | "reading" | "history";
 type SortOption = "recent" | "name" | "rating";
@@ -184,7 +185,7 @@ function HistoryItemCard({ item }: { item: ProgressHistoryItem }) {
           )}
           <span className="flex items-center gap-1 text-[10px] text-textDim/50">
             <Clock className="w-2.5 h-2.5" />
-            {timeAgo(item.lastReadAt)}
+            <ClientDate date={item.lastReadAt} format="timeAgo" fallback="recentemente" />
           </span>
         </div>
       </div>

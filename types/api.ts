@@ -2733,8 +2733,10 @@ export interface SeriesProviderMapping {
   providerTitle?: {
     id: string;
     provider: string;
+    externalId: string;
     title: string;
     titlePortuguese?: string | null;
+    coverUrl?: string | null;
     importStatus: TitleImportStatus;
     reliabilityScore?: number | null;
   };

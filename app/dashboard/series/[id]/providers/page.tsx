@@ -149,7 +149,9 @@ export default function SeriesProvidersPage() {
 
   const sources = sourcesData?.sources || [];
   const linkedExternalIds = new Set(
-    sources.map((s) => `${s.providerTitle.provider}:${s.providerTitle.externalId}`),
+    sources
+      .filter((s) => s.providerTitle)
+      .map((s) => `${s.providerTitle!.provider}:${s.providerTitle!.externalId}`),
   );
 
   return (
@@ -208,6 +210,8 @@ export default function SeriesProvidersPage() {
               {sources.map((source) => {
                 const isPrimary = source.isPrimary;
                 const pTitle = source.providerTitle;
+
+                if (!pTitle) return null;
 
                 return (
                   <div

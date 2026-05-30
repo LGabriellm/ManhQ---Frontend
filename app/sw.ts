@@ -2,7 +2,7 @@
 import { defaultCache } from "@serwist/next/worker";
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { Serwist } from "serwist";
-import { CacheFirst, ExpirationPlugin } from "serwist";
+import { CacheFirst, ExpirationPlugin, NetworkOnly, BackgroundSyncPlugin } from "serwist";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -19,6 +19,16 @@ const serwist = new Serwist({
   navigationPreload: true,
   runtimeCaching: [
     ...defaultCache,
+    {
+      matcher: /\/api\/v1\/reader\/progress|\/api\/v1\/users\/me/i,
+      handler: new NetworkOnly({
+        plugins: [
+          new BackgroundSyncPlugin("offline-mutations-sync", {
+            maxRetentionTime: 24 * 60, // 24 horas em minutos
+          }),
+        ],
+      }),
+    },
     {
       matcher: /^https:\/\/.*\.b-cdn\.net\/.*/i,
       handler: new CacheFirst({

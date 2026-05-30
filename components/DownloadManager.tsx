@@ -250,7 +250,6 @@ export function DownloadManager() {
     { key: "active", label: "Ativos", count: activeJobs.length, color: "bg-primary" },
     { key: "pending", label: "Pendentes", count: pendingJobs.length, color: "bg-amber-500/60" },
     { key: "errors", label: "Erros", count: errorJobs.length, color: "bg-red-500" },
-    { key: "done", label: "Concluídos", count: doneJobs.length, color: "bg-emerald-500" },
   ];
 
   // Auto-select first non-empty tab
@@ -259,19 +258,20 @@ export function DownloadManager() {
     if (activeJobs.length > 0) setTab("active");
     else if (pendingJobs.length > 0) setTab("pending");
     else if (errorJobs.length > 0) setTab("errors");
-    else if (doneJobs.length > 0) setTab("done");
-  }, [isOpen, activeJobs.length, pendingJobs.length, errorJobs.length, doneJobs.length]);
+  }, [isOpen, activeJobs.length, pendingJobs.length, errorJobs.length]);
 
   const activeTabJobs = (() => {
     switch (tab) {
       case "active": return activeJobs;
       case "pending": return pendingJobs;
       case "errors": return errorJobs;
-      case "done": return doneJobs;
+      default: return [];
     }
   })();
 
-  if (!hasJobs && !isOpen) return null;
+  const hasRelevantJobs = activeJobs.length > 0 || pendingJobs.length > 0 || errorJobs.length > 0;
+
+  if (!hasRelevantJobs && !isOpen) return null;
 
   return (
     <>
@@ -319,8 +319,10 @@ export function DownloadManager() {
                 ) : (
                   <Download className="h-4.5 w-4.5" />
                 )}
-                {jobs.length > 0 && (
-                  <span className="text-sm font-bold">{jobs.length}</span>
+                {hasRelevantJobs && (
+                  <span className="text-sm font-bold">
+                    {activeJobs.length + pendingJobs.length + errorJobs.length}
+                  </span>
                 )}
               </>
             )}
@@ -491,7 +493,7 @@ export function DownloadManager() {
                         onClick={async () => {
                           await clearErrors();
                           setConfirmClear(false);
-                          if (activeJobs.length === 0 && pendingJobs.length === 0 && doneJobs.length === 0) {
+                          if (activeJobs.length === 0 && pendingJobs.length === 0) {
                             setIsOpen(false);
                           }
                         }}
@@ -512,23 +514,7 @@ export function DownloadManager() {
                 </div>
               )}
 
-              {/* Done tab action */}
-              {tab === "done" && doneJobs.length > 0 && (
-                <div className="shrink-0 mx-5 mt-2.5">
-                  <button
-                    onClick={async () => {
-                      await clearCompletedLogs();
-                      if (activeJobs.length === 0 && pendingJobs.length === 0 && errorJobs.length === 0) {
-                        setIsOpen(false);
-                      }
-                    }}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] py-2 text-xs font-medium text-white/30 transition-all hover:bg-white/[0.06] hover:text-white/50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Limpar concluídos
-                  </button>
-                </div>
-              )}
+
 
               {/* Job list */}
               <div className="flex-1 overflow-y-auto px-5 pt-2.5 pb-3">
@@ -542,17 +528,13 @@ export function DownloadManager() {
                         <Clock className="h-6 w-6 text-white/10" />
                       )}
                       {tab === "errors" && (
-                        <CheckCircle2 className="h-6 w-6 text-white/10" />
-                      )}
-                      {tab === "done" && (
-                        <Download className="h-6 w-6 text-white/10" />
+                        <AlertCircle className="h-6 w-6 text-white/10" />
                       )}
                     </div>
                     <p className="mt-4 text-sm font-medium text-white/25">
                       {tab === "active" && "Nenhum download ativo"}
                       {tab === "pending" && "Nenhum download pendente"}
                       {tab === "errors" && "Nenhum erro"}
-                      {tab === "done" && "Nenhum download concluído"}
                     </p>
                     <p className="mt-1 text-xs text-white/15">
                       {tab === "active" &&
@@ -561,8 +543,6 @@ export function DownloadManager() {
                         "Downloads na fila aparecerão aqui"}
                       {tab === "errors" &&
                         "Downloads com erro aparecerão aqui"}
-                      {tab === "done" &&
-                        "Baixe capítulos para acessar offline"}
                     </p>
                   </div>
                 ) : (

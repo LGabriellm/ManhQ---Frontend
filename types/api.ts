@@ -2968,16 +2968,15 @@ export interface ProviderStatsResponse {
 }
 
 export interface KeiyoushiSource {
-  pkgName: string;
   name: string;
   lang: string;
-  description?: string;
-  version: string;
-  baseUrl?: string;
-  sourceId?: number;
-  extensionPkg?: string;
-  extensionVersion?: string;
-  nsfw?: boolean;
+  baseUrl: string;
+  sourceId: number;
+  extensionPkg: string;
+  extensionVersion: string;
+  nsfw: boolean;
+  category: string;
+  iconUrl: string;
 }
 
 export interface KeiyoushiStatsResponse {

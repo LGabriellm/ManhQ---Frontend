@@ -190,19 +190,36 @@ export default function KeiyoushiPage() {
           <div className="surface-panel overflow-hidden rounded-xl border border-white/5">
             <div className="divide-y divide-white/5">
               {sourcesData.sources.map((source) => {
-                const isJustInstalled = installedPkgs.has(source.pkgName);
+                const isJustInstalled = installedPkgs.has(source.extensionPkg);
                 return (
                   <div
-                    key={source.pkgName}
+                    key={`${source.extensionPkg}-${source.sourceId}`}
                     className="flex items-center gap-4 px-4 py-3 hover:bg-white/[0.025] transition-colors"
                   >
+                    {/* Icon */}
+                    <div className="shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img 
+                        src={source.iconUrl} 
+                        alt={source.name}
+                        className="h-10 w-10 rounded shadow-sm bg-white/5 object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "/placeholder-icon.png";
+                          (e.target as HTMLImageElement).style.opacity = "0.2";
+                        }}
+                      />
+                    </div>
+                    
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-[var(--color-textMain)]">
                           {source.name}
                         </span>
-                        <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-[var(--color-textDim)]">
+                        <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-[var(--color-textDim)] uppercase">
                           {source.lang}
+                        </span>
+                        <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-[var(--color-textDim)] capitalize">
+                          {source.category}
                         </span>
                         {source.nsfw && (
                           <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-medium text-red-400">
@@ -210,14 +227,8 @@ export default function KeiyoushiPage() {
                           </span>
                         )}
                       </div>
-                      {source.description && (
-                        <p className="mt-0.5 text-xs text-[var(--color-textDim)] line-clamp-1">
-                          {source.description}
-                        </p>
-                      )}
                       <p className="mt-0.5 text-[10px] text-[var(--color-textDim)]">
-                        {source.pkgName}
-                        {source.version ? ` · v${source.version}` : ""}
+                        {source.extensionPkg}
                         {source.extensionVersion
                           ? ` · v${source.extensionVersion}`
                           : ""}
@@ -241,7 +252,7 @@ export default function KeiyoushiPage() {
                       ) : (
                         <button
                           onClick={() =>
-                            handleInstall(source.pkgName, source.name)
+                            handleInstall(source.extensionPkg, source.name)
                           }
                           disabled={isInstalling}
                           className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"

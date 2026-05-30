@@ -16,12 +16,12 @@ const CELL_SIZE = 13;
 const CELL_GAP = 3;
 const LABEL_WIDTH = 32;
 
-function getColor(count: number): string {
-  if (count === 0) return "#1e1e1e";
-  if (count <= 2) return "#3a1f1f";
-  if (count <= 5) return "#7a1f1f";
-  if (count <= 10) return "#c41f1f";
-  return "#e50914";
+function getColor(level: number): string {
+  if (level === 0) return "#1e1e1e";
+  if (level === 1) return "#3a1f1f";
+  if (level === 2) return "#7a1f1f";
+  if (level === 3) return "#c41f1f";
+  return "#e50914"; // 4
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -35,8 +35,20 @@ function dateKey(date: Date): string {
 
 interface CellData {
   date: string;
-  count: number;
-  chapters: HeatmapDay["chapters"];
+  pagesRead: number;
+  timeSpent: number;
+  chaptersCompleted: number;
+  level: number;
+}
+
+function formatTime(seconds: number) {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) {
+    return `${h}h ${m % 60}m`;
+  }
+  return `${m}m`;
 }
 
 // ─── Popover ───────────────────────────────────────────────────────────────────
@@ -73,7 +85,7 @@ function DayPopover({
       className="fixed z-50 w-64 rounded-xl border border-white/10 bg-[#1a1a1a] p-4 shadow-2xl"
       style={{
         left: Math.min(position.x, typeof window !== "undefined" ? window.innerWidth - 280 : 0),
-        top: Math.min(position.y - 10, typeof window !== "undefined" ? window.innerHeight - 260 : 0),
+        top: Math.min(position.y - 10, typeof window !== "undefined" ? window.innerHeight - 200 : 0),
       }}
     >
       <div className="flex items-center justify-between mb-3">
@@ -92,34 +104,20 @@ function DayPopover({
         </button>
       </div>
 
-      <p className="mb-3 text-sm text-[var(--color-textDim)]">
-        <span className="font-bold text-[var(--color-textMain)]">{cell.count}</span>{" "}
-        {cell.count === 1 ? "capítulo lido" : "capítulos lidos"}
-      </p>
-
-      {cell.chapters.length > 0 && (
-        <div className="max-h-48 overflow-y-auto space-y-2">
-          {cell.chapters.map((chapter) => (
-            <div
-              key={chapter.id}
-              className="rounded-lg bg-white/5 px-3 py-2"
-            >
-              <p className="text-xs font-medium text-[var(--color-textMain)] truncate">
-                {chapter.title}
-              </p>
-              <p className="text-[10px] text-[var(--color-textDim)] truncate">
-                {chapter.seriesTitle}
-              </p>
-            </div>
-          ))}
+      <div className="space-y-2">
+        <div className="flex justify-between items-center bg-white/5 rounded-lg px-3 py-2">
+          <span className="text-xs text-[var(--color-textDim)]">Páginas Lidas</span>
+          <span className="text-sm font-bold text-[var(--color-textMain)]">{cell.pagesRead}</span>
         </div>
-      )}
-
-      {cell.chapters.length === 0 && (
-        <p className="text-xs text-[var(--color-textDim)]/60">
-          Sem detalhes de capítulos
-        </p>
-      )}
+        <div className="flex justify-between items-center bg-white/5 rounded-lg px-3 py-2">
+          <span className="text-xs text-[var(--color-textDim)]">Capítulos Completos</span>
+          <span className="text-sm font-bold text-[var(--color-textMain)]">{cell.chaptersCompleted}</span>
+        </div>
+        <div className="flex justify-between items-center bg-white/5 rounded-lg px-3 py-2">
+          <span className="text-xs text-[var(--color-textDim)]">Tempo de Leitura</span>
+          <span className="text-sm font-bold text-[var(--color-textMain)]">{formatTime(cell.timeSpent)}</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -133,7 +131,7 @@ function Tooltip({
   cell: CellData;
   position: { x: number; y: number };
 }) {
-  if (cell.count === 0) return null;
+  if (cell.level === 0) return null;
 
   const dateFormatted = new Date(cell.date + "T12:00:00").toLocaleDateString(
     "pt-BR",
@@ -149,8 +147,8 @@ function Tooltip({
       }}
     >
       <p className="whitespace-nowrap text-[11px] text-[var(--color-textMain)]">
-        <span className="font-semibold">{cell.count}</span>{" "}
-        {cell.count === 1 ? "capítulo" : "capítulos"} em {dateFormatted}
+        <span className="font-semibold">{cell.pagesRead}</span>{" "}
+        {cell.pagesRead === 1 ? "página" : "páginas"} em {dateFormatted}
       </p>
     </div>
   );
@@ -203,8 +201,10 @@ export function ReadingHeatmap({ data, months = 6, className }: ReadingHeatmapPr
       const entry = dataMap.get(key);
       dayCells.push({
         date: key,
-        count: entry?.count ?? 0,
-        chapters: entry?.chapters ?? [],
+        pagesRead: entry?.pagesRead ?? 0,
+        timeSpent: entry?.timeSpent ?? 0,
+        chaptersCompleted: entry?.chaptersCompleted ?? 0,
+        level: entry?.level ?? 0,
       });
       current.setDate(current.getDate() + 1);
     }
@@ -218,8 +218,10 @@ export function ReadingHeatmap({ data, months = 6, className }: ReadingHeatmapPr
         padDate.setDate(padDate.getDate() - (startDayOfWeek - i));
         padding.push({
           date: dateKey(padDate),
-          count: 0,
-          chapters: [],
+          pagesRead: 0,
+          timeSpent: 0,
+          chaptersCompleted: 0,
+          level: 0,
         });
       }
       dayCells.unshift(...padding);
@@ -237,7 +239,7 @@ export function ReadingHeatmap({ data, months = 6, className }: ReadingHeatmapPr
       const week = weeksArray[col];
       if (!week || week.length === 0) continue;
       // Find the first non-padding cell's month
-      const firstReal = week.find((cell) => cell.count !== undefined || cell.date !== "");
+      const firstReal = week.find((cell) => cell.level !== undefined || cell.date !== "");
       if (!firstReal) continue;
       const d = new Date(firstReal.date + "T12:00:00");
       const monthIndex = d.getMonth();
@@ -361,14 +363,14 @@ export function ReadingHeatmap({ data, months = 6, className }: ReadingHeatmapPr
                       style={{
                         width: CELL_SIZE,
                         height: CELL_SIZE,
-                        backgroundColor: getColor(cell.count),
+                        backgroundColor: getColor(cell.level),
                         outline: "none",
                       }}
                       onMouseEnter={(e) => handleMouseEnter(cell, e)}
                       onMouseLeave={handleMouseLeave}
                       onClick={(e) => handleClick(cell, e)}
-                      title={`${cell.date}: ${cell.count} capítulos`}
-                      aria-label={`${cell.date}: ${cell.count} capítulos`}
+                      title={`${cell.date}: ${cell.pagesRead} páginas`}
+                      aria-label={`${cell.date}: ${cell.pagesRead} páginas`}
                     />
                   );
                 })}
@@ -382,7 +384,7 @@ export function ReadingHeatmap({ data, months = 6, className }: ReadingHeatmapPr
           <span className="text-[10px] text-[var(--color-textDim)]/50 mr-1">
             Menos
           </span>
-          {[0, 1, 3, 6, 11].map((level) => (
+          {[0, 1, 2, 3, 4].map((level) => (
             <div
               key={level}
               className="rounded-sm"
@@ -414,34 +416,4 @@ export function ReadingHeatmap({ data, months = 6, className }: ReadingHeatmapPr
       )}
     </div>
   );
-}
-
-// ─── Hook: fetch heatmap data ──────────────────────────────────────────────────
-
-export interface UseReadingHeatmapOptions {
-  months?: number;
-  enabled?: boolean;
-}
-
-/**
- * Placeholder hook for fetching heatmap data.
- * TODO: connect to real endpoint when backend is ready.
- * Currently returns mock empty data.
- */
-export function useReadingHeatmap(_options: UseReadingHeatmapOptions = {}) {
-  // TODO: import { useQuery } from "@tanstack/react-query"
-  // TODO: import { statsService } from "@/services/stats.service"
-  // return useQuery({
-  //   queryKey: ["reading-heatmap", options.months ?? 6],
-  //   queryFn: () => statsService.getReadingHeatmap(options.months ?? 6),
-  //   enabled: options.enabled ?? true,
-  //   staleTime: 1000 * 60 * 15,
-  // });
-
-  // Placeholder: return empty data until backend endpoint is available
-  const [data] = useState<HeatmapDay[]>([]);
-  const [isLoading] = useState(false);
-  const [error] = useState<Error | null>(null);
-
-  return { data, isLoading, error };
 }

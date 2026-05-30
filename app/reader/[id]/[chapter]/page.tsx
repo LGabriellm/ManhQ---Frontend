@@ -38,6 +38,9 @@ import { ProgressSlider } from "@/components/reader/ProgressSlider";
 import { CommentSection } from "@/components/community/CommentSection";
 import { useOfflineDownloads } from "@/hooks/useOfflineDownloads";
 import { WifiOff } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { CollectionModal } from "@/components/collections/CollectionModal";
+import toast from "react-hot-toast";
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -181,7 +184,7 @@ function ReaderContent() {
     error,
     refetch,
     isFetching,
-  } = useChapterInfo(chapterId);
+  } = useChapterInfo(chapterId, seriesId);
   const { data: seriesData } = useSeriesById(seriesId);
   const {
     data: savedProgress,
@@ -189,9 +192,10 @@ function ReaderContent() {
   } = useMediaProgress(chapterId);
   const {
     isFavorite,
-    toggleFavorite,
     isUpdating: isFavUpdating,
   } = useFavorites(seriesId);
+  const { isAuthenticated } = useAuth();
+  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
 
   // ─── UI state ─────────────────────────────────────────────────
   const [showControls, setShowControls] = useState(true);
@@ -260,6 +264,7 @@ function ReaderContent() {
   );
   const isHorizontal = readingMode === "horizontal";
   const isWebtoon = readingMode === "webtoon";
+  const isSpread = readingMode === "spread";
   const [offlineMeta, setOfflineMeta] = useState<{
     title: string;
     number: number;
@@ -487,7 +492,7 @@ function ReaderContent() {
     return () => cancelAnimationFrame(frame);
   }, [chapterData, readingMode, scrollToPage]);
 
-  // ─── Controls auto-hide ────────────────────────────────────────
+  // ─── Sync reading mode to hook ────────────────────────────────────────
   useEffect(() => {
     if (!showControls || showSettings) return;
     timeoutRef.current = setTimeout(() => setShowControls(false), 4000);
@@ -810,9 +815,6 @@ function ReaderContent() {
     if (totalPages < 1) return [];
     return Array.from({ length: totalPages }, (_, i) => i + 1);
   }, [totalPages]);
-
-  const isSpread = readingMode === "spread";
-
   const spreadGroups = useMemo(() => {
     const groups: number[][] = [];
     if (isSpread) {
@@ -1369,14 +1371,18 @@ function ReaderContent() {
                 {/* Favorite toggle */}
                 <motion.button
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => toggleFavorite(seriesId)}
-                  disabled={isFavUpdating}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-surface bg-background py-4 font-medium text-textMain transition-colors hover:bg-background/80 disabled:opacity-50"
+                  onClick={() => {
+                    if (!isAuthenticated) {
+                      toast("Faça login para salvar esta série nas coleções.");
+                      router.push("/auth/login");
+                      return;
+                    }
+                    setIsCollectionModalOpen(true);
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-surface bg-background py-4 font-medium text-textMain transition-colors hover:bg-background/80"
                 >
                   <BookmarkPlus className="h-5 w-5" />
-                  {isFavorite(seriesId)
-                    ? "Remover dos Favoritos"
-                    : "Adicionar aos Favoritos"}
+                  Salvar em uma coleção
                 </motion.button>
 
                 {/* Zoom hint */}
@@ -1388,6 +1394,12 @@ function ReaderContent() {
           </>
         )}
       </AnimatePresence>
+
+      <CollectionModal
+        isOpen={isCollectionModalOpen}
+        onClose={() => setIsCollectionModalOpen(false)}
+        seriesId={seriesId}
+      />
     </div>
   );
 }

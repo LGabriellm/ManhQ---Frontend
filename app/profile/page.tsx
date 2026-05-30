@@ -32,9 +32,10 @@ import {
   isExternalHref,
 } from "@/lib/subscription";
 import { useAuth } from "@/contexts/AuthContext";
-import { useUserStats } from "@/hooks/useApi";
+import { useUserStats, useReadingHeatmap } from "@/hooks/useApi";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ReadingHeatmap } from "@/components/profile/ReadingHeatmap";
 import { AuthCover } from "@/components/AuthCover";
 import { UserAvatar } from "@/components/community/UserAvatar";
 import { SubscriptionAlertBanner } from "@/components/subscription/SubscriptionAlertBanner";
@@ -477,6 +478,7 @@ export default function ProfilePage() {
     error,
     refetch: refetchUserStats,
   } = useUserStats();
+  const { data: heatmapData } = useReadingHeatmap();
   const { data: badges } = useMyBadges();
   const router = useRouter();
   const [_showAllMilestones, _setShowAllMilestones] = useState(false);
@@ -816,6 +818,21 @@ export default function ProfilePage() {
                 data={time.pagesPerDayOfWeek}
                 mostProductiveDay={time.mostProductiveDay}
               />
+            </motion.div>
+          )}
+
+          {/* ===== READING HEATMAP ===== */}
+          {heatmapData && heatmapData.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.42 }}
+              className="px-4 mt-5"
+            >
+              <SectionHeader icon={CalendarDays} title="Hábitos de Leitura" />
+              <div className="bg-surface/60 backdrop-blur-sm rounded-2xl p-4 border border-white/4">
+                <ReadingHeatmap data={heatmapData} months={6} />
+              </div>
             </motion.div>
           )}
 

@@ -83,11 +83,11 @@ export function usePopularSearchTerms() {
 }
 
 // ===== LEITOR =====
-export function useChapterInfo(chapterId: string | undefined) {
+export function useChapterInfo(chapterId: string | undefined, seriesId?: string) {
   return useQuery({
     queryKey: ["chapter-info", chapterId],
-    queryFn: () => readerService.getChapterInfo(chapterId!),
-    enabled: !!chapterId,
+    queryFn: () => readerService.getChapterInfoOffline(chapterId!, seriesId!),
+    enabled: !!chapterId && !!seriesId,
     staleTime: 1000 * 60 * 10, // 10 minutos — dados do capítulo raramente mudam
     refetchOnWindowFocus: false,
   });
@@ -150,6 +150,18 @@ export function useUserStats() {
     staleTime: 1000 * 60 * 5,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+  });
+}
+
+export function useReadingHeatmap(year?: number) {
+  const { accessGranted, isAuthenticated } = useAuth();
+
+  return useQuery({
+    queryKey: ["user-stats", "heatmap", year],
+    queryFn: () => statsService.getReadingHeatmap(year),
+    enabled: isAuthenticated && accessGranted,
+    staleTime: 1000 * 60 * 60, // 1 hora
+    refetchOnWindowFocus: false,
   });
 }
 

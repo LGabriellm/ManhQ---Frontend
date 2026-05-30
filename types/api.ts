@@ -3237,8 +3237,10 @@ export interface AchievementsResponse {
 // ===== Reading Heatmap =====
 export interface HeatmapDay {
   date: string; // "2026-05-10"
-  count: number; // chapters read
-  chapters: Array<{ id: string; title: string; seriesTitle: string }>;
+  pagesRead: number;
+  timeSpent: number;
+  chaptersCompleted: number;
+  level: number; // 0 to 4
 }
 
 // ===== Landing Video =====

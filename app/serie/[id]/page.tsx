@@ -30,11 +30,13 @@ import { CommentSection } from "@/components/community/CommentSection";
 import { DownloadButton } from "@/components/DownloadButton";
 import { useAuth } from "@/contexts/AuthContext";
 import { getPublicCoverUrl } from "@/lib/coverUrl";
+import { CollectionModal } from "@/components/collections/CollectionModal";
 
 export default function MangaDetailsPage() {
   const router = useRouter();
   const params = useParams();
   const seriesId = params.id as string;
+  const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const { isAuthenticated } = useAuth();
   const { data: favorites = [] } = useApiFavorites({
     enabled: isAuthenticated,
@@ -81,21 +83,12 @@ export default function MangaDetailsPage() {
 
   const handleToggleFavorite = async () => {
     if (!isAuthenticated) {
-      toast("Faça login para salvar esta série nos favoritos.");
+      toast("Faça login para salvar esta série nas coleções.");
       router.push("/auth/login");
       return;
     }
 
-    const wasFavorite = favoriteIds.has(seriesId);
-
-    try {
-      await toggleFavoriteMutation.mutateAsync(seriesId);
-      toast.success(
-        wasFavorite ? "Removido dos favoritos!" : "Adicionado aos favoritos!",
-      );
-    } catch {
-      toast.error("Erro ao alterar favorito");
-    }
+    setIsCollectionModalOpen(true);
   };
 
   const handleShare = async () => {
@@ -574,6 +567,12 @@ export default function MangaDetailsPage() {
           />
         </motion.div>
       </div>
+
+      <CollectionModal
+        isOpen={isCollectionModalOpen}
+        onClose={() => setIsCollectionModalOpen(false)}
+        seriesId={seriesId}
+      />
     </main>
   );
 }

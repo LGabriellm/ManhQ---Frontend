@@ -98,9 +98,9 @@ export const statsService = {
   },
 
   // Heatmap de leitura (GitHub-style)
-  async getReadingHeatmap(months = 6): Promise<HeatmapDay[]> {
-    const response = await api.get<HeatmapDay[]>("/stats/reading-heatmap", {
-      params: { months },
+  async getReadingHeatmap(year?: number): Promise<HeatmapDay[]> {
+    const response = await api.get<HeatmapDay[]>("/user/stats/heatmap", {
+      params: year ? { year } : {},
     });
     return response.data;
   },

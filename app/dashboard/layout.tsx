@@ -22,6 +22,7 @@ import {
   Globe,
   HardDrive,
   Megaphone,
+  Settings,
 } from "lucide-react";
 
 type DashboardRole = "ADMIN" | "EDITOR";
@@ -102,6 +103,12 @@ const navItems: Array<{
     href: "/dashboard/storage",
     label: "Armazenamento",
     icon: HardDrive,
+    roles: ["ADMIN"],
+  },
+  {
+    href: "/dashboard/settings",
+    label: "Configurações",
+    icon: Settings,
     roles: ["ADMIN"],
   },
 ];

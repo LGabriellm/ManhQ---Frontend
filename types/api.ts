@@ -3258,3 +3258,13 @@ export interface LandingVideoAdminInfo extends LandingVideoInfo {
   uploadedBy?: string;
   storageKey?: string;
 }
+
+// ----------------------------------------------------------------------------
+// SYSTEM SETTINGS (Admin)
+// ----------------------------------------------------------------------------
+
+export interface SystemSettings {
+  showcaseRankingEnabled: boolean;
+  founderDisplayOverride: number | null;
+}
+

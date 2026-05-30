@@ -1149,3 +1149,22 @@ export function useMySubmissions(params?: {
     staleTime: 1000 * 30,
   });
 }
+
+// --- System Settings ---
+export function useAdminSystemSettings() {
+  return useQuery({
+    queryKey: ['admin', 'system-settings'],
+    queryFn: () => adminService.getSystemSettings(),
+  });
+}
+
+export function useUpdateSystemSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<import('@/types/api').SystemSettings>) => adminService.updateSystemSettings(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'system-settings'] });
+    },
+  });
+}
+

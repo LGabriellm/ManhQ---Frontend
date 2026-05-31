@@ -153,13 +153,12 @@ export function AuthCover({
       )}
 
       {imageSrc && (
-        <Image
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
           src={imageSrc}
           alt={alt}
-          fill
-          unoptimized={imageSrc.startsWith("/api/")}
-          className={`object-cover ${className || ""}`}
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+          loading="lazy"
+          className={`w-full h-full object-cover ${className || ""}`}
           onLoad={() => setIsLoading(false)}
           onError={() => {
             setError(true);

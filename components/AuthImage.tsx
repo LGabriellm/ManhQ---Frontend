@@ -55,9 +55,6 @@ export function AuthImage({
           if (entry.isIntersecting) {
             setShouldLoad(true);
             setIsVisible(true);
-          } else {
-            // Unload image from memory if it goes too far off-screen
-            setIsVisible(false);
           }
         });
       },

@@ -140,8 +140,37 @@ function extractCollection(payload: unknown): unknown[] {
 
 export const progressService = {
   async getMediaProgress(mediaId: string): Promise<MediaProgress> {
-    const response = await api.get<unknown>(`/progress/${mediaId}`);
-    return mapMediaProgress(response.data);
+    const getLocal = () => {
+      const localStr = localStorage.getItem(`manhq:reader:position:${mediaId}`);
+      if (localStr) {
+        try {
+          const data = JSON.parse(localStr);
+          return {
+            page: data.page || 1,
+            progressPercent: data.progressPercent || 0,
+            finished: data.progressPercent >= 99,
+            startedAt: new Date(data.updatedAt || Date.now()).toISOString(),
+            lastReadAt: new Date(data.updatedAt || Date.now()).toISOString(),
+            readCount: 1,
+          };
+        } catch {}
+      }
+      return { page: 1, progressPercent: 0, finished: false, startedAt: "", lastReadAt: "", readCount: 0 };
+    };
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      return getLocal();
+    }
+
+    try {
+      const response = await api.get<unknown>(`/progress/${mediaId}`);
+      return mapMediaProgress(response.data);
+    } catch (error) {
+      if (typeof window !== "undefined") {
+        return getLocal();
+      }
+      throw error;
+    }
   },
 
   async getSeriesProgress(seriesId: string): Promise<SeriesProgress> {

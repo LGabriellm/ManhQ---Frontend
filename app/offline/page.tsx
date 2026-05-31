@@ -20,9 +20,9 @@ import type { DownloadQuality } from "@/hooks/useDownloadSettings";
 import * as offlineStorage from "@/services/offline-storage.service";
 import type { OfflineChapter, DownloadedSeries } from "@/types/offline";
 
-import { OfflineReader } from "@/components/reader/OfflineReader";
+import { ReaderContent } from "@/components/reader/ReaderContent";
 
-type Tab = "series" | "chapters";
+type Tab = "series" | "chapters" | "resume";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -42,6 +42,7 @@ export default function OfflinePage() {
   });
   const [loading, setLoading] = useState(true);
   const [readingChapter, setReadingChapter] = useState<{seriesId: string, chapterId: string} | null>(null);
+  const [resumeItems, setResumeItems] = useState<{ chapterId: string; page: number; progressPercent: number; updatedAt: number }[]>([]);
 
   const { quality, setQuality, maxStorageMB, setMaxStorageMB } =
     useDownloadSettings();
@@ -71,6 +72,28 @@ export default function OfflinePage() {
       setSeries(s);
       setChapters(c);
       setStorageEstimate(estimate);
+
+      const localProgress = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("manhq:reader:position:")) {
+          const chapterId = key.split(":").pop();
+          if (chapterId) {
+            try {
+              const data = JSON.parse(localStorage.getItem(key) || "");
+              if (data && data.updatedAt && data.progressPercent < 95) {
+                localProgress.push({
+                  chapterId,
+                  page: data.page,
+                  progressPercent: data.progressPercent,
+                  updatedAt: data.updatedAt,
+                });
+              }
+            } catch {}
+          }
+        }
+      }
+      setResumeItems(localProgress.sort((a, b) => b.updatedAt - a.updatedAt));
     } catch {
       // noop
     } finally {
@@ -103,11 +126,15 @@ export default function OfflinePage() {
 
   if (readingChapter) {
     return (
-      <OfflineReader 
-        seriesId={readingChapter.seriesId} 
-        chapterId={readingChapter.chapterId} 
-        onClose={() => setReadingChapter(null)} 
-      />
+      <div className="fixed inset-0 z-50 bg-black">
+        <ReaderContent 
+          seriesId={readingChapter.seriesId} 
+          chapterId={readingChapter.chapterId} 
+          isOfflineMode={true}
+          onClose={() => setReadingChapter(null)}
+          onNavigateChapter={(nextChapterId) => setReadingChapter({ seriesId: readingChapter.seriesId, chapterId: nextChapterId })}
+        />
+      </div>
     );
   }
 
@@ -243,9 +270,7 @@ export default function OfflinePage() {
               onClick={() => setTab("series")}
               className={cn(
                 "flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-all",
-                tab === "series"
-                  ? "bg-background text-white shadow-sm"
-                  : "text-white/40",
+                tab === "series" ? "bg-background text-white shadow-sm" : "text-white/40",
               )}
             >
               <Grid3X3 className="h-4 w-4" />
@@ -255,13 +280,21 @@ export default function OfflinePage() {
               onClick={() => setTab("chapters")}
               className={cn(
                 "flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-all",
-                tab === "chapters"
-                  ? "bg-background text-white shadow-sm"
-                  : "text-white/40",
+                tab === "chapters" ? "bg-background text-white shadow-sm" : "text-white/40",
               )}
             >
               <List className="h-4 w-4" />
               Capítulos
+            </button>
+            <button
+              onClick={() => setTab("resume")}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-all",
+                tab === "resume" ? "bg-background text-white shadow-sm" : "text-white/40",
+              )}
+            >
+              <BookOpen className="h-4 w-4" />
+              Continuar
             </button>
           </div>
 
@@ -353,6 +386,55 @@ export default function OfflinePage() {
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
+                      </motion.div>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
+          {/* Resume tab */}
+          {tab === "resume" && (
+            <div className="mt-4 px-4">
+              {resumeItems.length === 0 ? (
+                <p className="py-8 text-center text-sm text-white/40">
+                  Nenhum capítulo em andamento
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {resumeItems
+                    .map(item => {
+                      const ch = chapters.find(c => c.chapterId === item.chapterId);
+                      return { item, ch };
+                    })
+                    .filter(x => x.ch !== undefined)
+                    .map(({ item, ch }) => (
+                      <motion.div
+                        key={item.chapterId}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="flex flex-col gap-2 rounded-xl bg-surface p-4 cursor-pointer hover:bg-surface/80 relative overflow-hidden"
+                        onClick={() => setReadingChapter({ seriesId: ch!.seriesId, chapterId: ch!.chapterId })}
+                      >
+                        <div className="flex items-center gap-3 relative z-10">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/20">
+                            <BookOpen className="h-5 w-5 text-primary" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold text-white">
+                              {ch!.seriesTitle}
+                            </p>
+                            <p className="truncate text-xs text-white/60">
+                              {ch!.chapterTitle || `Capítulo ${ch!.chapterNumber}`} · Pág. {item.page} de {ch!.pageCount}
+                            </p>
+                          </div>
+                        </div>
+                        {/* Progress Bar background */}
+                        <div className="absolute bottom-0 left-0 h-1 bg-white/10 w-full">
+                          <div 
+                            className="h-full bg-primary transition-all duration-500" 
+                            style={{ width: `${item.progressPercent}%` }} 
+                          />
+                        </div>
                       </motion.div>
                     ))}
                 </div>

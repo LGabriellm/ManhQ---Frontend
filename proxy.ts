@@ -14,7 +14,7 @@ const PUBLIC_ROUTES = [
 
 const AUTH_COOKIE = 'manhq_session';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
   // Skip public routes, API proxy, and static assets

@@ -1085,35 +1085,28 @@ function ReaderContent() {
                     : undefined
                 }
               >
-                {group.some(p => Math.abs(p - currentPage) <= 3) ? (
-                  <div className={`flex w-full h-full justify-center ${isSpread ? "gap-2" : ""}`}>
-                    {group.map(p => (
-                      <AuthImage
-                        key={p}
-                        chapterId={chapterId}
-                        pageNumber={p}
-                        alt={`Página ${p}`}
-                        className={imgClass}
-                        containerClassName={isSpread ? "flex-1 h-full items-center justify-center flex" : authImageContainerClass}
-                        loading={p <= 3 ? "eager" : "lazy"}
-                        seriesId={seriesId}
-                        useOffline={isOfflineAvailable}
-                        preloadMargin="800px"
-                        onImageLoad={handleImageLoad}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div
-                    className={authImageContainerClass}
-                    style={{
-                      minHeight: isWebtoon 
-                        ? (imageMetricsRef.current.get(pageNumber)?.renderedHeight || 800) 
-                        : '100%',
-                      width: '100%'
-                    }}
-                  />
-                )}
+                <div className={`flex w-full h-full justify-center ${isSpread ? "gap-2" : ""}`}>
+                  {group.map(p => (
+                    <AuthImage
+                      key={p}
+                      chapterId={chapterId}
+                      pageNumber={p}
+                      alt={`Página ${p}`}
+                      className={imgClass}
+                      containerClassName={authImageContainerClass}
+                      loading={p <= 3 ? "eager" : "lazy"}
+                      seriesId={seriesId}
+                      useOffline={isOfflineAvailable}
+                      preloadMargin="1500px"
+                      onImageLoad={handleImageLoad}
+                      style={{
+                        minHeight: isWebtoon 
+                          ? (imageMetricsRef.current.get(p)?.renderedHeight || 800) 
+                          : '100%'
+                      }}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           );

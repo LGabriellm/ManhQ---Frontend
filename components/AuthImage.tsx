@@ -22,6 +22,7 @@ interface AuthImageProps {
     renderedWidth: number;
     renderedHeight: number;
   }) => void;
+  style?: React.CSSProperties;
 }
 
 export function AuthImage({
@@ -35,6 +36,7 @@ export function AuthImage({
   seriesId = "",
   useOffline = false,
   onImageLoad,
+  style,
 }: AuthImageProps) {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -143,6 +145,7 @@ export function AuthImage({
     <div
       ref={containerRef}
       className={containerClassName}
+      style={style}
     >
       {error && (
         <div className="flex flex-col items-center justify-center gap-3">

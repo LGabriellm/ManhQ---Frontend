@@ -287,6 +287,79 @@ export interface JobsFullResponse {
   jobs: AdminJob[];
 }
 
+const LOCAL_UPLOAD_BATCH_MAX_BYTES = 80 * 1024 * 1024;
+const LOCAL_UPLOAD_BATCH_MAX_FILES = 8;
+const LOCAL_UPLOAD_TIMEOUT_MS = 600_000;
+
+function appendLocalUploadFiles(formData: FormData, files: File[]): void {
+  files.forEach((file) => formData.append("files", file));
+}
+
+function splitLocalUploadBatches(files: File[]): File[][] {
+  const batches: File[][] = [];
+  let currentBatch: File[] = [];
+  let currentSize = 0;
+
+  for (const file of files) {
+    const size = file.size || 0;
+    const exceedsByteLimit =
+      currentBatch.length > 0 &&
+      currentSize + size > LOCAL_UPLOAD_BATCH_MAX_BYTES;
+    const exceedsFileLimit = currentBatch.length >= LOCAL_UPLOAD_BATCH_MAX_FILES;
+
+    if (exceedsByteLimit || exceedsFileLimit) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentSize = 0;
+    }
+
+    currentBatch.push(file);
+    currentSize += size;
+  }
+
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+
+  return batches;
+}
+
+async function postLocalUploadForm<T>(
+  path: string,
+  formData: FormData,
+): Promise<T> {
+  const response = await api.post<T>(path, formData, {
+    timeout: LOCAL_UPLOAD_TIMEOUT_MS,
+  });
+  return response.data;
+}
+
+async function appendLocalUploadDraftFiles<T extends { draftId: string }>(
+  draftId: string,
+  files: File[],
+): Promise<T> {
+  const formData = new FormData();
+  appendLocalUploadFiles(formData, files);
+  return postLocalUploadForm<T>(`/upload/drafts/${draftId}/files`, formData);
+}
+
+async function stageLocalUploadInBatches<T extends { draftId: string }>(
+  files: File[],
+  createFirstBatch: (batch: File[]) => Promise<T>,
+): Promise<T> {
+  const batches = splitLocalUploadBatches(files);
+  if (batches.length === 0) {
+    return createFirstBatch([]);
+  }
+
+  let result = await createFirstBatch(batches[0]);
+  for (const batch of batches.slice(1)) {
+    result = await appendLocalUploadDraftFiles<T>(result.draftId, batch);
+  }
+
+  return result;
+}
+
 export const adminService = {
   // ===== Dashboard =====
   async getDashboard(): Promise<AdminDashboardResponse> {
@@ -510,18 +583,21 @@ export const adminService = {
     files: File[],
     folderName?: string,
   ): Promise<LocalUploadStageResponse> {
-    const formData = new FormData();
-    files.forEach((f) => formData.append("files", f));
-    if (folderName?.trim()) {
-      formData.append("folderName", folderName.trim());
-    }
+    return stageLocalUploadInBatches<LocalUploadStageResponse>(
+      files,
+      (batch) => {
+        const formData = new FormData();
+        appendLocalUploadFiles(formData, batch);
+        if (folderName?.trim()) {
+          formData.append("folderName", folderName.trim());
+        }
 
-    const response = await api.post<LocalUploadStageResponse>(
-      "/upload/stage",
-      formData,
-      { timeout: 120_000 },
+        return postLocalUploadForm<LocalUploadStageResponse>(
+          "/upload/stage",
+          formData,
+        );
+      },
     );
-    return response.data;
   },
 
   async stageLocalUploadWithSeries(
@@ -529,19 +605,22 @@ export const adminService = {
     seriesTitle: string,
     folderName?: string,
   ): Promise<LocalUploadStageResponse> {
-    const formData = new FormData();
-    files.forEach((f) => formData.append("files", f));
-    if (folderName?.trim()) {
-      formData.append("folderName", folderName.trim());
-    }
-    formData.append("seriesTitle", seriesTitle.trim());
+    return stageLocalUploadInBatches<LocalUploadStageResponse>(
+      files,
+      (batch) => {
+        const formData = new FormData();
+        appendLocalUploadFiles(formData, batch);
+        if (folderName?.trim()) {
+          formData.append("folderName", folderName.trim());
+        }
+        formData.append("seriesTitle", seriesTitle.trim());
 
-    const response = await api.post<LocalUploadStageResponse>(
-      "/upload/workflow/series-stage",
-      formData,
-      { timeout: 120_000 },
+        return postLocalUploadForm<LocalUploadStageResponse>(
+          "/upload/workflow/series-stage",
+          formData,
+        );
+      },
     );
-    return response.data;
   },
 
   async getLocalUploadDraft(

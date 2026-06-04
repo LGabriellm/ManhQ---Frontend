@@ -22,6 +22,80 @@ import type {
   UploadItem,
 } from "@/types/upload";
 
+const LOCAL_UPLOAD_BATCH_MAX_BYTES = 80 * 1024 * 1024;
+const LOCAL_UPLOAD_BATCH_MAX_FILES = 8;
+const LOCAL_UPLOAD_TIMEOUT_MS = 600_000;
+
+function appendFiles(form: FormData, files: File[]): void {
+  files.forEach((file) => form.append("files", file));
+}
+
+function splitLocalUploadBatches(files: File[]): File[][] {
+  const batches: File[][] = [];
+  let currentBatch: File[] = [];
+  let currentSize = 0;
+
+  for (const file of files) {
+    const size = file.size || 0;
+    const exceedsByteLimit =
+      currentBatch.length > 0 &&
+      currentSize + size > LOCAL_UPLOAD_BATCH_MAX_BYTES;
+    const exceedsFileLimit = currentBatch.length >= LOCAL_UPLOAD_BATCH_MAX_FILES;
+
+    if (exceedsByteLimit || exceedsFileLimit) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentSize = 0;
+    }
+
+    currentBatch.push(file);
+    currentSize += size;
+  }
+
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+
+  return batches;
+}
+
+async function postLocalUploadForm(
+  path: string,
+  form: FormData,
+): Promise<StageResponse> {
+  const { data } = await api.post(path, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: LOCAL_UPLOAD_TIMEOUT_MS,
+  });
+  return data;
+}
+
+async function appendLocalFilesToDraft(
+  draftId: string,
+  files: File[],
+): Promise<StageResponse> {
+  const form = new FormData();
+  appendFiles(form, files);
+  return postLocalUploadForm(`/upload/drafts/${draftId}/files`, form);
+}
+
+async function stageLocalFilesInBatches(
+  files: File[],
+  createFirstBatch: (batch: File[]) => Promise<StageResponse>,
+): Promise<StageResponse> {
+  const batches = splitLocalUploadBatches(files);
+  if (batches.length === 0) {
+    return createFirstBatch([]);
+  }
+
+  let result = await createFirstBatch(batches[0]);
+  for (const batch of batches.slice(1)) {
+    result = await appendLocalFilesToDraft(result.draftId, batch);
+  }
+
+  return result;
+}
+
 // ── Drafts ──────────────────────────────────────────────────────────────────
 
 export async function fetchDrafts(
@@ -128,45 +202,36 @@ export async function stageLocalFiles(
   files: File[],
   options?: { folderName?: string; seriesTitle?: string },
 ): Promise<StageResponse> {
-  const form = new FormData();
-  if (options?.folderName) form.append("folderName", options.folderName);
-  if (options?.seriesTitle) form.append("seriesTitle", options.seriesTitle);
-  files.forEach((file) => form.append("files", file));
-
-  const { data } = await api.post("/upload/stage", form, {
-    headers: { "Content-Type": "multipart/form-data" },
-    timeout: 600_000,
+  return stageLocalFilesInBatches(files, (batch) => {
+    const form = new FormData();
+    if (options?.folderName) form.append("folderName", options.folderName);
+    if (options?.seriesTitle) form.append("seriesTitle", options.seriesTitle);
+    appendFiles(form, batch);
+    return postLocalUploadForm("/upload/stage", form);
   });
-  return data;
 }
 
 export async function stageLocalForSeries(
   files: File[],
   seriesTitle: string,
 ): Promise<StageResponse> {
-  const form = new FormData();
-  form.append("seriesTitle", seriesTitle);
-  files.forEach((file) => form.append("files", file));
-
-  const { data } = await api.post("/upload/workflow/series-stage", form, {
-    headers: { "Content-Type": "multipart/form-data" },
-    timeout: 600_000,
+  return stageLocalFilesInBatches(files, (batch) => {
+    const form = new FormData();
+    form.append("seriesTitle", seriesTitle);
+    appendFiles(form, batch);
+    return postLocalUploadForm("/upload/workflow/series-stage", form);
   });
-  return data;
 }
 
 export async function stageLocalForExistingSeries(
   seriesId: string,
   files: File[],
 ): Promise<StageResponse> {
-  const form = new FormData();
-  files.forEach((file) => form.append("files", file));
-
-  const { data } = await api.post(`/upload/series/${seriesId}`, form, {
-    headers: { "Content-Type": "multipart/form-data" },
-    timeout: 600_000,
+  return stageLocalFilesInBatches(files, (batch) => {
+    const form = new FormData();
+    appendFiles(form, batch);
+    return postLocalUploadForm(`/upload/series/${seriesId}`, form);
   });
-  return data;
 }
 
 // ── Sessions ────────────────────────────────────────────────────────────────

@@ -347,9 +347,18 @@ async function handler(
 
   // Repassar body para métodos que suportam
   if (req.method !== "GET" && req.method !== "HEAD") {
-    init.body = req.body;
-    // @ts-expect-error - duplex is needed for streaming body
-    init.duplex = "half";
+    if (isUploadStagingPath(targetPath) || isLandingVideoUpload(targetPath, req.method)) {
+      // Buffer the entire body for multipart uploads.
+      // Next.js App Router streams req.body as a ReadableStream, but the stream
+      // can be prematurely finalized before all bytes reach the backend, causing
+      // busboy to throw "Unexpected end of form". Reading into an ArrayBuffer
+      // guarantees the full payload is forwarded intact.
+      init.body = await req.arrayBuffer();
+    } else {
+      init.body = req.body;
+      // @ts-expect-error - duplex is needed for streaming body
+      init.duplex = "half";
+    }
   }
 
   try {

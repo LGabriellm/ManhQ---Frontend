@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL = process.env.API_URL || "https://api.manhq.com.br";
+const DEFAULT_BACKEND_URL =
+  process.env.NODE_ENV === "production"
+    ? "http://manhq-backend:3000"
+    : "http://localhost:3000";
+const BACKEND_URL = process.env.API_URL || DEFAULT_BACKEND_URL;
 const FORWARDED_COOKIE_NAMES = ["manhq_session", "cf_clearance", "__cf_bm"];
 const FORWARDED_REQUEST_HEADER_NAMES = [
   "accept",
@@ -328,7 +332,7 @@ async function handler(
   const forwardedCookieHeader = buildForwardedCookieHeader(req);
   const headers = buildForwardedHeaders(req, forwardedCookieHeader);
 
-  const init: RequestInit = {
+  const init: RequestInit & { duplex?: "half" } = {
     method: req.method,
     headers,
     signal:
@@ -347,16 +351,8 @@ async function handler(
 
   // Repassar body para métodos que suportam
   if (req.method !== "GET" && req.method !== "HEAD") {
-    if (isUploadStagingPath(targetPath) || isLandingVideoUpload(targetPath, req.method)) {
-      // Buffer the entire body for multipart uploads.
-      // Next.js App Router streams req.body as a ReadableStream, but the stream
-      // can be prematurely finalized before all bytes reach the backend, causing
-      // busboy to throw "Unexpected end of form". Reading into an ArrayBuffer
-      // guarantees the full payload is forwarded intact.
-      init.body = await req.arrayBuffer();
-    } else {
-      init.body = req.body;
-      // @ts-expect-error - duplex is needed for streaming body
+    init.body = req.body;
+    if (req.body) {
       init.duplex = "half";
     }
   }

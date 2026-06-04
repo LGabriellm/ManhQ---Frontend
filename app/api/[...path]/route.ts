@@ -6,7 +6,6 @@ const FORWARDED_REQUEST_HEADER_NAMES = [
   "accept",
   "accept-language",
   "cache-control",
-  "content-length",
   "content-type",
   "if-modified-since",
   "if-none-match",

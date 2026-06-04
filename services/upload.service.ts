@@ -135,7 +135,7 @@ export async function stageLocalFiles(
 
   const { data } = await api.post("/upload/stage", form, {
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 120_000,
+    timeout: 600_000,
   });
   return data;
 }
@@ -150,7 +150,7 @@ export async function stageLocalForSeries(
 
   const { data } = await api.post("/upload/workflow/series-stage", form, {
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 120_000,
+    timeout: 600_000,
   });
   return data;
 }
@@ -164,7 +164,7 @@ export async function stageLocalForExistingSeries(
 
   const { data } = await api.post(`/upload/series/${seriesId}`, form, {
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: 120_000,
+    timeout: 600_000,
   });
   return data;
 }
@@ -232,7 +232,7 @@ export async function stageFromGoogleDrive(
   payload: GoogleDriveStageRequest,
 ): Promise<GoogleDriveStageResponse> {
   const { data } = await api.post("/integrations/google-drive/stage", payload, {
-    timeout: 120_000,
+    timeout: 600_000,
   });
   return data;
 }
@@ -257,4 +257,5 @@ export async function searchSeries(
   });
   return data.items ?? [];
 }
+
 

@@ -83,7 +83,7 @@ const ALLOWED_PREFIXES = [
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;
-const UPLOAD_TIMEOUT_MS = 120_000;
+const UPLOAD_TIMEOUT_MS = 600_000;
 const REENCODE_TIMEOUT_MS = 600_000;
 const PUBLIC_CACHE_CONTROL =
   "public, max-age=60, s-maxage=300, stale-while-revalidate=1800";

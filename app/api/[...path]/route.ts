@@ -262,6 +262,13 @@ function isLandingVideoReencode(targetPath: string, method: string): boolean {
   return targetPath === "admin/landing-video/reencode" && method === "POST";
 }
 
+function isMultipartRequest(req: NextRequest): boolean {
+  return (
+    req.headers.get("content-type")?.toLowerCase().startsWith("multipart/form-data") ||
+    false
+  );
+}
+
 function appendVaryHeader(headers: Headers, value: string): void {
   const current = headers.get("vary");
   if (!current) {
@@ -353,8 +360,13 @@ async function handler(
 
   // Repassar body para métodos que suportam
   if (req.method !== "GET" && req.method !== "HEAD") {
-    init.body = req.body;
-    if (req.body) {
+    if (isUploadStagingPath(targetPath) && isMultipartRequest(req)) {
+      init.body = await req.arrayBuffer();
+    } else {
+      init.body = req.body;
+    }
+
+    if (init.body instanceof ReadableStream) {
       init.duplex = "half";
     }
   }

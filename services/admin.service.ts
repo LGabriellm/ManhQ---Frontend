@@ -1,4 +1,9 @@
 import api from "./api";
+import {
+  assertLocalUploadFilesWithinLimit,
+  splitLocalUploadBatches,
+  UPLOAD_STAGING_TIMEOUT_MS,
+} from "@/lib/upload-limits";
 import type { UploadSessionDetail } from "@/types/upload";
 import type {
   SystemSettings,
@@ -287,41 +292,8 @@ export interface JobsFullResponse {
   jobs: AdminJob[];
 }
 
-const LOCAL_UPLOAD_BATCH_MAX_BYTES = 80 * 1024 * 1024;
-const LOCAL_UPLOAD_BATCH_MAX_FILES = 8;
-const LOCAL_UPLOAD_TIMEOUT_MS = 600_000;
-
 function appendLocalUploadFiles(formData: FormData, files: File[]): void {
   files.forEach((file) => formData.append("files", file));
-}
-
-function splitLocalUploadBatches(files: File[]): File[][] {
-  const batches: File[][] = [];
-  let currentBatch: File[] = [];
-  let currentSize = 0;
-
-  for (const file of files) {
-    const size = file.size || 0;
-    const exceedsByteLimit =
-      currentBatch.length > 0 &&
-      currentSize + size > LOCAL_UPLOAD_BATCH_MAX_BYTES;
-    const exceedsFileLimit = currentBatch.length >= LOCAL_UPLOAD_BATCH_MAX_FILES;
-
-    if (exceedsByteLimit || exceedsFileLimit) {
-      batches.push(currentBatch);
-      currentBatch = [];
-      currentSize = 0;
-    }
-
-    currentBatch.push(file);
-    currentSize += size;
-  }
-
-  if (currentBatch.length > 0) {
-    batches.push(currentBatch);
-  }
-
-  return batches;
 }
 
 async function postLocalUploadForm<T>(
@@ -329,7 +301,7 @@ async function postLocalUploadForm<T>(
   formData: FormData,
 ): Promise<T> {
   const response = await api.post<T>(path, formData, {
-    timeout: LOCAL_UPLOAD_TIMEOUT_MS,
+    timeout: UPLOAD_STAGING_TIMEOUT_MS,
   });
   return response.data;
 }
@@ -347,6 +319,8 @@ async function stageLocalUploadInBatches<T extends { draftId: string }>(
   files: File[],
   createFirstBatch: (batch: File[]) => Promise<T>,
 ): Promise<T> {
+  assertLocalUploadFilesWithinLimit(files);
+
   const batches = splitLocalUploadBatches(files);
   if (batches.length === 0) {
     return createFirstBatch([]);
@@ -538,16 +512,20 @@ export const adminService = {
 
   // ===== Upload =====
   async upload(file: File): Promise<UploadResponse> {
+    assertLocalUploadFilesWithinLimit([file]);
+
     const formData = new FormData();
     formData.append("file", file);
     const response = await api.post<UploadResponse>("/upload", formData, {
       headers: { "Content-Type": "multipart/form-data" },
-      timeout: 120_000,
+      timeout: UPLOAD_STAGING_TIMEOUT_MS,
     });
     return response.data;
   },
 
   async uploadBulk(files: File[]): Promise<UploadBulkResponse> {
+    assertLocalUploadFilesWithinLimit(files);
+
     const formData = new FormData();
     files.forEach((f) => formData.append("files", f));
     const response = await api.post<UploadBulkResponse>(
@@ -555,7 +533,7 @@ export const adminService = {
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120_000,
+        timeout: UPLOAD_STAGING_TIMEOUT_MS,
       },
     );
     return response.data;
@@ -565,6 +543,8 @@ export const adminService = {
     folderName: string,
     files: File[],
   ): Promise<UploadFolderResponse> {
+    assertLocalUploadFilesWithinLimit(files);
+
     const formData = new FormData();
     formData.append("folderName", folderName);
     files.forEach((f) => formData.append("files", f));
@@ -573,7 +553,7 @@ export const adminService = {
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120_000,
+        timeout: UPLOAD_STAGING_TIMEOUT_MS,
       },
     );
     return response.data;
@@ -686,6 +666,8 @@ export const adminService = {
     seriesId: string,
     files: File[],
   ): Promise<UploadSerieResponse> {
+    assertLocalUploadFilesWithinLimit(files);
+
     const formData = new FormData();
     files.forEach((f) => formData.append("files", f));
     const response = await api.post<UploadSerieResponse>(
@@ -693,7 +675,7 @@ export const adminService = {
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },
-        timeout: 120_000,
+        timeout: UPLOAD_STAGING_TIMEOUT_MS,
       },
     );
     return response.data;
@@ -766,7 +748,7 @@ export const adminService = {
         headers: idempotencyKey
           ? { "Idempotency-Key": idempotencyKey }
           : undefined,
-        timeout: 120_000,
+        timeout: UPLOAD_STAGING_TIMEOUT_MS,
       },
     );
     return response.data;

@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import withSerwistInit from "@serwist/next";
+import { LOCAL_UPLOAD_PROXY_MAX_BODY_SIZE } from "./lib/upload-limits";
 
 const withSerwist = withSerwistInit({
   swSrc: "app/sw.ts",
@@ -24,7 +25,7 @@ const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
-    proxyClientMaxBodySize: "120mb",
+    proxyClientMaxBodySize: LOCAL_UPLOAD_PROXY_MAX_BODY_SIZE,
   },
   async headers() {
     return [

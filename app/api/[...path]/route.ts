@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { UPLOAD_STAGING_TIMEOUT_MS } from "@/lib/upload-limits";
 
 const DEFAULT_BACKEND_URL =
   process.env.NODE_ENV === "production"
@@ -87,7 +88,6 @@ const ALLOWED_PREFIXES = [
 ];
 
 const FETCH_TIMEOUT_MS = 30_000;
-const UPLOAD_TIMEOUT_MS = 600_000;
 const REENCODE_TIMEOUT_MS = 600_000;
 const PUBLIC_CACHE_CONTROL =
   "public, max-age=60, s-maxage=300, stale-while-revalidate=1800";
@@ -276,7 +276,7 @@ function getProxyTimeoutMs(targetPath: string, method: string): number | null {
   }
 
   if (isUploadStagingPath(targetPath)) {
-    return UPLOAD_TIMEOUT_MS;
+    return UPLOAD_STAGING_TIMEOUT_MS;
   }
 
   return FETCH_TIMEOUT_MS;

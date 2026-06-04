@@ -6,6 +6,11 @@
  * ───────────────────────────────────────────────────────────────────────────── */
 
 import { api } from "@/services/api";
+import {
+  assertLocalUploadFilesWithinLimit,
+  splitLocalUploadBatches,
+  UPLOAD_STAGING_TIMEOUT_MS,
+} from "@/lib/upload-limits";
 import type {
   BulkUpdateRequest,
   CancelDraftResult,
@@ -22,41 +27,8 @@ import type {
   UploadItem,
 } from "@/types/upload";
 
-const LOCAL_UPLOAD_BATCH_MAX_BYTES = 80 * 1024 * 1024;
-const LOCAL_UPLOAD_BATCH_MAX_FILES = 8;
-const LOCAL_UPLOAD_TIMEOUT_MS = 600_000;
-
 function appendFiles(form: FormData, files: File[]): void {
   files.forEach((file) => form.append("files", file));
-}
-
-function splitLocalUploadBatches(files: File[]): File[][] {
-  const batches: File[][] = [];
-  let currentBatch: File[] = [];
-  let currentSize = 0;
-
-  for (const file of files) {
-    const size = file.size || 0;
-    const exceedsByteLimit =
-      currentBatch.length > 0 &&
-      currentSize + size > LOCAL_UPLOAD_BATCH_MAX_BYTES;
-    const exceedsFileLimit = currentBatch.length >= LOCAL_UPLOAD_BATCH_MAX_FILES;
-
-    if (exceedsByteLimit || exceedsFileLimit) {
-      batches.push(currentBatch);
-      currentBatch = [];
-      currentSize = 0;
-    }
-
-    currentBatch.push(file);
-    currentSize += size;
-  }
-
-  if (currentBatch.length > 0) {
-    batches.push(currentBatch);
-  }
-
-  return batches;
 }
 
 async function postLocalUploadForm(
@@ -65,7 +37,7 @@ async function postLocalUploadForm(
 ): Promise<StageResponse> {
   const { data } = await api.post(path, form, {
     headers: { "Content-Type": "multipart/form-data" },
-    timeout: LOCAL_UPLOAD_TIMEOUT_MS,
+    timeout: UPLOAD_STAGING_TIMEOUT_MS,
   });
   return data;
 }
@@ -83,6 +55,8 @@ async function stageLocalFilesInBatches(
   files: File[],
   createFirstBatch: (batch: File[]) => Promise<StageResponse>,
 ): Promise<StageResponse> {
+  assertLocalUploadFilesWithinLimit(files);
+
   const batches = splitLocalUploadBatches(files);
   if (batches.length === 0) {
     return createFirstBatch([]);
@@ -297,7 +271,7 @@ export async function stageFromGoogleDrive(
   payload: GoogleDriveStageRequest,
 ): Promise<GoogleDriveStageResponse> {
   const { data } = await api.post("/integrations/google-drive/stage", payload, {
-    timeout: 600_000,
+    timeout: UPLOAD_STAGING_TIMEOUT_MS,
   });
   return data;
 }

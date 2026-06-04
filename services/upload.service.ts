@@ -129,9 +129,9 @@ export async function stageLocalFiles(
   options?: { folderName?: string; seriesTitle?: string },
 ): Promise<StageResponse> {
   const form = new FormData();
-  files.forEach((file) => form.append("files", file));
   if (options?.folderName) form.append("folderName", options.folderName);
   if (options?.seriesTitle) form.append("seriesTitle", options.seriesTitle);
+  files.forEach((file) => form.append("files", file));
 
   const { data } = await api.post("/upload/stage", form, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -145,8 +145,8 @@ export async function stageLocalForSeries(
   seriesTitle: string,
 ): Promise<StageResponse> {
   const form = new FormData();
-  files.forEach((file) => form.append("files", file));
   form.append("seriesTitle", seriesTitle);
+  files.forEach((file) => form.append("files", file));
 
   const { data } = await api.post("/upload/workflow/series-stage", form, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -257,3 +257,4 @@ export async function searchSeries(
   });
   return data.items ?? [];
 }
+

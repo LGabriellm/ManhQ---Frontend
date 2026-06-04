@@ -262,6 +262,47 @@ function isLandingVideoReencode(targetPath: string, method: string): boolean {
   return targetPath === "admin/landing-video/reencode" && method === "POST";
 }
 
+function getProxyTimeoutMs(targetPath: string, method: string): number | null {
+  if (
+    isUploadSessionEventStream(targetPath) ||
+    isLandingVideoStream(targetPath) ||
+    isLandingVideoUpload(targetPath, method)
+  ) {
+    return null;
+  }
+
+  if (isLandingVideoReencode(targetPath, method)) {
+    return REENCODE_TIMEOUT_MS;
+  }
+
+  if (isUploadStagingPath(targetPath)) {
+    return UPLOAD_TIMEOUT_MS;
+  }
+
+  return FETCH_TIMEOUT_MS;
+}
+
+function createProxyTimeout(timeoutMs: number | null): {
+  signal?: AbortSignal;
+  clear: () => void;
+} {
+  if (timeoutMs === null) {
+    return { clear: () => undefined };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort(
+      new DOMException("Proxy request timed out", "TimeoutError"),
+    );
+  }, timeoutMs);
+
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timeoutId),
+  };
+}
+
 function isMultipartRequest(req: NextRequest): boolean {
   return (
     req.headers.get("content-type")?.toLowerCase().startsWith("multipart/form-data") ||
@@ -340,22 +381,14 @@ async function handler(
 
   const forwardedCookieHeader = buildForwardedCookieHeader(req);
   const headers = buildForwardedHeaders(req, forwardedCookieHeader);
+  const proxyTimeout = createProxyTimeout(
+    getProxyTimeoutMs(targetPath, req.method),
+  );
 
   const init: RequestInit & { duplex?: "half" } = {
     method: req.method,
     headers,
-    signal:
-      isUploadSessionEventStream(targetPath) ||
-      isLandingVideoStream(targetPath) ||
-      isLandingVideoUpload(targetPath, req.method)
-        ? undefined
-        : AbortSignal.timeout(
-            isLandingVideoReencode(targetPath, req.method)
-              ? REENCODE_TIMEOUT_MS
-              : isUploadStagingPath(targetPath)
-                ? UPLOAD_TIMEOUT_MS
-                : FETCH_TIMEOUT_MS,
-          ),
+    signal: proxyTimeout.signal,
   };
 
   // Repassar body para métodos que suportam
@@ -373,6 +406,7 @@ async function handler(
 
   try {
     const response = await fetch(url.toString(), init);
+    proxyTimeout.clear();
     const duration = Date.now() - startTime;
 
     // Log non-2xx responses at a condensed level
@@ -437,6 +471,7 @@ async function handler(
       headers: responseHeaders,
     });
   } catch (err) {
+    proxyTimeout.clear();
     const duration = Date.now() - startTime;
     console.error(
       `[Proxy] Fetch error for ${req.method} ${targetPath} (${duration}ms):`,

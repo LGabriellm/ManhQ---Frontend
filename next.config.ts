@@ -24,6 +24,7 @@ const nextConfig: NextConfig = {
   productionBrowserSourceMaps: false,
   experimental: {
     optimizePackageImports: ["lucide-react", "framer-motion"],
+    proxyClientMaxBodySize: "120mb",
   },
   async headers() {
     return [
